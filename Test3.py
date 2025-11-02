@@ -8,6 +8,6 @@ try:
     else:
         print(f"✗ Число {number} не подходит под условия")
 except ValueError:
-    print("✗ Это не целое число")
+    print("✗ Это не целое число test")
 
 
