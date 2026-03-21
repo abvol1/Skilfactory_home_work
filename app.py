@@ -10,7 +10,73 @@ import numpy as np  # Для математических операций
 import os  # Для работы с файловой системой
 
 # Путь к файлу базы данных
-DB_PATH = "weather.db"
+#DB_PATH = "weather.db"
+
+
+def find_database():
+    """Ищет базу данных в возможных местах"""
+    possible_paths = [
+        # Для запуска в контейнере Airflow
+        "/opt/airflow/project/data/weather.db",
+        # Для запуска в отдельном контейнере Streamlit с volume
+        "/app/data/weather.db",
+        # Для локального запуска
+        "data/weather.db",
+        "./data/weather.db",
+        "weather.db",
+        # Относительно текущей директории
+        os.path.join(os.path.dirname(__file__), "data", "weather.db"),
+        os.path.join(os.path.dirname(__file__), "weather.db"),
+        # На уровень выше
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "weather.db"),
+    ]
+
+    for path in possible_paths:
+        if os.path.exists(path):
+            return path
+
+    return None
+
+
+st.set_page_config(page_title="WeatherInsight", layout="wide")
+st.title("🌦️ WeatherInsight: Погодные тренды")
+
+# Находим базу данных
+DB_PATH = find_database()
+
+if DB_PATH is None:
+    st.error("❌ База данных не найдена!")
+    st.info(f"Текущая директория: {os.getcwd()}")
+    st.info("Поиск выполнялся в следующих путях:")
+    possible_paths = [
+        "/opt/airflow/project/data/weather.db",
+        "/app/data/weather.db",
+        "data/weather.db",
+        "./data/weather.db",
+        "weather.db",
+    ]
+    for path in possible_paths:
+        st.code(f"- {path}")
+    st.stop()
+
+st.info(f"✅ База данных найдена: {DB_PATH}")
+
+
+# Загрузка данных
+@st.cache_data
+def load_data(db_path):
+    conn = sqlite3.connect(db_path)
+    df = pl.read_database("SELECT * FROM weather ORDER BY date", conn)
+    conn.close()
+    return df
+
+
+try:
+    df = load_data(DB_PATH)
+except Exception as e:
+    st.error(f"❌ Не удалось загрузить данные: {e}")
+    st.stop()
+
 
 # Настройка страницы Streamlit
 st.set_page_config(
