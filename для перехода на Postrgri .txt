@@ -1,0 +1,234 @@
+📚 Сначала установим библиотеки (как конструктор)
+Представь, что наш проект — это конструктор. Нам нужны детали:
+
+txt
+streamlit          - Это главная программа, которая показывает окошки с чекбоксами
+pandas             - Помогает показывать таблицы в админке
+psycopg2-binary    - Это "переводчик" между нашим приложением и базой данных
+🐧 Инструкция для Linux (для чайников)
+Шаг 1: Открой терминал
+Терминал — это чёрное окошко, куда вводят команды. Найди его в меню программ или нажми Ctrl + Alt + T.
+
+Шаг 2: Обнови систему (как обновить телефон)
+bash
+sudo apt update
+На вопрос "пароль" введи свой пароль (буквы не видны — так и надо).
+
+Шаг 3: Установи PostgreSQL (базу данных)
+bash
+sudo apt install -y postgresql postgresql-contrib
+Это как установить новую программу. Жди окончания.
+
+Шаг 4: Запусти базу данных
+bash
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
+Теперь база данных запущена и будет включаться сама при старте компьютера.
+
+Шаг 5: Создай базу данных и пользователя (как завести почту)
+Теперь нужно создать "место" для хранения данных.
+
+bash
+sudo -u postgres psql
+Ты попал в программу работы с базой данных. Теперь скопируй и вставь эти команды по очереди:
+
+sql
+CREATE DATABASE app_db;
+CREATE USER app_user WITH PASSWORD 'мойпароль123';
+GRANT ALL PRIVILEGES ON DATABASE app_db TO app_user;
+\q
+Что ты сделал:
+
+app_db — имя базы данных (как папка для файлов)
+
+app_user — имя пользователя (как логин)
+
+мойпароль123 — пароль (запомни его!)
+
+Шаг 6: Установи вспомогательные программы
+bash
+sudo apt install -y python3-dev libpq-dev gcc
+Это нужные "шестерёнки" для работы.
+
+Шаг 7: Зайди в папку с проектом
+bash
+cd ~/PythonProject_work2
+(Если папка называется по-другому, замени на своё имя)
+
+Шаг 8: Создай виртуальное окружение (как отдельную комнату)
+bash
+python3 -m venv venv
+Это создаст отдельное место для библиотек, чтобы не мешать другим программам.
+
+Шаг 9: Активируй виртуальное окружение
+bash
+source venv/bin/activate
+Теперь в начале строки будет (venv) — значит, ты внутри.
+
+Шаг 10: Установи библиотеки
+bash
+pip install streamlit pandas psycopg2-binary
+Жди, пока скачается. Это главные детали конструктора.
+
+Шаг 11: Настрой переменные окружения (скажи программе, где искать базу данных)
+Что такое переменные окружения? Это как записка для программы: "База данных живёт тут, логин такой, пароль такой".
+
+Введи эти команды одну за другой:
+
+bash
+export DB_TYPE=postgres
+export PG_HOST=localhost
+export PG_PORT=5432
+export PG_DATABASE=app_db
+export PG_USER=app_user
+export PG_PASSWORD=мойпароль123
+ВНИМАНИЕ! В последней строчке вместо мойпароль123 напиши пароль, который ты придумал в Шаге 5.
+
+Шаг 12: Проверь, что всё работает
+Создай проверочный файл:
+
+bash
+nano test.py
+Скопируй и вставь этот код:
+
+python
+import os
+print("База данных:", os.getenv("DB_TYPE"))
+print("Хост:", os.getenv("PG_HOST"))
+print("База:", os.getenv("PG_DATABASE"))
+print("Пользователь:", os.getenv("PG_USER"))
+Сохрани: нажми Ctrl+O, потом Enter, потом Ctrl+X.
+
+Запусти проверку:
+
+bash
+python test.py
+Должно показать:
+
+text
+База данных: postgres
+Хост: localhost
+База: app_db
+Пользователь: app_user
+Шаг 13: Запусти приложение
+bash
+streamlit run main.py
+Откроется браузер. Введи:
+
+Логин: user1
+
+Пароль: pass1
+
+Филиал: 1
+
+Всё работает! 🎉
+
+🚀 Что делать, если выключить компьютер?
+После перезагрузки компьютера нужно снова:
+
+Открыть терминал
+
+Зайти в папку проекта:
+
+bash
+cd ~/PythonProject_work2
+Активировать окружение:
+
+bash
+source venv/bin/activate
+Установить переменные:
+
+bash
+export DB_TYPE=postgres
+export PG_HOST=localhost
+export PG_PORT=5432
+export PG_DATABASE=app_db
+export PG_USER=app_user
+export PG_PASSWORD=мойпароль123
+Запустить приложение:
+
+bash
+streamlit run main.py
+💡 Секрет: как не вводить переменные каждый раз
+Создай файл start.sh:
+
+bash
+nano start.sh
+Вставь туда:
+
+bash
+#!/bin/bash
+cd ~/PythonProject_work2
+source venv/bin/activate
+export DB_TYPE=postgres
+export PG_HOST=localhost
+export PG_PORT=5432
+export PG_DATABASE=app_db
+export PG_USER=app_user
+export PG_PASSWORD=мойпароль123
+streamlit run main.py
+Сохрани (Ctrl+O, Enter, Ctrl+X).
+
+Сделай файл исполняемым:
+
+bash
+chmod +x start.sh
+Теперь для запуска достаточно ввести:
+
+bash
+./start.sh
+🛠️ Если что-то пошло не так (самые частые ошибки)
+Ошибка: "psql: команда не найдена"
+Что значит: PostgreSQL не установился.
+
+Что делать:
+
+bash
+sudo apt install -y postgresql
+Ошибка: "could not connect to server"
+Что значит: База данных не запущена.
+
+Что делать:
+
+bash
+sudo systemctl start postgresql
+Ошибка: "FATAL: password authentication failed"
+Что значит: Неправильный пароль.
+
+Что делать: Сбрось пароль:
+
+bash
+sudo -u postgres psql -c "ALTER USER app_user WITH PASSWORD 'новыйпароль';"
+Ошибка: "ModuleNotFoundError: No module named 'streamlit'"
+Что значит: Библиотеки не установились.
+
+Что делать:
+
+bash
+source venv/bin/activate
+pip install streamlit pandas psycopg2-binary
+Ошибка: "database app_db does not exist"
+Что значит: База данных не создалась.
+
+Что делать: Создай заново:
+
+bash
+sudo -u postgres psql -c "CREATE DATABASE app_db;"
+📝 Шпаргалка (самое главное)
+Что нужно сделать	Команда
+Зайти в папку проекта	cd ~/PythonProject_work2
+Активировать окружение	source venv/bin/activate
+Установить переменные	export DB_TYPE=postgres и остальные
+Запустить приложение	streamlit run main.py
+Остановить приложение	Нажми Ctrl+C
+Выйти из окружения	deactivate
+🎯 Итог: что у тебя получилось
+✅ PostgreSQL работает
+✅ База данных создана
+✅ Пользователь создан
+✅ Библиотеки установлены
+✅ Приложение запускается
+✅ 500 человек могут работать одновременно
+
+Ты молодец! Только что настроил профессиональную базу данных! 🎉
+
