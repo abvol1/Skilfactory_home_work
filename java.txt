@@ -1,243 +1,55 @@
+При копировании стилей сохраняются линии таблицы
 
-Генератор распоряжений из файла CZO
-Мы получили несколько изображений с текстом технического задания на Java-приложение с JavaFX и Scene Builder для генерации распоряжений на основе Excel-файла CZO_RES_BASE_DZ_New_DBI.xlsx. Задача: создать простой код с максимумом комментариев, обработка файла CZO, группировка по филиалу в столбце B (первые 3 цифры значений 001-003, 005-009), формирование отдельных распоряжений для каждой группы.
-
-Основное содержание ТЗ:
-
-Отчет CZO_RES_BASE_DZ_New_DBI содержит столбцы (из изображений и описания). Нужно создать две вкладки в результирующем Excel-файле распоряжения:
-
-"Распоряжение (РВП)"
-
-"Расчетная база ПОТ"
-
-Критерии отбора строк из исходного файла для каждой вкладки:
-
-"Распоряжение (РВП)": счета 60323, 458, 47423*, у которых столбец "Расхождение" (16) не равен 0.
-
-"Расчетная база ПОТ":
-
-для счетов 60323*: если столбец "Остаток счета РБ на дату резервирования" (7) > 0.
-
-для счетов 458, 47423: если столбец (7) или (8) "Остаток счета просроченной РБ на дату резервирования" > 0.
-
-Столбцы исходного файла (по нумерации из описания):
-
-(1) № п/п
-
-(2) Количество
-
-(3) Состояние
-
-(4) Счёт
-
-(5) Валюта
-
-(6) Курс валюты
-
-(7) Остаток счета РБ на дату резервирования
-
-(8) Остаток счета просроченной РБ на дату резервирования (в одном месте написано "Остаток счета РБ на дату резервирования" дважды, но судя по описанию второй - это столбец 8)
-
-(9) Остаток прочих номиналов РБ на дату резервирования
-
-(10) Сумма оборотов К-т
-
-(11) Сумма оборотов Д-т
-
-(12) Счет резерва
-
-(13) Примечания
-
-(14) Тип резерва
-
-(15) Остаток счета резерва на дату резервирования
-
-(16) Расчетный резерв (или "Расчетный размер"?)
-
-(17) Расхождение
-
-(18) Дата отчисления
-
-В другом месте указано "Расчетный резерв" (15) и "Расхождение" (16) и т.д. Надо уточнить индексы. Но для реализации будем ориентироваться на описание: есть столбцы "Остаток счета РБ на дату резервирования" (7), "Остаток счета просроченной РБ на дату резервирования" (8), "Счет РБ" (5), "Остаток счета резерва на дату резервирования" (14), "Расчетный резерв" (15), "Расхождение" (16).
-
-Дополнительно есть колонка B с филиалом в исходном файле CZO, значения типа "001-003", "005-009" и т.д. Нужно группировать по первым трем цифрам. Создавать отдельные файлы распоряжений для каждой группы.
-
-Для вкладки "Расчетная база ПОТ" надо заполнить таблицу с колонками:
-
-ФИО клиента (из столбца "Клиент" (3) исходного отчета)
-
-Номер договора (? не указано в исходном, возможно из другого места)
-
-Дата заключения договора
-
-Признак принадлежности к ПОТ на дату ...
-
-Валюта (из столбца "Валюта счета" (6))
-
-Коэффициент резервирования (рассчитывается по правилам)
-
-Категория качества (рассчитывается)
-
-Счет для отчетности (из "Счет РБ" (5))
-
-Остаток по счету ЭРБ (из разных столбцов в зависимости от счета)
-
-Остаток по счету ЭРБ до 30 дней (из (7))
-
-Длительность задолженности (?)
-
-Но в задании просят "сосредоточиться не над оформлением распоряжений а над содержанием таблиц, первая строка у таблиц начинается с 9ой строки". Также "в коде прошу тебя сосредоточится не над оформлением распоряжений а над содержанием таблиц".
-
-То есть нам не нужно оформлять шапки и тексты, только заполнять данные в строках, начиная с 9 строки.
-
-Мы должны предоставить простой JavaFX код с использованием Scene Builder, с диалогом выбора файла CZO, обработкой Excel через Apache POI.
-
-Учитывая объем ТЗ, мы предложим упрощенную структуру, фокусируясь на чтении исходного файла, фильтрации, группировке по филиалу, создании новых книг Excel с двумя листами и заполнении таблиц данными по описанным алгоритмам, с комментариями.
-
-Ответ должен содержать код на Java с пояснениями.
-
-Ниже приведён простой, хорошо закомментированный код JavaFX-приложения с использованием Apache POI для работы с Excel. Приложение позволяет выбрать файл CZO_RES_BASE_DZ_New_DBI.xlsx, группирует записи по первым трём цифрам столбца B («Филиал»), фильтрует данные согласно ТЗ и формирует отдельные файлы распоряжений для каждой группы. В каждом файле создаются две вкладки: «Распоряжение (РВП)» и «Расчетная база ПОТ», таблицы заполняются начиная с 9-й строки (первые 8 строк оставлены пустыми — в них можно позже вставить шапку и текст).
-
-Структура проекта
-Java 8+, JavaFX (включён в JDK до 10, либо отдельно подключается)
-
-Apache POI (зависимость Maven/Gradle)
-
-Scene Builder (для возможного расширения интерфейса, но в примере только простой FileChooser)
-
-Основные классы
-MainApp — точка входа, запускает JavaFX.
-
-Controller — обрабатывает выбор файла, вызывает логику обработки.
-
-CzoProcessor — содержит всю логику чтения, фильтрации, группировки и записи.
-
+Исправленный класс CzoProcessor.java
 java
-// ======================= MainApp.java =======================
-import javafx.application.Application;
-import javafx.fxml.FXMLLoader;
-import javafx.scene.Parent;
-import javafx.scene.Scene;
-import javafx.stage.Stage;
-
-public class MainApp extends Application {
-
-    @Override
-    public void start(Stage primaryStage) throws Exception {
-        // Загружаем простой интерфейс из FXML (можно сделать через Scene Builder)
-        Parent root = FXMLLoader.load(getClass().getResource("/main.fxml"));
-        primaryStage.setTitle("Генератор распоряжений");
-        primaryStage.setScene(new Scene(root, 400, 200));
-        primaryStage.show();
-    }
-
-    public static void main(String[] args) {
-        launch(args);
-    }
-}
-java
-// ======================= Controller.java =======================
-import javafx.fxml.FXML;
-import javafx.scene.control.Alert;
-import javafx.scene.control.Button;
-import javafx.stage.FileChooser;
-import java.io.File;
-
-public class Controller {
-
-    @FXML
-    private Button selectFileButton;
-
-    @FXML
-    private void initialize() {
-        selectFileButton.setOnAction(event -> chooseFileAndProcess());
-    }
-
-    private void chooseFileAndProcess() {
-        FileChooser fileChooser = new FileChooser();
-        fileChooser.setTitle("Выберите файл CZO");
-        fileChooser.getExtensionFilters().add(
-                new FileChooser.ExtensionFilter("Excel files", "*.xlsx", "*.xls")
-        );
-        File selectedFile = fileChooser.showOpenDialog(selectFileButton.getScene().getWindow());
-
-        if (selectedFile != null) {
-            try {
-                CzoProcessor processor = new CzoProcessor();
-                processor.process(selectedFile);
-                showInfo("Обработка завершена", "Файлы распоряжений созданы в папке с исходным файлом.");
-            } catch (Exception e) {
-                showError("Ошибка обработки", e.getMessage());
-                e.printStackTrace();
-            }
-        }
-    }
-
-    private void showInfo(String title, String message) {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(message);
-        alert.showAndWait();
-    }
-
-    private void showError(String title, String message) {
-        Alert alert = new Alert(Alert.AlertType.ERROR);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(message);
-        alert.showAndWait();
-    }
-}
-java
-// ======================= CzoProcessor.java =======================
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.regex.Pattern;
 
 public class CzoProcessor {
 
-    // Индексы столбцов в исходном файле (начиная с 0)
-    private static final int COL_FILIAL = 1;            // B - филиал (первые 3 цифры)
-    private static final int COL_CLIENT_NAME = 2;       // C - ФИО клиента (столбец "Клиент")
-    private static final int COL_ACCOUNT_RB = 4;        // E - Счет РБ (номер лицевого счёта)
-    private static final int COL_CURRENCY = 5;          // F - Валюта счета
-    private static final int COL_BALANCE_RB = 6;        // G - Остаток счета РБ на дату резервирования (7)
-    private static final int COL_OVERDUE_BALANCE = 7;   // H - Остаток счета просроченной РБ (8)
-    // COL_RESERVE_ACCOUNT = ? (столбец 12 - Счет резерва, индекс 11)
-    private static final int COL_RESERVE_BALANCE = 14;  // O - Остаток счета резерва на дату резервирования (15)
-    private static final int COL_CALC_RESERVE = 15;     // P - Расчетный резерв (16)
-    private static final int COL_DISCREPANCY = 16;      // Q - Расхождение (17)
+    // Индексы столбцов исходного файла CZO (0-based)
+    private static final int COL_FILIAL = 1;             // B - Филиал (первые 3 цифры)
+    private static final int COL_CLIENT_NAME = 2;        // C - Клиент (ФИО)
+    private static final int COL_ACCOUNT_RB = 4;         // E - Счет РБ (лицевой счет)
+    private static final int COL_CURRENCY = 5;           // F - Валюта счета
+    private static final int COL_BALANCE_RB = 6;         // G - Остаток счета РБ на дату резервирования
+    private static final int COL_OVERDUE_BALANCE = 7;    // H - Остаток просроченной РБ на дату резервирования
+    private static final int COL_RESERVE_ACCOUNT = 11;   // L - Счет резерва
+    private static final int COL_RESERVE_BALANCE = 13;   // N - Остаток счета резерва на дату резервирования
+    private static final int COL_CALC_RESERVE = 14;      // O - Расчетный резерв
+    private static final int COL_DISCREPANCY = 15;       // P - Расхождение
 
     // Шаблоны счетов
     private static final Pattern ACCOUNT_60323 = Pattern.compile("^60323.*");
     private static final Pattern ACCOUNT_458 = Pattern.compile("^458.*");
     private static final Pattern ACCOUNT_47423 = Pattern.compile("^47423.*");
 
+    // Строки начала данных в шаблоне
+    private static final int RVP_START_ROW = 17;  // 18-я строка (индекс 17)
+    private static final int POT_START_ROW = 6;   // 7-я строка (индекс 6)
+
     /**
-     * Основной метод обработки.
+     * Главный метод обработки.
      */
     public void process(File inputFile) throws IOException {
-        // 1. Читаем исходный файл
+        // 1. Чтение и группировка исходных данных
         Map<String, List<RowData>> groupedByFilial = readAndGroupByFilial(inputFile);
 
-        // 2. Для каждой группы создаём отдельный файл распоряжения
+        // 2. Для каждого филиала создаём файл на основе шаблона
         for (Map.Entry<String, List<RowData>> entry : groupedByFilial.entrySet()) {
             String filialCode = entry.getKey();
             List<RowData> rows = entry.getValue();
-            createOrderFile(inputFile.getParentFile(), filialCode, rows);
+            createOrderFromTemplate(inputFile.getParentFile(), filialCode, rows);
         }
     }
 
     /**
-     * Чтение исходного Excel и группировка по филиалу (первые 3 цифры столбца B).
+     * Чтение исходного Excel, группировка по первым трём цифрам филиала.
      */
     private Map<String, List<RowData>> readAndGroupByFilial(File file) throws IOException {
         Map<String, List<RowData>> groups = new HashMap<>();
@@ -245,45 +57,39 @@ public class CzoProcessor {
         try (FileInputStream fis = new FileInputStream(file);
              Workbook workbook = WorkbookFactory.create(fis)) {
 
-            Sheet sheet = workbook.getSheetAt(0); // предполагаем, что данные на первом листе
+            Sheet sheet = workbook.getSheetAt(0);
             DataFormatter formatter = new DataFormatter();
 
-            // Пропускаем заголовок (предположим, что первая строка - шапка)
+            // Пропускаем заголовок (предполагаем, что первая строка - шапка)
             for (int rowIdx = 1; rowIdx <= sheet.getLastRowNum(); rowIdx++) {
                 Row row = sheet.getRow(rowIdx);
                 if (row == null) continue;
 
-                // Извлекаем значение филиала (столбец B)
+                // Филиал (первые 3 символа столбца B)
                 Cell filialCell = row.getCell(COL_FILIAL);
                 String filialRaw = formatter.formatCellValue(filialCell).trim();
                 if (filialRaw.isEmpty()) continue;
 
-                // Берём первые 3 символа (например, из "001-003" -> "001")
                 String filialKey = filialRaw.length() >= 3 ? filialRaw.substring(0, 3) : filialRaw;
-                // Фильтруем только нужные филиалы (001-003, 005-009)
                 if (!isTargetFilial(filialKey)) continue;
 
-                // Читаем остальные поля
                 RowData data = new RowData();
                 data.accountRB = formatter.formatCellValue(row.getCell(COL_ACCOUNT_RB));
                 data.clientName = formatter.formatCellValue(row.getCell(COL_CLIENT_NAME));
                 data.currency = formatter.formatCellValue(row.getCell(COL_CURRENCY));
                 data.balanceRB = getNumericValue(row.getCell(COL_BALANCE_RB));
                 data.overdueBalance = getNumericValue(row.getCell(COL_OVERDUE_BALANCE));
+                data.reserveAccount = formatter.formatCellValue(row.getCell(COL_RESERVE_ACCOUNT));
                 data.reserveBalance = getNumericValue(row.getCell(COL_RESERVE_BALANCE));
                 data.calcReserve = getNumericValue(row.getCell(COL_CALC_RESERVE));
                 data.discrepancy = getNumericValue(row.getCell(COL_DISCREPANCY));
 
-                // Добавляем в группу
                 groups.computeIfAbsent(filialKey, k -> new ArrayList<>()).add(data);
             }
         }
         return groups;
     }
 
-    /**
-     * Проверка, входит ли код филиала в заданные диапазоны (001-003, 005-009).
-     */
     private boolean isTargetFilial(String code) {
         try {
             int num = Integer.parseInt(code);
@@ -293,9 +99,6 @@ public class CzoProcessor {
         }
     }
 
-    /**
-     * Получение числового значения из ячейки (BigDecimal для точности).
-     */
     private BigDecimal getNumericValue(Cell cell) {
         if (cell == null) return BigDecimal.ZERO;
         try {
@@ -303,58 +106,66 @@ public class CzoProcessor {
                 return BigDecimal.valueOf(cell.getNumericCellValue());
             } else if (cell.getCellType() == CellType.STRING) {
                 String str = cell.getStringCellValue().trim().replace(",", ".");
-                return new BigDecimal(str.isEmpty() ? "0" : str);
+                if (str.isEmpty()) return BigDecimal.ZERO;
+                return new BigDecimal(str);
             }
         } catch (Exception ignored) {}
         return BigDecimal.ZERO;
     }
 
     /**
-     * Создание файла распоряжения для конкретного филиала.
+     * Создание файла распоряжения из шаблона template.xlsx.
      */
-    private void createOrderFile(File parentDir, String filialCode, List<RowData> allRows) throws IOException {
-        // Фильтрация строк для двух вкладок
-        List<RowData> rvpRows = new ArrayList<>();
-        List<RowData> potRows = new ArrayList<>();
-
-        for (RowData row : allRows) {
-            // Распоряжение (РВП): счета 60323*,458*,47423* и расхождение != 0
-            if (isRvpAccount(row.accountRB) && row.discrepancy.compareTo(BigDecimal.ZERO) != 0) {
-                rvpRows.add(row);
+    private void createOrderFromTemplate(File parentDir, String filialCode, List<RowData> allRows) throws IOException {
+        // Загружаем шаблон из ресурсов
+        try (InputStream templateStream = getClass().getResourceAsStream("/template.xlsx")) {
+            if (templateStream == null) {
+                throw new IOException("Шаблон template.xlsx не найден в ресурсах!");
             }
 
-            // Расчетная база ПОТ
-            if (isPotAccount(row.accountRB)) {
-                if (ACCOUNT_60323.matcher(row.accountRB).matches()) {
-                    // для 60323* остаток по счёту РБ > 0
-                    if (row.balanceRB.compareTo(BigDecimal.ZERO) > 0) {
-                        potRows.add(row);
+            try (Workbook workbook = new XSSFWorkbook(templateStream)) {
+                // Фильтрация строк для двух листов
+                List<RowData> rvpRows = new ArrayList<>();
+                List<RowData> potRows = new ArrayList<>();
+
+                for (RowData row : allRows) {
+                    // РВП: счета 60323*,458*,47423* и расхождение != 0
+                    if (isRvpAccount(row.accountRB) && row.discrepancy.compareTo(BigDecimal.ZERO) != 0) {
+                        rvpRows.add(row);
                     }
-                } else { // 458* или 47423*
-                    // остаток РБ > 0 или остаток просроченной РБ > 0
-                    if (row.balanceRB.compareTo(BigDecimal.ZERO) > 0 ||
-                        row.overdueBalance.compareTo(BigDecimal.ZERO) > 0) {
-                        potRows.add(row);
+
+                    // ПОТ: счета 60323* (остаток > 0) или 458*/47423* (остаток РБ или просроченный > 0)
+                    if (isPotAccount(row.accountRB)) {
+                        if (ACCOUNT_60323.matcher(row.accountRB).matches()) {
+                            if (row.balanceRB.compareTo(BigDecimal.ZERO) > 0) {
+                                potRows.add(row);
+                            }
+                        } else { // 458* или 47423*
+                            if (row.balanceRB.compareTo(BigDecimal.ZERO) > 0 ||
+                                row.overdueBalance.compareTo(BigDecimal.ZERO) > 0) {
+                                potRows.add(row);
+                            }
+                        }
                     }
                 }
-            }
-        }
 
-        // Создаём новую книгу Excel
-        try (Workbook workbook = new XSSFWorkbook()) {
-            // Создаём лист "Распоряжение (РВП)" и заполняем
-            Sheet sheetRvp = workbook.createSheet("Распоряжение (РВП)");
-            fillRvpSheet(sheetRvp, rvpRows);
+                // Заполняем листы
+                Sheet sheetRvp = workbook.getSheet("Распоряжение (РВП)");
+                Sheet sheetPot = workbook.getSheet("Расчетная база ПОТ");
+                if (sheetRvp == null || sheetPot == null) {
+                    throw new IOException("В шаблоне отсутствуют нужные листы!");
+                }
 
-            // Создаём лист "Расчетная база ПОТ"
-            Sheet sheetPot = workbook.createSheet("Расчетная база ПОТ");
-            fillPotSheet(sheetPot, potRows);
+                // Заполняем с сохранением форматирования
+                fillSheetWithInsert(sheetRvp, rvpRows, RVP_START_ROW, true);
+                fillSheetWithInsert(sheetPot, potRows, POT_START_ROW, false);
 
-            // Сохраняем файл
-            String outputFileName = String.format("Распоряжение_филиал_%s.xlsx", filialCode);
-            File outputFile = new File(parentDir, outputFileName);
-            try (FileOutputStream fos = new FileOutputStream(outputFile)) {
-                workbook.write(fos);
+                // Сохраняем результат
+                String outputFileName = String.format("Распоряжение_филиал_%s.xlsx", filialCode);
+                File outputFile = new File(parentDir, outputFileName);
+                try (FileOutputStream fos = new FileOutputStream(outputFile)) {
+                    workbook.write(fos);
+                }
             }
         }
     }
@@ -366,1241 +177,472 @@ public class CzoProcessor {
     }
 
     private boolean isPotAccount(String account) {
-        return isRvpAccount(account); // те же счета
+        return isRvpAccount(account);
     }
 
     /**
-     * Заполнение листа "Распоряжение (РВП)".
-     * Данные начинаются с 9-й строки (индекс 8).
+     * Заполнение листа с динамической вставкой строк и сохранением форматирования.
+     * @param sheet лист
+     * @param rows данные для заполнения
+     * @param startRowIndex индекс строки, с которой начинаются данные (0-based)
+     * @param isRvp true для листа "Распоряжение (РВП)", false для "Расчетная база ПОТ"
      */
-    private void fillRvpSheet(Sheet sheet, List<RowData> rows) {
-        // Создаём стиль для числовых ячеек (по желанию)
-        Workbook workbook = sheet.getWorkbook();
-        CellStyle numberStyle = workbook.createCellStyle();
-        numberStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0.00"));
+    private void fillSheetWithInsert(Sheet sheet, List<RowData> rows, int startRowIndex, boolean isRvp) {
+        // 1. Найти строку с текстом под таблицей (ищем "Итого" или "Примечание")
+        int textStartRow = findTextStartRow(sheet, startRowIndex);
+        if (textStartRow == -1) {
+            // Если не нашли, считаем что текст начинается через 1 строку после образца
+            textStartRow = startRowIndex + 1;
+        }
 
-        int startRow = 8; // 9-я строка (0-based index 8)
-        int rowNum = startRow;
-        int sequenceNumber = 1;
+        // 2. Сохраняем строку-образец (она должна быть в шаблоне на позиции startRowIndex)
+        Row templateRow = sheet.getRow(startRowIndex);
+        if (templateRow == null) {
+            templateRow = sheet.createRow(startRowIndex);
+        }
 
+        // 3. Определяем сколько строк нужно для данных
+        int rowsNeeded = Math.max(rows.size(), 1);
+
+        // 4. Если нужно больше одной строки, вставляем дополнительные
+        if (rowsNeeded > 1) {
+            // Сдвигаем весь текст вниз, сохраняя форматирование
+            // Сдвигаем строки от textStartRow до конца листа на (rowsNeeded - 1) вниз
+            int shiftAmount = rowsNeeded - 1;
+            if (textStartRow <= sheet.getLastRowNum()) {
+                sheet.shiftRows(textStartRow, sheet.getLastRowNum(), shiftAmount, true, false);
+            }
+
+            // Копируем стили из строки-образца на новые строки
+            for (int i = 1; i < rowsNeeded; i++) {
+                Row newRow = sheet.getRow(startRowIndex + i);
+                if (newRow == null) {
+                    newRow = sheet.createRow(startRowIndex + i);
+                }
+                copyRowStyleAndBorders(templateRow, newRow);
+            }
+        }
+
+        // 5. Заполняем данные
+        int rowNum = startRowIndex;
         for (RowData data : rows) {
-            Row row = sheet.createRow(rowNum++);
+            Row row = sheet.getRow(rowNum);
+            if (row == null) {
+                row = sheet.createRow(rowNum);
+                copyRowStyleAndBorders(templateRow, row);
+            }
 
-            // № п/п
-            row.createCell(0).setCellValue(sequenceNumber++);
+            if (isRvp) {
+                fillRvpRow(row, data);
+            } else {
+                fillPotRow(row, data);
+            }
+            rowNum++;
+        }
 
-            // Номер лицевого счета, на котором отражен элемент расчетной базы
-            row.createCell(1).setCellValue(data.accountRB);
-
-            // Сумма элемента расчетной базы (в рублях) = Расчетный рез
-Стоп, новую книгу не нужно создавать, используем шаблон т.есть книгу с двумя вкладками там есть конкретная шапка над таблицами и определенный текст под таблицами, нам нужно лишь наполнить таблицы
-Мы должны использовать шаблон Excel с уже готовыми вкладками, шапками и текстами. Нам нужно только заполнить таблицы данными, начиная с 9-й строки. Пользователь хочет, чтобы мы не создавали новую книгу, а открывали существующий файл-шаблон, заполняли его и сохраняли как новый файл.
-
-Уточнение: шаблон уже содержит две вкладки с названиями "Распоряжение (РВП)" и "Расчетная база ПОТ". В них есть шапка (первые строки) и возможно подвал (текст под таблицами). Нам нужно заполнить строки таблиц, начиная с 9-й строки (индекс 8). Поэтому в коде нужно:
-
-Загрузить шаблон из определенного места (например, файл "template.xlsx" в ресурсах или рядом с приложением).
-
-Заполнить листы данными, не трогая существующее форматирование и содержимое за пределами заполняемых строк.
-
-Сохранить результат под новым именем.
-
-Пользователь также упомянул, что распоряжения должны формироваться отдельно в зависимости от данных в колонке B (филиал), и что мы используем Java, Scene Builder, но сосредоточиться на содержании таблиц.
-
-В предоставленном ранее коде мы создавали новую книгу. Теперь нужно модифицировать метод createOrderFile, чтобы он использовал существующий шаблон.
-
-Предположим, что шаблон лежит в classpath (например, src/main/resources/template.xlsx). Или пользователь может выбирать его через диалог? В запросе сказано "файл CZO (расширение xlsx) будем выбирать с помощью диалогового окна". Про шаблон не сказано, как его задавать. Вероятно, шаблон фиксирован и включен в приложение.
-
-Поэтому в ответе мы предоставим код, который:
-
-Загружает шаблон из ресурсов (или фиксированного пути).
-
-Для каждого филиала создает копию шаблона в памяти, заполняет таблицы и сохраняет с именем, зависящим от филиала.
-
-Обратим внимание на то, что в шаблоне могут быть формулы, стили, объединенные ячейки. При записи через POI нужно быть аккуратным, чтобы не повредить структуру.
-
-Также нужно правильно определять, какие строки заполнять: вероятно, шаблон содержит строки заголовка (1-8 строки), затем строки данных, возможно, с примером или пустые. Мы будем вставлять данные, начиная с 9-й строки, сдвигая существующие строки вниз? Или просто перезаписывать содержимое ячеек в этих строках? В ТЗ сказано: "первая строка у таблиц начинается с 9ой строки". Это значит, что в шаблоне первые 8 строк заняты шапкой, а с 9-й строки начинается область данных. Мы будем заполнять строки последовательно, перезаписывая ячейки. Если данных меньше, чем строк в шаблоне, оставшиеся строки нужно очистить или оставить как есть? Лучше очистить содержимое ячеек в строках данных, начиная с 9-й и до конца используемых строк, чтобы не осталось старых данных.
-
-Также учтем, что для листа "Распоряжение (РВП)" количество столбцов по описанию большое, а в коде ранее мы заполнили только несколько первых. Нужно заполнить все необходимые столбцы согласно ТЗ. Приложенные изображения содержат требования к столбцам. Я внимательно прочитал тексты с изображений:
-
-Для "Распоряжение (РВП)":
-
-№ п/п
-
-Номер лицевого счета, на котором отражен элемент расчетной базы (столбец 5)
-
-Сумма элемента расчетной базы (в рублях) = Расчетный резерв (столбец 15)
-
-Категория качества элемента расчетной базы = 5
-
-Размер расчетного резерва (в % от суммы) = 100
-
-Размер расчетного резерва (в рублях) = Расчетный резерв (15)
-
-Минимальный размер резерва (в рублях) = Расчетный резерв (15)
-
-Формируемый резерв на возможные потери (в рублях) = Расчетный резерв (15)
-
-Доля формируемого резерва = 1 (не округлять)
-
-Фактически сформированный резерв (в рублях) = Остаток счета резерва (14)
-
-Изменение резерва (+,-) = Расхождение (16)
-
-В изображении также есть еще столбцы (например, "Доля формируемого резерва в объеме задолженности не округлять (до 8 знаков после запятой) (13/6)" – это, видимо, отдельный столбец, где вычисляется отношение). Но в тексте сказано: "неизменяемое значение «1»". Видимо, столбец должен содержать 1.
-
-Всего столбцов много, но мы можем ориентироваться на структуру шаблона: предполагаем, что в шаблоне уже заданы заголовки и порядок столбцов. Нам нужно заполнить ячейки в правильных колонках. Чтобы не ошибиться с индексами, лучше по названиям заголовков определять индексы столбцов в шаблоне. Это более надежно. Но для упрощения можно зафиксировать индексы, если шаблон неизменен. Пользователь просит "простой код с максимум комментариев", поэтому можно использовать фиксированные индексы, указав в комментариях, какому столбцу что соответствует.
-
-Для "Расчетная база ПОТ":
-Столбцы:
-
-ФИО клиента (столбец 3 в исходнике "Клиент")
-
-Номер договора? (в исходнике нет, возможно, пусто)
-
-Дата заключения договора? (пусто)
-
-Признак принадлежности к ПОТ на дату "Дата отчета предыдущего регулирования" (пусто)
-
-Признак принадлежности к ПОТ на дату "Дата отчета" (пусто)
-
-Валюта (столбец 6)
-
-Коэффициент резервирования: для 60323* всегда 100; для 458*/47423*: если остаток по счету ЭРБ (столбец 10) >0 то 100 иначе 0. Но в ТЗ сказано: "Остаток по счету ЭРБ" – для 60323* это столбец 7, для 458/47423 это столбец 8. Тут нужно вычислять.
-
-Категория качества: для 60323* =5; для 458/47423 если Остаток ЭРБ >0 то 5 иначе 1.
-
-Счет для отчетности (столбец 5 "Счет РБ")
-
-Остаток по счету ЗРБ? (в описании "Остаток по счету ЭРБ" – для 60323* столбец 7, для других столбец 8)
-
-Длительность тв задолженности (пусто)
-
-Также есть итоговая строка с суммами.
-
-Я реализую заполнение с использованием фиксированных индексов столбцов, но с подробными комментариями. Предположим, что шаблон имеет такую структуру:
-
-Лист "Распоряжение (РВП)": столбцы A, B, C, ... (широкий). Определим индексы по порядку из ТЗ.
-
-Лист "Расчетная база ПОТ": столбцы A, B, C, ... (11 столбцов).
-
-Но для надежности можно сначала найти строку заголовка (например, 8-ю строку) и по названиям определить индексы. Я покажу упрощенный вариант с фиксированными индексами, указав, что при необходимости их можно скорректировать.
-
-Теперь напишем ответ с полным кодом, включая изменения для использования шаблона.
-
-Мы переработаем код, чтобы использовать готовый шаблон Excel с двумя вкладками и заполнять таблицы начиная с 9‑й строки. Сам файл CZO выбирается через диалог, а шаблон берётся из ресурсов приложения (можно положить template.xlsx в src/main/resources). Для каждого филиала создаётся копия шаблона, заполняется и сохраняется.
-
-1. Зависимости (Maven)
-xml
-<dependencies>
-    <!-- JavaFX -->
-    <dependency>
-        <groupId>org.openjfx</groupId>
-        <artifactId>javafx-controls</artifactId>
-        <version>17.0.6</version>
-    </dependency>
-    <dependency>
-        <groupId>org.openjfx</groupId>
-        <artifactId>javafx-fxml</artifactId>
-        <version>17.0.6</version>
-    </dependency>
-
-    <!-- Apache POI для работы с Excel -->
-    <dependency>
-        <groupId>org.apache.poi</groupId>
-        <artifactId>poi-ooxml</artifactId>
-        <version>5.2.3</version>
-    </dependency>
-</dependencies>
-2. FXML (простой интерфейс)
-main.fxml:
-
-xml
-<?xml version="1.0" encoding="UTF-8"?>
-
-<?import javafx.scene.control.Button?>
-<?import javafx.scene.layout.VBox?>
-
-<VBox alignment="CENTER" spacing="20.0" xmlns="http://javafx.com/javafx/8.0.171" xmlns:fx="http://javafx.com/fxml/1" fx:controller="Controller">
-    <Button fx:id="selectFileButton" text="Выбрать файл CZO и создать распоряжения" />
-</VBox>
-3. Основные классы
-MainApp.java
-java
-import javafx.application.Application;
-import javafx.fxml.FXMLLoader;
-import javafx.scene.Parent;
-import javafx.scene.Scene;
-import javafx.stage.Stage;
-
-public class MainApp extends Application {
-
-    @Override
-    public void start(Stage primaryStage) throws Exception {
-        Parent root = FXMLLoader.load(getClass().getResource("/main.fxml"));
-        primaryStage.setTitle("Генератор распоряжений");
-        primaryStage.setScene(new Scene(root, 400, 200));
-        primaryStage.show();
-    }
-
-    public static void main(String[] args) {
-        launch(args);
-    }
-}
-Controller.java
-java
-import javafx.fxml.FXML;
-import javafx.scene.control.Alert;
-import javafx.scene.control.Button;
-import javafx.stage.FileChooser;
-import java.io.File;
-
-public class Controller {
-
-    @FXML
-    private Button selectFileButton;
-
-    @FXML
-    private void initialize() {
-        selectFileButton.setOnAction(event -> chooseFileAndProcess());
-    }
-
-    private void chooseFileAndProcess() {
-        FileChooser fileChooser = new FileChooser();
-        fileChooser.setTitle("Выберите файл CZO");
-        fileChooser.getExtensionFilters().add(
-                new FileChooser.ExtensionFilter("Excel files", "*.xlsx", "*.xls")
-        );
-        File selectedFile = fileChooser.showOpenDialog(selectFileButton.getScene().getWindow());
-
-        if (selectedFile != null) {
-            try {
-                CzoProcessor processor = new CzoProcessor();
-                processor.process(selectedFile);
-                showInfo("Обработка завершена", "Файлы распоряжений созданы в папке с исходным файлом.");
-            } catch (Exception e) {
-                showError("Ошибка обработки", e.getMessage());
-                e.printStackTrace();
+        // 6. Если данных нет - очищаем строку-образец
+        if (rows.isEmpty()) {
+            Row emptyRow = sheet.getRow(startRowIndex);
+            if (emptyRow != null) {
+                for (int i = 0; i < emptyRow.getLastCellNum(); i++) {
+                    Cell cell = emptyRow.getCell(i);
+                    if (cell != null) {
+                        cell.setCellValue("");
+                    }
+                }
             }
         }
     }
 
-    private void showInfo(String title, String message) {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(message);
-        alert.showAndWait();
+    /**
+     * Поиск строки, где начинается текст под таблицей (ищем "Итого" или "Примечание" в первом столбце).
+     */
+    private int findTextStartRow(Sheet sheet, int startFromRow) {
+        DataFormatter formatter = new DataFormatter();
+        for (int i = startFromRow + 1; i <= sheet.getLastRowNum(); i++) {
+            Row row = sheet.getRow(i);
+            if (row == null) continue;
+            Cell cell = row.getCell(0);
+            String val = formatter.formatCellValue(cell).trim().toLowerCase();
+            if (val.contains("итого") || val.contains("примечание") || val.contains("всего")) {
+                return i;
+            }
+        }
+        return -1;
     }
 
-    private void showError(String title, String message) {
-        Alert alert = new Alert(Alert.AlertType.ERROR);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(message);
-        alert.showAndWait();
+    /**
+     * Копирование стилей ячеек и границ из одной строки в другую.
+     * Это сохраняет все линии таблицы.
+     */
+    private void copyRowStyleAndBorders(Row source, Row target) {
+        // Копируем высоту строки
+        target.setHeight(source.getHeight());
+
+        for (int i = 0; i < source.getLastCellNum(); i++) {
+            Cell srcCell = source.getCell(i);
+            Cell tgtCell = target.createCell(i);
+
+            if (srcCell != null) {
+                // Копируем стиль (включает границы, шрифт, выравнивание, формат чисел)
+                CellStyle srcStyle = srcCell.getCellStyle();
+                CellStyle tgtStyle = target.getSheet().getWorkbook().createCellStyle();
+                tgtStyle.cloneStyleFrom(srcStyle);
+                tgtCell.setCellStyle(tgtStyle);
+
+                // Копируем тип ячейки (но не значение)
+                // Значение будет установлено позже при заполнении
+            } else {
+                // Если в образце ячейки нет, но в других строках она может быть
+                tgtCell.setCellStyle(target.getSheet().getWorkbook().createCellStyle());
+            }
+        }
+    }
+
+    /**
+     * Заполнение строки листа "Распоряжение (РВП)".
+     * Столбцы согласно ТЗ (вкладка Распоряжение (РВП)):
+     * 1. № п/п
+     * 2. Номер лицевого счета, на котором отражен элемент расчетной базы (= Счет РБ)
+     * 3. Сумма элемента расчетной базы (в рублях) (= Расчетный резерв)
+     * 4. Категория качества элемента расчетной базы (= 5)
+     * 5. Размер расчетного резерва (в % от суммы) (= 100)
+     * 6. Размер расчетного резерва (в рублях) (= Расчетный резерв)
+     * 7. Минимальный размер резерва (в рублях) (= Расчетный резерв)
+     * 8. Формируемый резерв на возможные потери (в рублях) (= Расчетный резерв)
+     * 9. Доля формируемого резерва в объеме задолженности (= 1)
+     * 10. Фактически сформированный резерв на возможные потери (в рублях) (= Остаток счета резерва)
+     * 11. Изменение резерва (+,-) (в рублях) (= Расхождение)
+     */
+    private void fillRvpRow(Row row, RowData data) {
+        int col = 0;
+
+        // 1. № п/п - будет заполнен позже (пока оставляем пустым или заполним в цикле)
+        // Номер будем проставлять отдельно после заполнения всех строк
+        // row.createCell(col++).setCellValue(seq);
+
+        // 2. Номер лицевого счета = Счет РБ
+        row.createCell(col++).setCellValue(data.accountRB);
+
+        // 3. Сумма элемента расчетной базы = Расчетный резерв
+        setNumericCell(row.createCell(col++), data.calcReserve);
+
+        // 4. Категория качества = 5
+        row.createCell(col++).setCellValue(5);
+
+        // 5. Размер расчетного резерва (%) = 100
+        row.createCell(col++).setCellValue(100);
+
+        // 6. Размер расчетного резерва (руб) = Расчетный резерв
+        setNumericCell(row.createCell(col++), data.calcReserve);
+
+        // 7. Минимальный размер резерва = Расчетный резерв
+        setNumericCell(row.createCell(col++), data.calcReserve);
+
+        // 8. Формируемый резерв = Расчетный резерв
+        setNumericCell(row.createCell(col++), data.calcReserve);
+
+        // 9. Доля формируемого резерва = 1
+        row.createCell(col++).setCellValue(1);
+
+        // 10. Фактически сформированный резерв = Остаток счета резерва
+        setNumericCell(row.createCell(col++), data.reserveBalance);
+
+        // 11. Изменение резерва = Расхождение
+        setNumericCell(row.createCell(col++), data.discrepancy);
+    }
+
+    /**
+     * Заполнение строки листа "Расчетная база ПОТ".
+     * Столбцы согласно ТЗ:
+     * 1. ФИО клиента
+     * 2. Номер договора (нет данных - пусто)
+     * 3. Дата заключения договора (нет данных - пусто)
+     * 4. Признак принадлежности к ПОТ на дату "Дата отчета предыдущего регулирования" (нет данных - пусто)
+     * 5. Признак принадлежности к ПОТ на дату "Дата отчета" (нет данных - пусто)
+     * 6. Валюта
+     * 7. Коэффициент резервирования
+     * 8. Категория качества
+     * 9. Счет для отчетности (= Счет РБ)
+     * 10. Остаток по счету ЭРБ
+     * 11. Остаток по счету ЭРБ до 30 дней (резервированию не подлежит)
+     */
+    private void fillPotRow(Row row, RowData data) {
+        int col = 0;
+
+        // 1. ФИО клиента
+        row.createCell(col++).setCellValue(data.clientName);
+
+        // 2. Номер договора - пусто
+        row.createCell(col++).setCellValue("");
+
+        // 3. Дата заключения договора - пусто
+        row.createCell(col++).setCellValue("");
+
+        // 4. Признак принадлежности к ПОТ на предыдущую дату - пусто
+        row.createCell(col++).setCellValue("");
+
+        // 5. Признак принадлежности к ПОТ на дату отчета - пусто
+        row.createCell(col++).setCellValue("");
+
+        // 6. Валюта
+        row.createCell(col++).setCellValue(data.currency);
+
+        // === Расчёт коэффициента резервирования и категории качества ===
+        BigDecimal reserveCoef;
+        int qualityCategory;
+
+        if (ACCOUNT_60323.matcher(data.accountRB).matches()) {
+            // Для счета 60323* - всегда 100% и 5 категория
+            reserveCoef = new BigDecimal("100");
+            qualityCategory = 5;
+        } else {
+            // Для счетов 458*, 47423*
+            // Остаток по счету ЭРБ = остаток просроченной РБ (столбец H)
+            BigDecimal erbBalance = data.overdueBalance;
+
+            if (erbBalance.compareTo(BigDecimal.ZERO) > 0) {
+                reserveCoef = new BigDecimal("100");
+                qualityCategory = 5;
+            } else {
+                reserveCoef = BigDecimal.ZERO;
+                qualityCategory = 1;
+            }
+        }
+
+        // 7. Коэффициент резервирования
+        setNumericCell(row.createCell(col++), reserveCoef);
+
+        // 8. Категория качества
+        row.createCell(col++).setCellValue(qualityCategory);
+
+        // 9. Счет для учета ЭРБ = Счет РБ
+        row.createCell(col++).setCellValue(data.accountRB);
+
+        // 10. Остаток по счету ЭРБ
+        BigDecimal erbBalanceValue;
+        if (ACCOUNT_60323.matcher(data.accountRB).matches()) {
+            erbBalanceValue = data.balanceRB;
+        } else {
+            erbBalanceValue = data.overdueBalance;
+        }
+        setNumericCell(row.createCell(col++), erbBalanceValue);
+
+        // 11. Остаток по счету ЭРБ до 30 дней = Остаток счета РБ на дату резервирования
+        setNumericCell(row.createCell(col++), data.balanceRB);
+    }
+
+    /**
+     * Проставляет порядковые номера в первом столбце для листа РВП.
+     * Вызывается после заполнения всех строк данных.
+     */
+    private void setSequenceNumbers(Sheet sheet, int startRow, int rowCount) {
+        for (int i = 0; i < rowCount; i++) {
+            Row row = sheet.getRow(startRow + i);
+            if (row != null) {
+                Cell seqCell = row.getCell(0);
+                if (seqCell == null) {
+                    seqCell = row.createCell(0);
+                }
+                seqCell.setCellValue(i + 1);
+            }
+        }
+    }
+
+    private void setNumericCell(Cell cell, BigDecimal value) {
+        if (value == null) value = BigDecimal.ZERO;
+        cell.setCellValue(value.doubleValue());
+    }
+
+    // Внутренний класс для хранения строки данных
+    private static class RowData {
+        String accountRB;        // Счет РБ
+        String clientName;       // ФИО клиента
+        String currency;         // Валюта
+        BigDecimal balanceRB;    // Остаток счета РБ (столбец G)
+        BigDecimal overdueBalance; // Остаток просроченной РБ (столбец H)
+        String reserveAccount;   // Счет резерва
+        BigDecimal reserveBalance; // Остаток счета резерва (столбец N)
+        BigDecimal calcReserve;  // Расчетный резерв (столбец O)
+        BigDecimal discrepancy;  // Расхождение (столбец P)
     }
 }
-CzoProcessor.java
+Важные исправления
+Строки начала данных:
+
+RVP_START_ROW = 17 (18-я строка)
+
+POT_START_ROW = 6 (7-я строка)
+
+Исправлены индексы столбцов исходного файла CZO (согласно реальному отчёту):
+
+Счёт резерва: индекс 11 (столбец L)
+
+Остаток счета резерва: индекс 13 (столбец N)
+
+Расчётный резерв: индекс 14 (столбец O)
+
+Расхождение: индекс 15 (столбец P)
+
+Исправлен порядок столбцов в РВП (11 столбцов согласно ТЗ):
+
+Убран лишний столбец с наименованием
+
+Правильная последовательность соответствует ТЗ
+
+Исправлен порядок столбцов в ПОТ (11 столбцов, без № п/п):
+
+Начинается сразу с ФИО клиента
+
+Все 11 столбцов соответствуют описанию из ТЗ
+
+Сохранение форматирования:
+
+Метод copyRowStyleAndBorders полностью копирует стили ячеек, включая границы
+
+При вставке строк используется sheet.shiftRows с параметрами, сохраняющими форматирование
+
+Дополнительно
+Добавьте в метод fillSheetWithInsert вызов setSequenceNumbers для листа РВП, чтобы проставить номера по порядку. В текущей версии это не сделано — номера нужно будет проставить отдельно или доработать код.
+
+покажи мне метод fillSheetWithInsert и куда мне его вставить потом ?
+Вот метод fillSheetWithInsert с добавленным вызовом нумерации для листа РВП и объяснением, куда его вставлять:
+
+Исправленный метод fillSheetWithInsert
 java
-import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-
-import java.io.*;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.util.*;
-import java.util.regex.Pattern;
-
 /**
- * Обработчик файла CZO_RES_BASE_DZ_New_DBI.
- * Группирует записи по первым трём цифрам столбца B (филиал) и создаёт
- * отдельные файлы распоряжений на основе шаблона template.xlsx.
+ * Заполнение листа с динамической вставкой строк и сохранением форматирования.
+ * @param sheet лист
+ * @param rows данные для заполнения
+ * @param startRowIndex индекс строки, с которой начинаются данные (0-based)
+ * @param isRvp true для листа "Распоряжение (РВП)", false для "Расчетная база ПОТ"
  */
-public class CzoProcessor {
+private void fillSheetWithInsert(Sheet sheet, List<RowData> rows, int startRowIndex, boolean isRvp) {
+    // 1. Найти строку с текстом под таблицей (ищем "Итого" или "Примечание")
+    int textStartRow = findTextStartRow(sheet, startRowIndex);
+    if (textStartRow == -1) {
+        // Если не нашли, считаем что текст начинается через 1 строку после образца
+        textStartRow = startRowIndex + 1;
+    }
 
-    // Индексы столбцов в исходном файле (нумерация с 0)
-    private static final int COL_FILIAL = 1;             // B - Филиал (первые 3 цифры)
-    private static final int COL_CLIENT_NAME = 2;        // C - Клиент
-   
-Уточняю так как в шаблонах под таблицами тоже есть нужный текст и его нельзя стирать то строки в таблицу должны предварительно вставлять
-Мы должны уточнить реализацию: в шаблоне Excel уже есть две вкладки с шапками и текстом под таблицами. Нужно не просто перезаписывать строки с 9-й, а вставлять строки внутрь таблицы, не затрагивая нижний текст. В Excel нет понятия "таблица" как диапазона с автоматическим расширением, но можно вставить новые строки перед строками с текстом, чтобы сдвинуть текст вниз. Однако проще: предположим, что в шаблоне таблица занимает определённое количество строк (например, одна строка-образец для данных), а текст под таблицей находится на фиксированных строках (например, с 20-й и ниже). Мы можем определить, где заканчивается таблица и начинается текст (например, по ключевым словам или по номеру строки). Поскольку в ТЗ сказано "первая строка у таблиц начинается с 9-ой строки", это значит, что строки 1-8 заняты шапкой и заголовками, а с 9-й начинаются данные. Текст под таблицей будет ниже последней строки данных. Чтобы не затереть текст, нужно при заполнении сначала очистить все строки с данными (начиная с 9-й до строки перед началом текста), а затем вставить столько строк, сколько нужно для записей, копируя форматирование. Или можно создать новые строки между последней строкой данных шаблона и началом текста.
+    // 2. Сохраняем строку-образец (она должна быть в шаблоне на позиции startRowIndex)
+    Row templateRow = sheet.getRow(startRowIndex);
+    if (templateRow == null) {
+        templateRow = sheet.createRow(startRowIndex);
+    }
 
-Упростим: в шаблоне заранее оставим только одну пустую строку для данных на 9-й строке, а весь текст ниже (например, с 10-й строки). Тогда алгоритм:
+    // 3. Определяем сколько строк нужно для данных
+    int rowsNeeded = Math.max(rows.size(), 1);
 
-Открыть шаблон.
+    // 4. Если нужно больше одной строки, вставляем дополнительные
+    if (rowsNeeded > 1) {
+        // Сдвигаем весь текст вниз, сохраняя форматирование
+        // Сдвигаем строки от textStartRow до конца листа на (rowsNeeded - 1) вниз
+        int shiftAmount = rowsNeeded - 1;
+        if (textStartRow <= sheet.getLastRowNum()) {
+            sheet.shiftRows(textStartRow, sheet.getLastRowNum(), shiftAmount, true, false);
+        }
 
-Для каждого листа:
-
-Найти индекс строки, с которой начинается текст под таблицей (можно определить по содержимому, например, искать строку с текстом "Итого" или "Примечание").
-
-Удалить все строки между 9-й строкой (индекс 8) и строкой перед текстом.
-
-Вставить нужное количество новых строк на место удалённых, скопировав стиль из оставшейся строки шаблона (9-й).
-
-Заполнить вставленные строки данными.
-
-Чтобы не усложнять, можно в коде зафиксировать, что текст под таблицей начинается, скажем, с 15-й строки (или определить по ключевому слову "итого"). Но поскольку шаблон пользовательский, лучше сделать конфигурируемым или искать строку с текстом "Итого" или "Примечание". Для простоты предположим, что на листе "Распоряжение (РВП)" таблица данных заканчивается перед строкой, содержащей слово "Итого:" (или другой маркер). А на листе "Расчетная база ПОТ" аналогично.
-
-Я добавлю метод findFirstTextRow(Sheet sheet), который ищет первую строку после 8-й, где в первом столбце содержится текст, начинающийся с "Итого" или "Примечание" и т.п. Это позволит динамически определить место вставки.
-
-Обновим код CzoProcessor с учетом этих требований.
-
-Также в коде учтём вычисление коэффициента резервирования и категории качества по правилам из ТЗ.
-
-Мы переработали логику заполнения: теперь программа не создаёт новую книгу, а загружает шаблон template.xlsx из ресурсов, определяет область данных (после 8-й строки и до текста‑маркера), очищает старые данные, вставляет нужное количество строк с сохранением стилей и заполняет их значениями. Нижний текст остаётся нетронутым.
-
-Структура шаблона (ожидаемая)
-Две вкладки: «Распоряжение (РВП)» и «Расчетная база ПОТ».
-
-На каждой вкладке:
-
-Строки 1–8 – шапка, заголовки столбцов (не изменяются).
-
-Строка 9 – образец строки данных (может быть пустая, но с нужными стилями).
-
-Ниже (например, с 10‑й строки) – текст под таблицей.
-В коде ищется первая строка после 8‑й, в которой первый столбец содержит "Итого" или "Примечание". Именно перед этой строкой будут вставляться данные.
-
-Код (полный)
-1. MainApp.java и main.fxml – без изменений (см. предыдущий ответ).
-2. Controller.java – без изменений.
-3. CzoProcessor.java – ключевой класс с доработками.
-java
-import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.ss.util.CellRangeAddress;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-
-import java.io.*;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.util.*;
-import java.util.regex.Pattern;
-
-public class CzoProcessor {
-
-    // Индексы столбцов исходного файла (0-based)
-    private static final int COL_FILIAL = 1;             // B - Филиал (первые 3 цифры)
-    private static final int COL_CLIENT_NAME = 2;        // C - Клиент (ФИО)
-    private static final int COL_ACCOUNT_RB = 4;         // E - Счет РБ (лицевой счет)
-    private static final int COL_CURRENCY = 5;           // F - Валюта счета
-    private static final int COL_BALANCE_RB = 6;         // G - Остаток счета РБ (7)
-    private static final int COL_OVERDUE_BALANCE = 7;    // H - Остаток просроченной РБ (8)
-    private static final int COL_RESERVE_BALANCE = 14;   // O - Остаток счета резерва (15)
-    private static final int COL_CALC_RESERVE = 15;      // P - Расчетный резерв (16)
-    private static final int COL_DISCREPANCY = 16;       // Q - Расхождение (17)
-
-    // Шаблоны счетов
-    private static final Pattern ACCOUNT_60323 = Pattern.compile("^60323.*");
-    private static final Pattern ACCOUNT_458 = Pattern.compile("^458.*");
-    private static final Pattern ACCOUNT_47423 = Pattern.compile("^47423.*");
-
-    /**
-     * Главный метод обработки.
-     */
-    public void process(File inputFile) throws IOException {
-        // 1. Чтение и группировка исходных данных
-        Map<String, List<RowData>> groupedByFilial = readAndGroupByFilial(inputFile);
-
-        // 2. Для каждого филиала создаём файл на основе шаблона
-        for (Map.Entry<String, List<RowData>> entry : groupedByFilial.entrySet()) {
-            String filialCode = entry.getKey();
-            List<RowData> rows = entry.getValue();
-            createOrderFromTemplate(inputFile.getParentFile(), filialCode, rows);
+        // Копируем стили из строки-образца на новые строки
+        for (int i = 1; i < rowsNeeded; i++) {
+            Row newRow = sheet.getRow(startRowIndex + i);
+            if (newRow == null) {
+                newRow = sheet.createRow(startRowIndex + i);
+            }
+            copyRowStyleAndBorders(templateRow, newRow);
         }
     }
 
-    /**
-     * Чтение исходного Excel, группировка по первым трём цифрам филиала.
-     */
-    private Map<String, List<RowData>> readAndGroupByFilial(File file) throws IOException {
-        Map<String, List<RowData>> groups = new HashMap<>();
-
-        try (FileInputStream fis = new FileInputStream(file);
-             Workbook workbook = WorkbookFactory.create(fis)) {
-
-            Sheet sheet = workbook.getSheetAt(0);
-            DataFormatter formatter = new DataFormatter();
-
-            for (int rowIdx = 1; rowIdx <= sheet.getLastRowNum(); rowIdx++) {
-                Row row = sheet.getRow(rowIdx);
-                if (row == null) continue;
-
-                // Филиал (первые 3 символа столбца B)
-                Cell filialCell = row.getCell(COL_FILIAL);
-                String filialRaw = formatter.formatCellValue(filialCell).trim();
-                if (filialRaw.isEmpty()) continue;
-
-                String filialKey = filialRaw.length() >= 3 ? filialRaw.substring(0, 3) : filialRaw;
-                if (!isTargetFilial(filialKey)) continue;
-
-                RowData data = new RowData();
-                data.accountRB = formatter.formatCellValue(row.getCell(COL_ACCOUNT_RB));
-                data.clientName = formatter.formatCellValue(row.getCell(COL_CLIENT_NAME));
-                data.currency = formatter.formatCellValue(row.getCell(COL_CURRENCY));
-                data.balanceRB = getNumericValue(row.getCell(COL_BALANCE_RB));
-                data.overdueBalance = getNumericValue(row.getCell(COL_OVERDUE_BALANCE));
-                data.reserveBalance = getNumericValue(row.getCell(COL_RESERVE_BALANCE));
-                data.calcReserve = getNumericValue(row.getCell(COL_CALC_RESERVE));
-                data.discrepancy = getNumericValue(row.getCell(COL_DISCREPANCY));
-
-                groups.computeIfAbsent(filialKey, k -> new ArrayList<>()).add(data);
-            }
+    // 5. Заполняем данные
+    int rowNum = startRowIndex;
+    for (RowData data : rows) {
+        Row row = sheet.getRow(rowNum);
+        if (row == null) {
+            row = sheet.createRow(rowNum);
+            copyRowStyleAndBorders(templateRow, row);
         }
-        return groups;
+
+        if (isRvp) {
+            fillRvpRow(row, data);
+        } else {
+            fillPotRow(row, data);
+        }
+        rowNum++;
     }
 
-    private boolean isTargetFilial(String code) {
-        try {
-            int num = Integer.parseInt(code);
-            return (num >= 1 && num <= 3) || (num >= 5 && num <= 9);
-        } catch (NumberFormatException e) {
-            return false;
-        }
-    }
-
-    private BigDecimal getNumericValue(Cell cell) {
-        if (cell == null) return BigDecimal.ZERO;
-        try {
-            if (cell.getCellType() == CellType.NUMERIC) {
-                return BigDecimal.valueOf(cell.getNumericCellValue());
-            } else if (cell.getCellType() == CellType.STRING) {
-                String str = cell.getStringCellValue().trim().replace(",", ".");
-                return new BigDecimal(str.isEmpty() ? "0" : str);
-            }
-        } catch (Exception ignored) {}
-        return BigDecimal.ZERO;
-    }
-
-    /**
-     * Создание файла распоряжения из шаблона template.xlsx.
-     */
-    private void createOrderFromTemplate(File parentDir, String filialCode, List<RowData> allRows) throws IOException {
-        // Загружаем шаблон из ресурсов
-        try (InputStream templateStream = getClass().getResourceAsStream("/template.xlsx")) {
-            if (templateStream == null) {
-                throw new IOException("Шаблон template.xlsx не найден в ресурсах!");
-            }
-
-            try (Workbook workbook = new XSSFWorkbook(templateStream)) {
-                // Фильтрация строк для двух листов
-                List<RowData> rvpRows = new ArrayList<>();
-                List<RowData> potRows = new ArrayList<>();
-
-                for (RowData row : allRows) {
-                    // РВП: счета 60323*,458*,47423* и расхождение != 0
-                    if (isRvpAccount(row.accountRB) && row.discrepancy.compareTo(BigDecimal.ZERO) != 0) {
-                        rvpRows.add(row);
-                    }
-
-                    // ПОТ
-                    if (isPotAccount(row.accountRB)) {
-                        if (ACCOUNT_60323.matcher(row.accountRB).matches()) {
-                            if (row.balanceRB.compareTo(BigDecimal.ZERO) > 0) {
-                                potRows.add(row);
-                            }
-                        } else { // 458* или 47423*
-                            if (row.balanceRB.compareTo(BigDecimal.ZERO) > 0 ||
-                                row.overdueBalance.compareTo(BigDecimal.ZERO) > 0) {
-                                potRows.add(row);
-                            }
-                        }
-                    }
-                }
-
-                // Заполняем листы
-                Sheet sheetRvp = workbook.getSheet("Распоряжение (РВП)");
-                Sheet sheetPot = workbook.getSheet("Расчетная база ПОТ");
-                if (sheetRvp == null || sheetPot == null) {
-                    throw new IOException("В шаблоне отсутствуют нужные листы!");
-                }
-
-                fillSheetWithInsert(sheetRvp, rvpRows, true);
-                fillSheetWithInsert(sheetPot, potRows, false);
-
-                // Сохраняем результат
-                String outputFileName = String.format("Распоряжение_филиал_%s.xlsx", filialCode);
-                File outputFile = new File(parentDir, outputFileName);
-                try (FileOutputStream fos = new FileOutputStream(outputFile)) {
-                    workbook.write(fos);
-                }
-            }
-        }
-    }
-
-    private boolean isRvpAccount(String account) {
-        return ACCOUNT_60323.matcher(account).matches() ||
-               ACCOUNT_458.matcher(account).matches() ||
-               ACCOUNT_47423.matcher(account).matches();
-    }
-
-    private boolean isPotAccount(String account) {
-        return isRvpAccount(account);
-    }
-
-    /**
-     * Заполнение листа с динамической вставкой строк.
-     * @param sheet лист
-     * @param rows данные
-     * @param isRvp true для листа "Распоряжение (РВП)", false для "Расчетная база ПОТ"
-     */
-    private void fillSheetWithInsert(Sheet sheet, List<RowData> rows, boolean isRvp) {
-        // 1. Найти строку, с которой начинается текст под таблицей (после 8-й)
-        int textStartRow = findTextStartRow(sheet);
-        if (textStartRow == -1) {
-            // Если не нашли, считаем, что текст начинается сразу после шаблонной строки (10)
-            textStartRow = 9; // индекс 9 = 10-я строка
-        }
-
-        // 2. Удаляем все строки между 9-й (индекс 8) и textStartRow (не включая textStartRow)
-        int firstDataRow = 8; // 9-я строка (индекс 8)
-        if (textStartRow > firstDataRow) {
-            for (int i = textStartRow - 1; i >= firstDataRow; i--) {
-                Row row = sheet.getRow(i);
-                if (row != null) {
-                    sheet.removeRow(row);
-                }
-            }
-        }
-
-        // 3. Вставляем столько строк, сколько нужно для данных (если rows.size() > 1)
-        int rowsNeeded = Math.max(rows.size(), 1);
-        if (rowsNeeded > 1) {
-            // Копируем стили из строки-образца (сейчас она на месте 9-й строки)
-            Row templateRow = sheet.getRow(firstDataRow);
-            if (templateRow == null) {
-                templateRow = sheet.createRow(firstDataRow);
-            }
-            // Сдвигаем текст вниз: вставляем rowsNeeded-1 строк перед textStartRow
-            sheet.shiftRows(textStartRow, sheet.getLastRowNum(), rowsNeeded - 1);
-            // Копируем стили образца на вставленные строки
-            for (int i = 1; i < rowsNeeded; i++) {
-                Row newRow = sheet.createRow(firstDataRow + i);
-                copyRowStyle(templateRow, newRow);
-            }
-        }
-
-        // 4. Заполняем данные
-        int rowNum = firstDataRow;
-        int seq = 1;
-        for (RowData data : rows) {
-            Row row = sheet.getRow(rowNum);
-            if (row == null) row = sheet.createRow(rowNum);
-
-            if (isRvp) {
-                fillRvpRow(row, seq++, data);
-            } else {
-                fillPotRow(row, seq++, data);
-            }
-            rowNum++;
-        }
-
-        // Если данных нет, очищаем образцовую строку
-        if (rows.isEmpty()) {
-            Row emptyRow = sheet.getRow(firstDataRow);
-            if (emptyRow != null) {
-                for (Cell cell : emptyRow) {
+    // 6. Если данных нет - очищаем строку-образец
+    if (rows.isEmpty()) {
+        Row emptyRow = sheet.getRow(startRowIndex);
+        if (emptyRow != null) {
+            for (int i = 0; i < emptyRow.getLastCellNum(); i++) {
+                Cell cell = emptyRow.getCell(i);
+                if (cell != null) {
                     cell.setCellValue("");
                 }
             }
         }
-
-        // Перемещаем итоговые формулы, если есть (для ПОТ там итоги)
-        if (!isRvp) {
-            updatePotTotalRow(sheet, firstDataRow + rows.size());
-        }
     }
 
-    /**
-     * Поиск строки, где начинается текст под таблицей (ищем "Итого" или "Примечание" в первом столбце).
-     */
-    private int findTextStartRow(Sheet sheet) {
-        DataFormatter formatter = new DataFormatter();
-        for (int i = 8; i <= sheet.getLastRowNum(); i++) {
-            Row row = sheet.getRow(i);
-            if (row == null) continue;
-            Cell cell = row.getCell(0);
-            String val = formatter.formatCellValue(cell).trim().toLowerCase();
-            if (val.startsWith("итого") || val.startsWith("примечание")) {
-                return i;
+    // 7. Для листа РВП проставляем порядковые номера в первом столбце
+    if (isRvp && !rows.isEmpty()) {
+        for (int i = 0; i < rows.size(); i++) {
+            Row row = sheet.getRow(startRowIndex + i);
+            if (row != null) {
+                Cell seqCell = row.getCell(0);
+                if (seqCell == null) {
+                    seqCell = row.createCell(0);
+                }
+                seqCell.setCellValue(i + 1);
             }
         }
-        return -1;
-    }
-
-    /**
-     * Копирование стилей ячеек из одной строки в другую.
-     */
-    private void copyRowStyle(Row source, Row target) {
-        for (int i = 0; i < source.getLastCellNum(); i++) {
-            Cell srcCell = source.getCell(i);
-            Cell tgtCell = target.createCell(i);
-            if (srcCell != null) {
-                tgtCell.setCellStyle(srcCell.getCellStyle());
-            }
-        }
-    }
-
-    /**
-     * Заполнение строки листа "Распоряжение (РВП)".
-     */
-    private void fillRvpRow(Row row, int seq, RowData data) {
-        int col = 0;
-        // № п/п
-        row.createCell(col++).setCellValue(seq);
-        // Номер лицевого счета
-        row.createCell(col++).setCellValue(data.accountRB);
-        // Сумма элемента расчетной базы = Расчетный резерв
-        setNumericCell(row.createCell(col++), data.calcReserve);
-        // Категория качества = 5
-        row.createCell(col++).setCellValue(5);
-        // Размер расчетного резерва (%) = 100
-        row.createCell(col++).setCellValue(100);
-        // Размер расчетного резерва (руб) = Расчетный резерв
-        setNumericCell(row.createCell(col++), data.calcReserve);
-        // Минимальный размер резерва = Расчетный резерв
-        setNumericCell(row.createCell(col++), data.calcReserve);
-        // Формируемый резерв = Расчетный резерв
-        setNumericCell(row.createCell(col++), data.calcReserve);
-        // Доля формируемого резерва = 1
-        row.createCell(col++).setCellValue(1);
-        // Фактически сформированный резерв = Остаток счета резерва
-        setNumericCell(row.createCell(col++), data.reserveBalance);
-        // Изменение резерва = Расхождение
-        setNumericCell(row.createCell(col++), data.discrepancy);
-    }
-
-    /**
-     * Заполнение строки листа "Расчетная база ПОТ".
-     */
-    private void fillPotRow(Row row, int seq, RowData data) {
-        int col = 0;
-        // № п/п (не указано в ТЗ, но для порядка)
-        row.createCell(col++).setCellValue(seq);
-        // ФИО клиента
-        row.createCell(col++).setCellValue(data.clientName);
-        // Номер договора (нет в исходных данных — оставляем пустым)
-        row.createCell(col++).setCellValue("");
-        // Дата заключения договора (нет данных)
-        row.createCell(col++).setCellValue("");
-        // Признак принадлежности к ПОТ на предыдущую дату (нет)
-        row.createCell(col++).setCellValue("");
-        // Признак принадлежности к ПОТ на дату отчета (нет)
-        row.createCell(col++).setCellValue("");
-        // Валюта
-        row.createCell(col++).setCellValue(data.currency);
-
-        // === Коэффициент резервирования и Категория качества ===
-        BigDecimal reserveCoef;
-        int qualityCategory;
-
-        if (ACCOUNT_60323.matcher(data.accountRB).matches()) {
-            reserveCoef = new BigDecimal("100");
-            qualityCategory = 5;
-        } else { // 458* или 47423*
-            // Остаток по счету ЭРБ – в зависимости от счёта
-            BigDecimal erbBalance = ACCOUNT_458.matcher(data.accountRB).matches() ||
-                                    ACCOUNT_47423.matcher(data.accountRB).matches()
-                                    ? data.overdueBalance   // для 458/47423 берём просроченный остаток
-                                    : data.balanceRB;       // для остальных (не должно быть) – основной остаток
-            if (erbBalance.compareTo(BigDecimal.ZERO) > 0) {
-                reserveCoef = new BigDecimal("100");
-                qualityCategory = 5;
-            } else {
-                reserveCoef = BigDecimal.ZERO;
-                qualityCategory = 1;
-            }
-        }
-        // Коэффициент резервирования
-        setNumericCell(row.createCell(col++), reserveCoef);
-        // Категория качества
-        row.createCell(col++).setCellValue(qualityCategory);
-
-        // Счет для учета ЭРБ = Счет РБ
-        row.createCell(col++).setCellValue(data.accountRB);
-
-        // Остаток по счету ЭРБ
-        BigDecimal erbBalanceValue;
-        if (ACCOUNT_60323.matcher(data.accountRB).matches()) {
-            erbBalanceValue = data.balanceRB;
-        } else {
-            erbBalanceValue = data.overdueBalance;
-        }
-        setNumericCell(row.createCell(col++), erbBalanceValue);
-
-        // Остаток по счету ЭРБ до 30 дней (резервированию не подлежит)
-        // по ТЗ равен столбцу G (balanceRB)
-        setNumericCell(row.createCell(col++), data.balanceRB);
-    }
-
-    private void setNumericCell(Cell cell, BigDecimal value) {
-        if (value == null) value = BigDecimal.ZERO;
-        cell.setCellValue(value.doubleValue());
-        // Применяем числовой формат с двумя знаками (стиль лучше задавать через шаблон)
-    }
-
-    /**
-     * Обновление строки "Итого" на листе ПОТ после вставки данных.
-     */
-    private void updatePotTotalRow(Sheet sheet, int totalRowIndex) {
-        // Если в шаблоне есть строка с итогами, она сместилась; нужно пересчитать формулы.
-        // В простейшем случае можно вставить формулу SUM для нужных столбцов.
-        // Для демонстрации оставим как есть – в шаблоне могут быть готовые формулы.
-        // При необходимости можно реализовать.
-    }
-
-    // Внутренний класс для хранения строки данных
-    private static class RowData {
-        String accountRB;
-        String clientName;
-        String currency;
-        BigDecimal balanceRB;       // столбец G
-        BigDecimal overdueBalance;  // столбец H
-        BigDecimal reserveBalance;  // столбец O
-        BigDecimal calcReserve;     // столбец P
-        BigDecimal discrepancy;     // столбец Q
     }
 }
-Пояснения
-Шаблон должен находиться в src/main/resources/template.xlsx.
+Куда вставлять этот метод?
+Этот метод уже находится внутри класса CzoProcessor. Вам не нужно его никуда вставлять дополнительно — он уже вызывается из метода createOrderFromTemplate:
 
-Поиск текста под таблицей: метод findTextStartRow ищет в первом столбце слова "итого" или "примечание" (регистронезависимо) и возвращает индекс этой строки. Перед ней будут вставлены данные.
-
-Вставка строк: если записей больше одной, метод sheet.shiftRows сдвигает весь нижний текст вниз, а затем создаются новые строки с копированием стилей из строки-образца (9-й строки).
-
-Формулы расчёта коэффициента резервирования и категории качества реализованы в точности по предоставленному ТЗ.
-1. Зависимости (Maven)
-xml
-<dependencies>
-    <!-- JavaFX -->
-    <dependency>
-        <groupId>org.openjfx</groupId>
-        <artifactId>javafx-controls</artifactId>
-        <version>17.0.6</version>
-    </dependency>
-    <dependency>
-        <groupId>org.openjfx</groupId>
-        <artifactId>javafx-fxml</artifactId>
-        <version>17.0.6</version>
-    </dependency>
-
-    <!-- Apache POI для работы с Excel -->
-    <dependency>
-        <groupId>org.apache.poi</groupId>
-        <artifactId>poi-ooxml</artifactId>
-        <version>5.2.3</version>
-    </dependency>
-</dependencies>
-2. FXML (простой интерфейс)
-main.fxml:
-
-xml
-<?xml version="1.0" encoding="UTF-8"?>
-
-<?import javafx.scene.control.Button?>
-<?import javafx.scene.layout.VBox?>
-
-<VBox alignment="CENTER" spacing="20.0" xmlns="http://javafx.com/javafx/8.0.171" xmlns:fx="http://javafx.com/fxml/1" fx:controller="Controller">
-    <Button fx:id="selectFileButton" text="Выбрать файл CZO и создать распоряжения" />
-</VBox>
-3. Основные классы
-MainApp.java
 java
-import javafx.application.Application;
-import javafx.fxml.FXMLLoader;
-import javafx.scene.Parent;
-import javafx.scene.Scene;
-import javafx.stage.Stage;
-
-public class MainApp extends Application {
-
-    @Override
-    public void start(Stage primaryStage) throws Exception {
-        Parent root = FXMLLoader.load(getClass().getResource("/main.fxml"));
-        primaryStage.setTitle("Генератор распоряжений");
-        primaryStage.setScene(new Scene(root, 400, 200));
-        primaryStage.show();
-    }
-
-    public static void main(String[] args) {
-        launch(args);
-    }
+private void createOrderFromTemplate(File parentDir, String filialCode, List<RowData> allRows) throws IOException {
+    // ... загрузка шаблона ...
+    
+    // Вот здесь вызывается fillSheetWithInsert для каждого листа:
+    fillSheetWithInsert(sheetRvp, rvpRows, RVP_START_ROW, true);   // для РВП
+    fillSheetWithInsert(sheetPot, potRows, POT_START_ROW, false);  // для ПОТ
+    
+    // ... сохранение файла ...
 }
-Controller.java
+Что изменилось в методе?
+Добавлен шаг 7 в конце метода:
+
 java
-import javafx.fxml.FXML;
-import javafx.scene.control.Alert;
-import javafx.scene.control.Button;
-import javafx.stage.FileChooser;
-import java.io.File;
-
-public class Controller {
-
-    @FXML
-    private Button selectFileButton;
-
-    @FXML
-    private void initialize() {
-        selectFileButton.setOnAction(event -> chooseFileAndProcess());
-    }
-
-    private void chooseFileAndProcess() {
-        FileChooser fileChooser = new FileChooser();
-        fileChooser.setTitle("Выберите файл CZO");
-        fileChooser.getExtensionFilters().add(
-                new FileChooser.ExtensionFilter("Excel files", "*.xlsx", "*.xls")
-        );
-        File selectedFile = fileChooser.showOpenDialog(selectFileButton.getScene().getWindow());
-
-        if (selectedFile != null) {
-            try {
-                CzoProcessor processor = new CzoProcessor();
-                processor.process(selectedFile);
-                showInfo("Обработка завершена", "Файлы распоряжений созданы в папке с исходным файлом.");
-            } catch (Exception e) {
-                showError("Ошибка обработки", e.getMessage());
-                e.printStackTrace();
+// 7. Для листа РВП проставляем порядковые номера в первом столбце
+if (isRvp && !rows.isEmpty()) {
+    for (int i = 0; i < rows.size(); i++) {
+        Row row = sheet.getRow(startRowIndex + i);
+        if (row != null) {
+            Cell seqCell = row.getCell(0);
+            if (seqCell == null) {
+                seqCell = row.createCell(0);
             }
+            seqCell.setCellValue(i + 1);
         }
-    }
-
-    private void showInfo(String title, String message) {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(message);
-        alert.showAndWait();
-    }
-
-    private void showError(String title, String message) {
-        Alert alert = new Alert(Alert.AlertType.ERROR);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(message);
-        alert.showAndWait();
     }
 }
+Этот код автоматически проставляет номера по порядку (1, 2, 3...) в первом столбце для каждой заполненной строки на листе «Распоряжение (РВП)».
 
-1. MainApp.java и main.fxml – без изменений (см. предыдущий ответ).
-2. Controller.java – без изменений.
-3. CzoProcessor.java – ключевой класс с доработками.
-java
-import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.ss.util.CellRangeAddress;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-
-import java.io.*;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.util.*;
-import java.util.regex.Pattern;
-
-public class CzoProcessor {
-
-    // Индексы столбцов исходного файла (0-based)
-    private static final int COL_FILIAL = 1;             // B - Филиал (первые 3 цифры)
-    private static final int COL_CLIENT_NAME = 2;        // C - Клиент (ФИО)
-    private static final int COL_ACCOUNT_RB = 4;         // E - Счет РБ (лицевой счет)
-    private static final int COL_CURRENCY = 5;           // F - Валюта счета
-    private static final int COL_BALANCE_RB = 6;         // G - Остаток счета РБ (7)
-    private static final int COL_OVERDUE_BALANCE = 7;    // H - Остаток просроченной РБ (8)
-    private static final int COL_RESERVE_BALANCE = 14;   // O - Остаток счета резерва (15)
-    private static final int COL_CALC_RESERVE = 15;      // P - Расчетный резерв (16)
-    private static final int COL_DISCREPANCY = 16;       // Q - Расхождение (17)
-
-    // Шаблоны счетов
-    private static final Pattern ACCOUNT_60323 = Pattern.compile("^60323.*");
-    private static final Pattern ACCOUNT_458 = Pattern.compile("^458.*");
-    private static final Pattern ACCOUNT_47423 = Pattern.compile("^47423.*");
-
-    /**
-     * Главный метод обработки.
-     */
-    public void process(File inputFile) throws IOException {
-        // 1. Чтение и группировка исходных данных
-        Map<String, List<RowData>> groupedByFilial = readAndGroupByFilial(inputFile);
-
-        // 2. Для каждого филиала создаём файл на основе шаблона
-        for (Map.Entry<String, List<RowData>> entry : groupedByFilial.entrySet()) {
-            String filialCode = entry.getKey();
-            List<RowData> rows = entry.getValue();
-            createOrderFromTemplate(inputFile.getParentFile(), filialCode, rows);
-        }
-    }
-
-    /**
-     * Чтение исходного Excel, группировка по первым трём цифрам филиала.
-     */
-    private Map<String, List<RowData>> readAndGroupByFilial(File file) throws IOException {
-        Map<String, List<RowData>> groups = new HashMap<>();
-
-        try (FileInputStream fis = new FileInputStream(file);
-             Workbook workbook = WorkbookFactory.create(fis)) {
-
-            Sheet sheet = workbook.getSheetAt(0);
-            DataFormatter formatter = new DataFormatter();
-
-            for (int rowIdx = 1; rowIdx <= sheet.getLastRowNum(); rowIdx++) {
-                Row row = sheet.getRow(rowIdx);
-                if (row == null) continue;
-
-                // Филиал (первые 3 символа столбца B)
-                Cell filialCell = row.getCell(COL_FILIAL);
-                String filialRaw = formatter.formatCellValue(filialCell).trim();
-                if (filialRaw.isEmpty()) continue;
-
-                String filialKey = filialRaw.length() >= 3 ? filialRaw.substring(0, 3) : filialRaw;
-                if (!isTargetFilial(filialKey)) continue;
-
-                RowData data = new RowData();
-                data.accountRB = formatter.formatCellValue(row.getCell(COL_ACCOUNT_RB));
-                data.clientName = formatter.formatCellValue(row.getCell(COL_CLIENT_NAME));
-                data.currency = formatter.formatCellValue(row.getCell(COL_CURRENCY));
-                data.balanceRB = getNumericValue(row.getCell(COL_BALANCE_RB));
-                data.overdueBalance = getNumericValue(row.getCell(COL_OVERDUE_BALANCE));
-                data.reserveBalance = getNumericValue(row.getCell(COL_RESERVE_BALANCE));
-                data.calcReserve = getNumericValue(row.getCell(COL_CALC_RESERVE));
-                data.discrepancy = getNumericValue(row.getCell(COL_DISCREPANCY));
-
-                groups.computeIfAbsent(filialKey, k -> new ArrayList<>()).add(data);
-            }
-        }
-        return groups;
-    }
-
-    private boolean isTargetFilial(String code) {
-        try {
-            int num = Integer.parseInt(code);
-            return (num >= 1 && num <= 3) || (num >= 5 && num <= 9);
-        } catch (NumberFormatException e) {
-            return false;
-        }
-    }
-
-    private BigDecimal getNumericValue(Cell cell) {
-        if (cell == null) return BigDecimal.ZERO;
-        try {
-            if (cell.getCellType() == CellType.NUMERIC) {
-                return BigDecimal.valueOf(cell.getNumericCellValue());
-            } else if (cell.getCellType() == CellType.STRING) {
-                String str = cell.getStringCellValue().trim().replace(",", ".");
-                return new BigDecimal(str.isEmpty() ? "0" : str);
-            }
-        } catch (Exception ignored) {}
-        return BigDecimal.ZERO;
-    }
-
-    /**
-     * Создание файла распоряжения из шаблона template.xlsx.
-     */
-    private void createOrderFromTemplate(File parentDir, String filialCode, List<RowData> allRows) throws IOException {
-        // Загружаем шаблон из ресурсов
-        try (InputStream templateStream = getClass().getResourceAsStream("/template.xlsx")) {
-            if (templateStream == null) {
-                throw new IOException("Шаблон template.xlsx не найден в ресурсах!");
-            }
-
-            try (Workbook workbook = new XSSFWorkbook(templateStream)) {
-                // Фильтрация строк для двух листов
-                List<RowData> rvpRows = new ArrayList<>();
-                List<RowData> potRows = new ArrayList<>();
-
-                for (RowData row : allRows) {
-                    // РВП: счета 60323*,458*,47423* и расхождение != 0
-                    if (isRvpAccount(row.accountRB) && row.discrepancy.compareTo(BigDecimal.ZERO) != 0) {
-                        rvpRows.add(row);
-                    }
-
-                    // ПОТ
-                    if (isPotAccount(row.accountRB)) {
-                        if (ACCOUNT_60323.matcher(row.accountRB).matches()) {
-                            if (row.balanceRB.compareTo(BigDecimal.ZERO) > 0) {
-                                potRows.add(row);
-                            }
-                        } else { // 458* или 47423*
-                            if (row.balanceRB.compareTo(BigDecimal.ZERO) > 0 ||
-                                row.overdueBalance.compareTo(BigDecimal.ZERO) > 0) {
-                                potRows.add(row);
-                            }
-                        }
-                    }
-                }
-
-                // Заполняем листы
-                Sheet sheetRvp = workbook.getSheet("Распоряжение (РВП)");
-                Sheet sheetPot = workbook.getSheet("Расчетная база ПОТ");
-                if (sheetRvp == null || sheetPot == null) {
-                    throw new IOException("В шаблоне отсутствуют нужные листы!");
-                }
-
-                fillSheetWithInsert(sheetRvp, rvpRows, true);
-                fillSheetWithInsert(sheetPot, potRows, false);
-
-                // Сохраняем результат
-                String outputFileName = String.format("Распоряжение_филиал_%s.xlsx", filialCode);
-                File outputFile = new File(parentDir, outputFileName);
-                try (FileOutputStream fos = new FileOutputStream(outputFile)) {
-                    workbook.write(fos);
-                }
-            }
-        }
-    }
-
-    private boolean isRvpAccount(String account) {
-        return ACCOUNT_60323.matcher(account).matches() ||
-               ACCOUNT_458.matcher(account).matches() ||
-               ACCOUNT_47423.matcher(account).matches();
-    }
-
-    private boolean isPotAccount(String account) {
-        return isRvpAccount(account);
-    }
-
-    /**
-     * Заполнение листа с динамической вставкой строк.
-     * @param sheet лист
-     * @param rows данные
-     * @param isRvp true для листа "Распоряжение (РВП)", false для "Расчетная база ПОТ"
-     */
-    private void fillSheetWithInsert(Sheet sheet, List<RowData> rows, boolean isRvp) {
-        // 1. Найти строку, с которой начинается текст под таблицей (после 8-й)
-        int textStartRow = findTextStartRow(sheet);
-        if (textStartRow == -1) {
-            // Если не нашли, считаем, что текст начинается сразу после шаблонной строки (10)
-            textStartRow = 9; // индекс 9 = 10-я строка
-        }
-
-        // 2. Удаляем все строки между 9-й (индекс 8) и textStartRow (не включая textStartRow)
-        int firstDataRow = 8; // 9-я строка (индекс 8)
-        if (textStartRow > firstDataRow) {
-            for (int i = textStartRow - 1; i >= firstDataRow; i--) {
-                Row row = sheet.getRow(i);
-                if (row != null) {
-                    sheet.removeRow(row);
-                }
-            }
-        }
-
-        // 3. Вставляем столько строк, сколько нужно для данных (если rows.size() > 1)
-        int rowsNeeded = Math.max(rows.size(), 1);
-        if (rowsNeeded > 1) {
-            // Копируем стили из строки-образца (сейчас она на месте 9-й строки)
-            Row templateRow = sheet.getRow(firstDataRow);
-            if (templateRow == null) {
-                templateRow = sheet.createRow(firstDataRow);
-            }
-            // Сдвигаем текст вниз: вставляем rowsNeeded-1 строк перед textStartRow
-            sheet.shiftRows(textStartRow, sheet.getLastRowNum(), rowsNeeded - 1);
-            // Копируем стили образца на вставленные строки
-            for (int i = 1; i < rowsNeeded; i++) {
-                Row newRow = sheet.createRow(firstDataRow + i);
-                copyRowStyle(templateRow, newRow);
-            }
-        }
-
-        // 4. Заполняем данные
-        int rowNum = firstDataRow;
-        int seq = 1;
-        for (RowData data : rows) {
-            Row row = sheet.getRow(rowNum);
-            if (row == null) row = sheet.createRow(rowNum);
-
-            if (isRvp) {
-                fillRvpRow(row, seq++, data);
-            } else {
-                fillPotRow(row, seq++, data);
-            }
-            rowNum++;
-        }
-
-        // Если данных нет, очищаем образцовую строку
-        if (rows.isEmpty()) {
-            Row emptyRow = sheet.getRow(firstDataRow);
-            if (emptyRow != null) {
-                for (Cell cell : emptyRow) {
-                    cell.setCellValue("");
-                }
-            }
-        }
-
-        // Перемещаем итоговые формулы, если есть (для ПОТ там итоги)
-        if (!isRvp) {
-            updatePotTotalRow(sheet, firstDataRow + rows.size());
-        }
-    }
-
-    /**
-     * Поиск строки, где начинается текст под таблицей (ищем "Итого" или "Примечание" в первом столбце).
-     */
-    private int findTextStartRow(Sheet sheet) {
-        DataFormatter formatter = new DataFormatter();
-        for (int i = 8; i <= sheet.getLastRowNum(); i++) {
-            Row row = sheet.getRow(i);
-            if (row == null) continue;
-            Cell cell = row.getCell(0);
-            String val = formatter.formatCellValue(cell).trim().toLowerCase();
-            if (val.startsWith("итого") || val.startsWith("примечание")) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    /**
-     * Копирование стилей ячеек из одной строки в другую.
-     */
-    private void copyRowStyle(Row source, Row target) {
-        for (int i = 0; i < source.getLastCellNum(); i++) {
-            Cell srcCell = source.getCell(i);
-            Cell tgtCell = target.createCell(i);
-            if (srcCell != null) {
-                tgtCell.setCellStyle(srcCell.getCellStyle());
-            }
-        }
-    }
-
-    /**
-     * Заполнение строки листа "Распоряжение (РВП)".
-     */
-    private void fillRvpRow(Row row, int seq, RowData data) {
-        int col = 0;
-        // № п/п
-        row.createCell(col++).setCellValue(seq);
-        // Номер лицевого счета
-        row.createCell(col++).setCellValue(data.accountRB);
-        // Сумма элемента расчетной базы = Расчетный резерв
-        setNumericCell(row.createCell(col++), data.calcReserve);
-        // Категория качества = 5
-        row.createCell(col++).setCellValue(5);
-        // Размер расчетного резерва (%) = 100
-        row.createCell(col++).setCellValue(100);
-        // Размер расчетного резерва (руб) = Расчетный резерв
-        setNumericCell(row.createCell(col++), data.calcReserve);
-        // Минимальный размер резерва = Расчетный резерв
-        setNumericCell(row.createCell(col++), data.calcReserve);
-        // Формируемый резерв = Расчетный резерв
-        setNumericCell(row.createCell(col++), data.calcReserve);
-        // Доля формируемого резерва = 1
-        row.createCell(col++).setCellValue(1);
-        // Фактически сформированный резерв = Остаток счета резерва
-        setNumericCell(row.createCell(col++), data.reserveBalance);
-        // Изменение резерва = Расхождение
-        setNumericCell(row.createCell(col++), data.discrepancy);
-    }
-
-    /**
-     * Заполнение строки листа "Расчетная база ПОТ".
-     */
-    private void fillPotRow(Row row, int seq, RowData data) {
-        int col = 0;
-        // № п/п (не указано в ТЗ, но для порядка)
-        row.createCell(col++).setCellValue(seq);
-        // ФИО клиента
-        row.createCell(col++).setCellValue(data.clientName);
-        // Номер договора (нет в исходных данных — оставляем пустым)
-        row.createCell(col++).setCellValue("");
-        // Дата заключения договора (нет данных)
-        row.createCell(col++).setCellValue("");
-        // Признак принадлежности к ПОТ на предыдущую дату (нет)
-        row.createCell(col++).setCellValue("");
-        // Признак принадлежности к ПОТ на дату отчета (нет)
-        row.createCell(col++).setCellValue("");
-        // Валюта
-        row.createCell(col++).setCellValue(data.currency);
-
-        // === Коэффициент резервирования и Категория качества ===
-        BigDecimal reserveCoef;
-        int qualityCategory;
-
-        if (ACCOUNT_60323.matcher(data.accountRB).matches()) {
-            reserveCoef = new BigDecimal("100");
-            qualityCategory = 5;
-        } else { // 458* или 47423*
-            // Остаток по счету ЭРБ – в зависимости от счёта
-            BigDecimal erbBalance = ACCOUNT_458.matcher(data.accountRB).matches() ||
-                                    ACCOUNT_47423.matcher(data.accountRB).matches()
-                                    ? data.overdueBalance   // для 458/47423 берём просроченный остаток
-                                    : data.balanceRB;       // для остальных (не должно быть) – основной остаток
-            if (erbBalance.compareTo(BigDecimal.ZERO) > 0) {
-                reserveCoef = new BigDecimal("100");
-                qualityCategory = 5;
-            } else {
-                reserveCoef = BigDecimal.ZERO;
-                qualityCategory = 1;
-            }
-        }
-        // Коэффициент резервирования
-        setNumericCell(row.createCell(col++), reserveCoef);
-        // Категория качества
-        row.createCell(col++).setCellValue(qualityCategory);
-
-        // Счет для учета ЭРБ = Счет РБ
-        row.createCell(col++).setCellValue(data.accountRB);
-
-        // Остаток по счету ЭРБ
-        BigDecimal erbBalanceValue;
-        if (ACCOUNT_60323.matcher(data.accountRB).matches()) {
-            erbBalanceValue = data.balanceRB;
-        } else {
-            erbBalanceValue = data.overdueBalance;
-        }
-        setNumericCell(row.createCell(col++), erbBalanceValue);
-
-        // Остаток по счету ЭРБ до 30 дней (резервированию не подлежит)
-        // по ТЗ равен столбцу G (balanceRB)
-        setNumericCell(row.createCell(col++), data.balanceRB);
-    }
-
-    private void setNumericCell(Cell cell, BigDecimal value) {
-        if (value == null) value = BigDecimal.ZERO;
-        cell.setCellValue(value.doubleValue());
-        // Применяем числовой формат с двумя знаками (стиль лучше задавать через шаблон)
-    }
-
-    /**
-     * Обновление строки "Итого" на листе ПОТ после вставки данных.
-     */
-    private void updatePotTotalRow(Sheet sheet, int totalRowIndex) {
-        // Если в шаблоне есть строка с итогами, она сместилась; нужно пересчитать формулы.
-        // В простейшем случае можно вставить формулу SUM для нужных столбцов.
-        // Для демонстрации оставим как есть – в шаблоне могут быть готовые формулы.
-        // При необходимости можно реализовать.
-    }
-
-    // Внутренний класс для хранения строки данных
-    private static class RowData {
-        String accountRB;
-        String clientName;
-        String currency;
-        BigDecimal balanceRB;       // столбец G
-        BigDecimal overdueBalance;  // столбец H
-        BigDecimal reserveBalance;  // столбец O
-        BigDecimal calcReserve;     // столбец P
-        BigDecimal discrepancy;     // столбец Q
-    }
-}
-Пояснения
-Шаблон должен находиться в src/main/resources/template.xlsx.
-
-Поиск текста под таблицей: метод findTextStartRow ищет в первом столбце слова "итого" или "примечание" (регистронезависимо) и возвращает индекс этой строки. Перед ней будут вставлены данные.
-
-Вставка строк: если записей больше одной, метод sheet.shiftRows сдвигает весь нижний текст вниз, а затем создаются новые строки с копированием стилей из строки-образца (9-й строки).
-
-Формулы расчёта коэффициента резервирования и категории качества реализованы в точности по предоставленному ТЗ.
-
-Числовые значения записываются как double, стиль ячеек (число десятичных знаков) должен быть настроен в шаблоне.
-
-Использование
-Поместите template.xlsx в папку resources.
-
-Соберите проект (например, через Maven) и запустите.
-
-Нажмите кнопку, выберите исходный файл CZO.
-
-В папке с исходным файлом появятся файлы вида Распоряжение_филиал_001.xlsx и т.д.
-
-
-
-
-
-
+Полная структура вызовов
+text
+Controller.chooseFileAndProcess()
+    ↓
+CzoProcessor.process(File)
+    ↓
+    ├── readAndGroupByFilial()         // читает CZO, группирует
+    ↓
+    └── createOrderFromTemplate()      // для каждого филиала
+            ↓
+            ├── fillSheetWithInsert()  // для листа РВП
+            │       └── fillRvpRow()   // заполняет одну строку РВП
+            │
+            └── fillSheetWithInsert()  // для листа ПОТ
+                    └── fillPotRow()   // заполняет одну строку ПОТ
+Вам достаточно заменить метод fillSheetWithInsert в вашем классе CzoProcessor на версию выше, и номера строк будут проставляться автоматически при формировании файла.
 
