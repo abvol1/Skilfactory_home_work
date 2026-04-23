@@ -1,98 +1,71 @@
-Мы имеем диалог о доработке приложения на Streamlit. Пользователь просит "дать еще раз ответ что и где мне следует изменить" относительно проверки email и нормализации регистра, а также активации кнопки. Нужно дать четкие точечные инструкции: какие строки в каком месте кода изменить, добавить, удалить. Учитывая, что код большой, но изменения локальные.
+Мы отладим код, чтобы он корректно находил строку "Итого" и вставлял формулы суммирования для указанных столбцов. Давайте точно определим параметры:
 
-Вспомним, что ранее мы обсуждали:
+Лист 1 (РВП):
 
-Добавить метод check_user_by_email в DatabaseManager.
+Данные начинаются со строки 18 (индекс 17).
 
-В основном коде (шаг 0) заменить поле ввода ФИО на поле email с нормализацией (lowercase).
+Слово "Итого" ищем в столбце B (индекс 1).
 
-Добавить переменные состояния: user_email, user_full_name, auth_valid.
+Суммируем столбцы: 4 (индекс 3) и 5 (индекс 4). Но в текущем коде для РВП указаны столбцы {2,5,6,7,9,10}. Если нужно только 4 и 5, заменим массив.
 
-Сделать кнопку "Начать заполнение" активной только при auth_valid.
+Лист 2 (ПОТ):
 
-Использовать user_email (нормализованный) при создании сессии и при поиске черновиков (вместо user_name).
+Данные начинаются со строки 8 (индекс 7).
 
-Отображать ФИО после успешной проверки.
+Слово "Итого" ищем в столбце A (индекс 0).
 
-Пользователь хочет краткий перечень изменений с указанием конкретных мест (например, "в функции add_template_item замените ..."). Лучше дать пошаговый список действий.
+Суммируем столбцы: 4 (индекс 3) и 5 (индекс 4). В текущем коде для ПОТ указаны {9,10}. Также заменим.
 
-Ответ должен быть на русском, четким, без лишних слов.
+Внесём исправления в метод insertTotalFormulas:
 
-Краткий перечень изменений для аутентификации по email (с нормализацией регистра)
-1. Добавьте метод в класс DatabaseManager
-Где: внутри класса DatabaseManager (например, после метода get_user_sessions)
+java
+private void insertTotalFormulas(Worksheet sheet, List<RowData> rows, int startRowIndex, boolean isRvp) {
+    if (rows.isEmpty()) return;
 
-python
-def check_user_by_email(self, email: str):
-    query = f"SELECT full_name FROM {self._table_name('users')} WHERE LOWER(email) = LOWER(%s)"
-    if not self.use_postgres:
-        query = query.replace('%s', '?')
-    df = self._to_df(query, (email,))
-    if not df.empty:
-        return True, df.iloc[0]['full_name']
-    return False, None
-2. Инициализируйте переменные состояния в начале файла (после других if "..." not in st.session_state)
-python
-if "user_email" not in st.session_state:
-    st.session_state.user_email = ""
-if "user_full_name" not in st.session_state:
-    st.session_state.user_full_name = ""
-if "auth_valid" not in st.session_state:
-    st.session_state.auth_valid = False
-3. В шаге 0 замените поле ввода ФИО на поле email
-Найдите блок с user_name_input = st.text_input(...) и замените на:
+    int totalSearchColumn;
+    int[] columnsToSum;
 
-python
-user_email_raw = st.text_input(
-    "📧 Корпоративная почта",
-    value=st.session_state.user_email,
-    placeholder="ivanov@example.com",
-    key=f"user_email_field_{st.session_state.update_counter}"
-)
-user_email_normalized = user_email_raw.lower().strip() if user_email_raw else ""
+    if (isRvp) {
+        totalSearchColumn = 1; // столбец B (индекс 1)
+        // Суммируем столбцы 4 (индекс 3) и 5 (индекс 4) - как просили
+        columnsToSum = new int[]{3, 4};
+    } else {
+        totalSearchColumn = 0; // столбец A (индекс 0)
+        // Суммируем столбцы 4 (индекс 3) и 5 (индекс 4)
+        columnsToSum = new int[]{3, 4};
+    }
 
-if user_email_normalized and user_email_normalized != st.session_state.user_email:
-    exists, full_name = db.check_user_by_email(user_email_normalized)
-    if exists:
-        st.session_state.user_email = user_email_normalized
-        st.session_state.user_full_name = full_name
-        st.session_state.auth_valid = True
-        st.toast(f"✅ Добро пожаловать, {full_name}!", icon="✅")
-    else:
-        st.session_state.auth_valid = False
-        st.session_state.user_email = ""
-        st.session_state.user_full_name = ""
-        st.toast("❌ Пользователь не найден", icon="❌")
-    st.rerun()
+    // Ищем строку "Итого" начиная с конца данных
+    int totalRow = findTotalRow(sheet, startRowIndex + rows.size(), totalSearchColumn);
+    if (totalRow == -1) return;
 
-if st.session_state.auth_valid:
-    st.success(f"Вы вошли как: {st.session_state.user_full_name} ({st.session_state.user_email})")
-4. Сделайте кнопку "Начать заполнение" активной только при успешной аутентификации
-Найдите st.form_submit_button и добавьте параметр disabled:
+    int firstDataRow = startRowIndex;
+    int lastDataRow = startRowIndex + rows.size() - 1;
 
-python
-submitted = st.form_submit_button(
-    "▶️ НАЧАТЬ ЗАПОЛНЕНИЕ",
-    type="primary",
-    use_container_width=True,
-    disabled=not st.session_state.auth_valid
-)
-5. При создании сессии используйте st.session_state.user_email (вместо user_name_input)
-python
-session_id = db.create_session(
-    st.session_state.user_email,   # вместо user_name_input
-    selected_filial_id,
-    selected_vsp_id,
-    current_date,
-    'draft'
-)
-6. Замените все вызовы, где раньше использовался st.session_state.user_name, на st.session_state.user_email
-db.get_user_draft_sessions(st.session_state.user_name) → db.get_user_draft_sessions(st.session_state.user_email)
+    for (int col : columnsToSum) {
+        Cell totalCell = sheet.getCells().get(totalRow, col);
+        String colLetter = CellsHelper.cellIndexToName(col, 0);
+        String formula = String.format("=SUM(%s%d:%s%d)",
+                colLetter, firstDataRow + 1,
+                colLetter, lastDataRow + 1);
+        totalCell.setFormula(formula);
+    }
+}
+Изменил columnsToSum на {3, 4} для обоих листов, как вы запросили. Также убедитесь, что startRowIndex передаётся правильный:
 
-db.get_user_sessions(st.session_state.user_name) → db.get_user_sessions(st.session_state.user_email)
+Для РВП: RVP_START_ROW = 17 (18-я строка).
 
-В боковой панели отображение текущего пользователя: вместо st.session_state.user_name используйте st.session_state.user_email или st.session_state.user_full_name.
+Для ПОТ: POT_START_ROW = 7 (8-я строка).
 
-7. В методе create_session (в классе DatabaseManager) убедитесь, что первый параметр (user_name) сохраняется в БД. Теперь там будет email в нижнем регистре.
-8. Удалите старые переменные st.session_state.user_name и st.session_state.user_name_entered, если они есть (они больше не нужны).
-После этих изменений пользователь вводит email (регистр не важен), программа проверяет наличие в таблице users, показывает уведомление, и кнопка становится активной. Email сохраняется в нижнем регистре для единообразия.
+Метод findTotalRow корректно ищет подстроку "итого" в указанном столбце, начиная с первой строки после данных. Если слово "Итого" находится сразу под таблицей (без пустых строк), формула вставится правильно.
+
+Дополнительно проверьте, что в вашем шаблоне действительно присутствует слово "Итого" в нужных столбцах.
+
+Мы внесли точечные изменения в метод insertTotalFormulas, чтобы он суммировал только столбцы 4 и 5 (индексы 3 и 4) для обоих листов, как вы запросили. Теперь код соответствует вашему уточнению:
+
+Лист «Распоряжение (РВП)»: данные с 18-й строки, поиск "Итого" в столбце B, суммирование столбцов 4 и 5.
+
+Лист «Расчетная база ПОТ»: данные с 8-й строки, поиск "Итого" в столбце A, суммирование столбцов 4 и 5.
+
+Остальная логика (вставка строк, заполнение данных) осталась без изменений. При необходимости вы всегда можете скорректировать массив columnsToSum под реальные столбцы вашего шаблона.
+
