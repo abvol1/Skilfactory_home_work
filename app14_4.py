@@ -32,10 +32,10 @@ except ImportError:
 # ==============================================================================
 # 1. КОНФИГУРАЦИЯ
 # ==============================================================================
-USE_POSTGRES = True  # Переключите на False при работе с SQLite
+USE_POSTGRES = False  # Временно отключаем PostgreSQL для тестирования
 
 PG_CONFIG = {
-    "host": "localhost",      # измените под свой сервер
+    "host": "localhost",
     "port": 5432,
     "database": "checklist_db",
     "user": "postgres",
@@ -140,7 +140,14 @@ class DatabaseManager:
         cursor = self._get_cursor()
 
         if self.use_postgres:
-            # PostgreSQL
+            # PostgreSQL tables
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS {self.schema}.users (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(255) UNIQUE NOT NULL,
+                    full_name VARCHAR(255) NOT NULL
+                )
+            """)
             cursor.execute(f"""
                 CREATE TABLE IF NOT EXISTS {self.schema}.checklist_templates (
                     id SERIAL PRIMARY KEY,
@@ -152,14 +159,13 @@ class DatabaseManager:
                     events_value TEXT
                 )
             """)
-            # Проверяем наличие колонок filter_value и events_value
             cursor.execute(f"""
                 SELECT column_name 
                 FROM information_schema.columns 
                 WHERE table_name='checklist_templates' AND table_schema='{self.schema}'
             """)
-            existing_rows = cursor.fetchall()  # список словарей
-            existing_columns = [row['column_name'] for row in existing_rows]  # обращаемся по имени
+            existing_rows = cursor.fetchall()
+            existing_columns = [row['column_name'] for row in existing_rows]
             if 'filter_value' not in existing_columns:
                 cursor.execute(f"ALTER TABLE {self.schema}.checklist_templates ADD COLUMN filter_value TEXT")
             if 'events_value' not in existing_columns:
@@ -199,24 +205,19 @@ class DatabaseManager:
                     UNIQUE(session_id, template_item_id)
                 )
             """)
-            cursor.execute("""
-                CREATE OR REPLACE FUNCTION update_updated_at_column()
-                RETURNS TRIGGER AS $$
-                BEGIN
-                    NEW.updated_at = CURRENT_TIMESTAMP;
-                    RETURN NEW;
-                END;
-                $$ language 'plpgsql';
-            """)
-            cursor.execute(f"""
-                DROP TRIGGER IF EXISTS update_checklist_sessions_updated_at ON {self.schema}.checklist_sessions;
-                CREATE TRIGGER update_checklist_sessions_updated_at
-                BEFORE UPDATE ON {self.schema}.checklist_sessions
-                FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-            """)
         else:
-            # SQLite
+            # SQLite tables
             cursor.execute("PRAGMA foreign_keys = ON")
+            
+            # Создаем таблицу users
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE NOT NULL,
+                    full_name TEXT NOT NULL
+                )
+            """)
+            
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS checklist_templates (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -229,8 +230,8 @@ class DatabaseManager:
                 )
             """)
             cursor.execute("PRAGMA table_info(checklist_templates)")
-            existing = cursor.fetchall()  # кортежи
-            existing_columns = [row[1] for row in existing]  # второе поле - имя колонки
+            existing = cursor.fetchall()
+            existing_columns = [row[1] for row in existing]
             if 'filter_value' not in existing_columns:
                 cursor.execute("ALTER TABLE checklist_templates ADD COLUMN filter_value TEXT")
             if 'events_value' not in existing_columns:
@@ -286,11 +287,47 @@ class DatabaseManager:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user ON checklist_sessions(user_name)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_answers_session ON checklist_answers(session_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_status ON checklist_sessions(status)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user_status ON checklist_sessions(user_name, status)")
 
         conn.commit()
+        
+        # Добавляем тестовых пользователей, если таблица users пуста
+        self._add_sample_users()
 
-    # ----- Остальные методы (без изменений, но они уже используют _execute и _to_df) -----
+    def _add_sample_users(self):
+        """Добавление тестовых пользователей"""
+        try:
+            # Проверяем, есть ли пользователи
+            if self.use_postgres:
+                cursor = self._get_cursor()
+                cursor.execute(f"SELECT COUNT(*) as cnt FROM {self.schema}.users")
+                count = cursor.fetchone()['cnt']
+                if count == 0:
+                    users = [
+                        ('go_ivanov_av', 'Иванов Александр Владимирович'),
+                        ('go_petrov_iv', 'Петров Игорь Викторович'),
+                        ('go_sidorov_nn', 'Сидоров Николай Николаевич'),
+                        ('test_user', 'Тестовый Пользователь'),
+                    ]
+                    for name, full_name in users:
+                        cursor.execute(f"INSERT INTO {self.schema}.users (name, full_name) VALUES (%s, %s)", (name, full_name))
+                    self._get_connection().commit()
+            else:
+                cursor = self._get_cursor()
+                cursor.execute("SELECT COUNT(*) as cnt FROM users")
+                count = cursor.fetchone()[0]
+                if count == 0:
+                    users = [
+                        ('go_ivanov_av', 'Иванов Александр Владимирович'),
+                        ('go_petrov_iv', 'Петров Игорь Викторович'),
+                        ('go_sidorov_nn', 'Сидоров Николай Николаевич'),
+                        ('test_user', 'Тестовый Пользователь'),
+                    ]
+                    for name, full_name in users:
+                        cursor.execute("INSERT INTO users (name, full_name) VALUES (?, ?)", (name, full_name))
+                    self._get_connection().commit()
+        except Exception as e:
+            print(f"Ошибка добавления пользователей: {e}")
+
     def get_filials(self) -> pd.DataFrame:
         return self._to_df(f"SELECT id, name FROM {self._table_name('filials')} ORDER BY name")
 
@@ -308,7 +345,6 @@ class DatabaseManager:
             f"SELECT COALESCE(MAX(item_order), 0) + 1 as next_order FROM {self._table_name('checklist_templates')}",
             fetch_one=True
         )
-        # row может быть словарём (PostgreSQL) или кортежем (SQLite)
         if row:
             if isinstance(row, dict):
                 next_order = row['next_order']
@@ -353,8 +389,22 @@ class DatabaseManager:
             return cursor.lastrowid
 
     def check_user_by_name(self, name: str):
-        # Для простоты всегда возвращаем успех (можно доработать)
-        return True, name
+        """Проверка существования пользователя и получение ФИО"""
+        try:
+            if self.use_postgres:
+                query = f"SELECT full_name FROM {self.schema}.users WHERE LOWER(name) = LOWER(%s)"
+                result = self._to_df(query, (name,))
+            else:
+                query = f"SELECT full_name FROM users WHERE LOWER(name) = LOWER(?)"
+                result = self._to_df(query, (name,))
+            
+            if not result.empty:
+                return True, result.iloc[0]['full_name']
+            else:
+                return False, None
+        except Exception as e:
+            print(f"Ошибка проверки пользователя: {e}")
+            return False, None
 
     def update_session_status(self, session_id: int, status: str):
         query = f"UPDATE {self._table_name('checklist_sessions')} SET status = %s WHERE id = %s"
@@ -629,6 +679,7 @@ st.markdown("""
 db = DatabaseManager()
 db.init_db()
 
+
 def seed_initial_data():
     if len(db.get_filials()) == 0:
         conn = db._get_connection()
@@ -666,6 +717,7 @@ def seed_initial_data():
         for desc, add_info, filter_val, events_val in items:
             db.add_template_item(desc, add_info, filter_val, events_val)
 
+
 seed_initial_data()
 
 # --- Инициализация session_state ---
@@ -700,6 +752,7 @@ if "data_loaded" not in st.session_state:
 if "update_counter" not in st.session_state:
     st.session_state.update_counter = 0
 
+
 def load_last_user_data():
     if st.session_state.user_name and not st.session_state.data_loaded:
         last_data = db.get_last_user_session_data(st.session_state.user_name)
@@ -715,10 +768,11 @@ def load_last_user_data():
             st.session_state.update_counter += 1
         st.session_state.data_loaded = True
 
+
 load_last_user_data()
 
 # ==============================================================================
-# 4. БОКОВАЯ ПАНЕЛЬ И ОСНОВНАЯ ЛОГИКА (как в исходном коде)
+# 4. БОКОВАЯ ПАНЕЛЬ И ОСНОВНАЯ ЛОГИКА
 # ==============================================================================
 with st.sidebar:
     st.header("👤 Информация")
@@ -855,17 +909,26 @@ with tab_main:
                 filial_names = filials_df['name'].tolist()
                 filial_map = dict(zip(filials_df['name'], filials_df['id']))
 
-                user_name_raw = st.text_input("👤 Учетная запись сотрудника", value=st.session_state.user_name,
-                                              placeholder="GO_IVANOV_AV", key=f"user_name_raw_field_{st.session_state.update_counter}")
+                user_name_raw = st.text_input(
+                    "👤 Учетная запись сотрудника",
+                    value=st.session_state.user_name,
+                    placeholder="go_ivanov_av",
+                    help="Введите вашу учетную запись (например: go_ivanov_av)",
+                    key=f"user_name_raw_field_{st.session_state.update_counter}"
+                )
+                
                 user_name_normalized = user_name_raw.lower().strip() if user_name_raw else ""
 
+                # Проверка пользователя при изменении ввода
                 if user_name_normalized and user_name_normalized != st.session_state.user_name:
                     exists, full_name = db.check_user_by_name(user_name_normalized)
                     if exists:
                         st.session_state.user_name = user_name_normalized
                         st.session_state.user_full_name = full_name
                         st.session_state.auth_valid = True
-                        st.toast(f"Добро пожаловать, {full_name}!", icon="✔️")
+                        st.success(f"✅ Добро пожаловать, {full_name}!")
+                        
+                        # Загружаем последние данные пользователя
                         last_data = db.get_last_user_session_data(user_name_normalized)
                         if last_data:
                             st.session_state.last_filial_name = last_data['filial_name']
@@ -875,73 +938,89 @@ with tab_main:
                             st.session_state.selected_filial_id = last_data['filial_id']
                             st.session_state.selected_vsp_id = last_data['vsp_id']
                             st.session_state.update_counter += 1
-                        else:
-                            st.session_state.last_filial_name = None
-                            st.session_state.last_vsp_name = None
-                            st.session_state.last_filial_id = None
-                            st.session_state.last_vsp_id = None
-                            st.session_state.selected_filial_id = None
-                            st.session_state.selected_vsp_id = None
+                        st.rerun()
                     else:
                         st.session_state.auth_valid = False
                         st.session_state.user_name = ""
-                        st.toast("❌ Пользователь не найден", icon="❌")
+                        st.session_state.user_full_name = ""
+                        st.error(f"❌ Пользователь '{user_name_normalized}' не найден в системе!")
+                        
+                # Показываем сообщение если пользователь не авторизован
+                if not st.session_state.auth_valid and user_name_raw:
+                    st.warning("⚠️ Введите корректную учетную запись")
 
-                current_filial_index = 0
-                if st.session_state.last_filial_name and st.session_state.last_filial_name in filial_names:
-                    current_filial_index = filial_names.index(st.session_state.last_filial_name)
+                # Выбор филиала и ВСП (только если пользователь авторизован)
+                if st.session_state.auth_valid:
+                    current_filial_index = 0
+                    if st.session_state.last_filial_name and st.session_state.last_filial_name in filial_names:
+                        current_filial_index = filial_names.index(st.session_state.last_filial_name)
 
-                selected_filial_name = st.selectbox("🏢 Филиал", filial_names, index=current_filial_index,
-                                                    key=f"filial_select_{st.session_state.update_counter}")
-                selected_filial_id = filial_map[selected_filial_name]
-                st.session_state.last_filial_name = selected_filial_name
-                st.session_state.last_filial_id = selected_filial_id
+                    selected_filial_name = st.selectbox(
+                        "🏢 Филиал",
+                        filial_names,
+                        index=current_filial_index,
+                        key=f"filial_select_{st.session_state.update_counter}"
+                    )
+                    selected_filial_id = filial_map[selected_filial_name]
+                    st.session_state.last_filial_name = selected_filial_name
+                    st.session_state.last_filial_id = selected_filial_id
 
-                if st.session_state.selected_filial_id != selected_filial_id:
-                    st.session_state.selected_filial_id = selected_filial_id
-                    st.session_state.selected_vsp_id = None
-                    st.session_state.last_vsp_name = None
-                    st.session_state.last_vsp_id = None
-                    st.session_state.update_counter += 1
-                    st.rerun()
+                    if st.session_state.selected_filial_id != selected_filial_id:
+                        st.session_state.selected_filial_id = selected_filial_id
+                        st.session_state.selected_vsp_id = None
+                        st.session_state.last_vsp_name = None
+                        st.session_state.last_vsp_id = None
+                        st.session_state.update_counter += 1
+                        st.rerun()
 
-                vsp_df = db.get_vsp_by_filial(selected_filial_id)
-                if not vsp_df.empty:
-                    vsp_names = vsp_df['name'].tolist()
-                    vsp_map = dict(zip(vsp_df['name'], vsp_df['id']))
-                    current_vsp_index = 0
-                    if st.session_state.last_vsp_name and st.session_state.last_vsp_name in vsp_names:
-                        current_vsp_index = vsp_names.index(st.session_state.last_vsp_name)
-                    elif st.session_state.last_vsp_id and st.session_state.last_vsp_id in vsp_map.values():
-                        for i, (name, v_id) in enumerate(vsp_map.items()):
-                            if v_id == st.session_state.last_vsp_id:
-                                current_vsp_index = i
-                                st.session_state.last_vsp_name = name
-                                break
-                    selected_vsp_name = st.selectbox("🏪 ВСП", vsp_names, index=current_vsp_index,
-                                                     key=f"vsp_select_{st.session_state.update_counter}")
-                    selected_vsp_id = vsp_map[selected_vsp_name]
-                    st.session_state.last_vsp_name = selected_vsp_name
-                    st.session_state.last_vsp_id = selected_vsp_id
-                    st.session_state.selected_vsp_id = selected_vsp_id
-                else:
-                    st.warning("⚠️ Нет ВСП в выбранном филиале")
-                    selected_vsp_id = None
+                    vsp_df = db.get_vsp_by_filial(selected_filial_id)
+                    if not vsp_df.empty:
+                        vsp_names = vsp_df['name'].tolist()
+                        vsp_map = dict(zip(vsp_df['name'], vsp_df['id']))
+                        current_vsp_index = 0
+                        if st.session_state.last_vsp_name and st.session_state.last_vsp_name in vsp_names:
+                            current_vsp_index = vsp_names.index(st.session_state.last_vsp_name)
+                        elif st.session_state.last_vsp_id and st.session_state.last_vsp_id in vsp_map.values():
+                            for i, (name, v_id) in enumerate(vsp_map.items()):
+                                if v_id == st.session_state.last_vsp_id:
+                                    current_vsp_index = i
+                                    st.session_state.last_vsp_name = name
+                                    break
+                        selected_vsp_name = st.selectbox(
+                            "🏪 ВСП",
+                            vsp_names,
+                            index=current_vsp_index,
+                            key=f"vsp_select_{st.session_state.update_counter}"
+                        )
+                        selected_vsp_id = vsp_map[selected_vsp_name]
+                        st.session_state.last_vsp_name = selected_vsp_name
+                        st.session_state.last_vsp_id = selected_vsp_id
+                        st.session_state.selected_vsp_id = selected_vsp_id
+                    else:
+                        st.warning("⚠️ Нет ВСП в выбранном филиале")
+                        selected_vsp_id = None
+                    
+                    # Кнопка начала заполнения
+                    with st.form(key=f"session_form_{st.session_state.update_counter}"):
+                        op_date = st.date_input("📅 Дата", value=datetime.date.today(), format="DD.MM.YYYY", disabled=True)
+                        submitted = st.form_submit_button("▶️ НАЧАТЬ ЗАПОЛНЕНИЕ", type="primary", use_container_width=True)
+                        
+                        if submitted and selected_vsp_id:
+                            session_id = db.create_session(
+                                st.session_state.user_name,
+                                selected_filial_id,
+                                selected_vsp_id,
+                                op_date,
+                                'draft'
+                            )
+                            st.session_state.current_session_id = session_id
+                            st.session_state.step = 1
+                            st.rerun()
+                        elif submitted and not selected_vsp_id:
+                            st.error("❌ Выберите ВСП!")
             else:
-                st.error("❌ Нет филиалов")
+                st.error("❌ Нет филиалов в базе данных")
                 st.stop()
-
-            with st.form(key=f"session_form_{st.session_state.update_counter}"):
-                op_date = st.date_input("📅 Дата", value=datetime.date.today(), format="DD.MM.YYYY", disabled=True)
-                submitted = st.form_submit_button("▶️ НАЧАТЬ ЗАПОЛНЕНИЕ", type="primary", use_container_width=True,
-                                                  disabled=not st.session_state.auth_valid)
-                if submitted and selected_vsp_id and st.session_state.user_name:
-                    session_id = db.create_session(st.session_state.user_name, selected_filial_id, selected_vsp_id, op_date, 'draft')
-                    st.session_state.current_session_id = session_id
-                    st.session_state.step = 1
-                    st.rerun()
-                elif submitted:
-                    st.error("❌ Введите учетную запись или выберите ВСП!")
 
 with tab_history:
     st.markdown("### 📜 История ваших проверок")
@@ -949,8 +1028,11 @@ with tab_history:
         history_df = db.get_user_sessions(st.session_state.user_name)
         if not history_df.empty:
             st.dataframe(history_df, use_container_width=True, height=400)
-            selected_session_id = st.selectbox("Выберите сессию", options=history_df['id'].tolist(),
-                                               format_func=lambda x: f"Сессия #{x} - {history_df[history_df['id']==x]['Дата проверки'].iloc[0]}")
+            selected_session_id = st.selectbox(
+                "Выберите сессию для просмотра",
+                options=history_df['id'].tolist(),
+                format_func=lambda x: f"Сессия #{x} - {history_df[history_df['id']==x]['Дата проверки'].iloc[0]}"
+            )
             if st.button("📋 Показать результаты"):
                 session_data = db.get_session_data(selected_session_id)
                 if session_data:
@@ -1064,6 +1146,7 @@ if st.session_state.step == 1:
                             filter_display = filter_text.replace("[Дата1]", selected_date.strftime("%d.%m.%y"))
                         filter_display = filter_display.replace("[РФ]", vsp_name)
                         st.code(filter_display, language="text")
+                        
                         # Кнопка копирования
                         import streamlit.components.v1 as components
                         js_code = f"""
