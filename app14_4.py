@@ -32,7 +32,7 @@ except ImportError:
 # ==============================================================================
 # 1. КОНФИГУРАЦИЯ
 # ==============================================================================
-USE_POSTGRES = False  # Временно отключаем PostgreSQL для тестирования
+USE_POSTGRES = False  # Переключите на True при работе с PostgreSQL
 
 PG_CONFIG = {
     "host": "localhost",
@@ -209,7 +209,6 @@ class DatabaseManager:
             # SQLite tables
             cursor.execute("PRAGMA foreign_keys = ON")
             
-            # Создаем таблицу users
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -289,14 +288,11 @@ class DatabaseManager:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_status ON checklist_sessions(status)")
 
         conn.commit()
-        
-        # Добавляем тестовых пользователей, если таблица users пуста
         self._add_sample_users()
 
     def _add_sample_users(self):
         """Добавление тестовых пользователей"""
         try:
-            # Проверяем, есть ли пользователи
             if self.use_postgres:
                 cursor = self._get_cursor()
                 cursor.execute(f"SELECT COUNT(*) as cnt FROM {self.schema}.users")
@@ -754,7 +750,7 @@ if "update_counter" not in st.session_state:
 
 
 def load_last_user_data():
-    if st.session_state.user_name and not st.session_state.data_loaded:
+    if st.session_state.user_name and not st.session_state.data_loaded and st.session_state.auth_valid:
         last_data = db.get_last_user_session_data(st.session_state.user_name)
         if not last_data:
             last_data = db.get_last_user_any_session_data(st.session_state.user_name)
@@ -772,12 +768,16 @@ def load_last_user_data():
 load_last_user_data()
 
 # ==============================================================================
-# 4. БОКОВАЯ ПАНЕЛЬ И ОСНОВНАЯ ЛОГИКА
+# 4. БОКОВАЯ ПАНЕЛЬ
 # ==============================================================================
 with st.sidebar:
     st.header("👤 Информация")
-    if st.session_state.user_name:
-        st.markdown(f"**Текущий пользователь:** {st.session_state.user_name}")
+    
+    if st.session_state.auth_valid and st.session_state.user_full_name:
+        st.markdown(f"**Пользователь:**")
+        st.markdown(f"**{st.session_state.user_full_name}**")
+        st.caption(f"({st.session_state.user_name})")
+        
         if st.button("🔄 Сменить пользователя", use_container_width=True):
             for key in ['user_name', 'user_full_name', 'auth_valid', 'last_filial_name', 'last_vsp_name',
                         'last_filial_id', 'last_vsp_id', 'selected_filial_id', 'selected_vsp_id',
@@ -871,7 +871,7 @@ with st.sidebar:
             st.warning("Нет данных для экспорта")
 
 # ==============================================================================
-# ОСНОВНОЙ ИНТЕРФЕЙС
+# 5. ОСНОВНОЙ ИНТЕРФЕЙС
 # ==============================================================================
 st.title("📋 Чек-лист операционной проверки ВСП")
 st.caption("Заполнение данных о пользователе чек-листа операционной проверки")
@@ -880,7 +880,7 @@ tab_history, tab_main = st.tabs(["📜 История проверок", "📝 �
 
 with tab_main:
     if st.session_state.step == 0:
-        if st.session_state.user_name:
+        if st.session_state.auth_valid and st.session_state.user_name:
             drafts_df = db.get_user_draft_sessions(st.session_state.user_name)
             if not drafts_df.empty:
                 drafts_df = drafts_df[drafts_df['operation_date'] == datetime.date.today()]
@@ -909,18 +909,20 @@ with tab_main:
                 filial_names = filials_df['name'].tolist()
                 filial_map = dict(zip(filials_df['name'], filials_df['id']))
 
+                # ПОЛЕ ДЛЯ ВВОДА ЛОГИНА
                 user_name_raw = st.text_input(
                     "👤 Учетная запись сотрудника",
-                    value=st.session_state.user_name,
+                    value=st.session_state.user_name if not st.session_state.auth_valid else "",
                     placeholder="go_ivanov_av",
                     help="Введите вашу учетную запись (например: go_ivanov_av)",
-                    key=f"user_name_raw_field_{st.session_state.update_counter}"
+                    key=f"user_name_raw_field_{st.session_state.update_counter}",
+                    disabled=st.session_state.auth_valid
                 )
-                
+
                 user_name_normalized = user_name_raw.lower().strip() if user_name_raw else ""
 
                 # Проверка пользователя при изменении ввода
-                if user_name_normalized and user_name_normalized != st.session_state.user_name:
+                if user_name_normalized and user_name_normalized != st.session_state.user_name and not st.session_state.auth_valid:
                     exists, full_name = db.check_user_by_name(user_name_normalized)
                     if exists:
                         st.session_state.user_name = user_name_normalized
@@ -928,7 +930,6 @@ with tab_main:
                         st.session_state.auth_valid = True
                         st.success(f"✅ Добро пожаловать, {full_name}!")
                         
-                        # Загружаем последние данные пользователя
                         last_data = db.get_last_user_session_data(user_name_normalized)
                         if last_data:
                             st.session_state.last_filial_name = last_data['filial_name']
@@ -944,9 +945,27 @@ with tab_main:
                         st.session_state.user_name = ""
                         st.session_state.user_full_name = ""
                         st.error(f"❌ Пользователь '{user_name_normalized}' не найден в системе!")
-                        
-                # Показываем сообщение если пользователь не авторизован
-                if not st.session_state.auth_valid and user_name_raw:
+
+                # ОТОБРАЖЕНИЕ ФИО АВТОРИЗОВАННОГО ПОЛЬЗОВАТЕЛЯ
+                if st.session_state.auth_valid:
+                    st.info(f"👤 **Авторизован:** {st.session_state.user_full_name}")
+                    st.caption(f"Логин: {st.session_state.user_name}")
+                    
+                    if st.button("🔄 Сменить пользователя", key="change_user_btn", use_container_width=True):
+                        st.session_state.auth_valid = False
+                        st.session_state.user_name = ""
+                        st.session_state.user_full_name = ""
+                        st.session_state.last_filial_name = None
+                        st.session_state.last_vsp_name = None
+                        st.session_state.last_filial_id = None
+                        st.session_state.last_vsp_id = None
+                        st.session_state.selected_filial_id = None
+                        st.session_state.selected_vsp_id = None
+                        st.session_state.update_counter += 1
+                        st.rerun()
+                    
+                    st.divider()
+                elif user_name_raw:
                     st.warning("⚠️ Введите корректную учетную запись")
 
                 # Выбор филиала и ВСП (только если пользователь авторизован)
@@ -1024,7 +1043,7 @@ with tab_main:
 
 with tab_history:
     st.markdown("### 📜 История ваших проверок")
-    if st.session_state.user_name:
+    if st.session_state.auth_valid and st.session_state.user_name:
         history_df = db.get_user_sessions(st.session_state.user_name)
         if not history_df.empty:
             st.dataframe(history_df, use_container_width=True, height=400)
@@ -1102,7 +1121,7 @@ if st.session_state.step == 1:
     st.subheader(f"📋 Чек-лист: {filial_name} / {vsp_name}")
     status_text = "Черновик" if session_data['info']['status'] == 'draft' else "Завершена"
     col1, col2, col3, col4, col5 = st.columns(5)
-    col1.markdown(f"**👤 Сотрудник:** {session_data['info']['user_name']}")
+    col1.markdown(f"**👤 Сотрудник:** {st.session_state.user_full_name if st.session_state.user_full_name else session_data['info']['user_name']}")
     col2.markdown(f"**🏢 Филиал:** {filial_name}")
     col3.markdown(f"**🏪 ВСП:** {vsp_name}")
     col4.markdown(f"**📅 Дата:** {session_data['info']['operation_date']}")
