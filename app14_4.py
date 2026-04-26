@@ -288,7 +288,41 @@ class DatabaseManager:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_status ON checklist_sessions(status)")
 
         conn.commit()
+        
+        # Обновляем существующие сессии (миграция данных)
+        self._migrate_existing_sessions()
         self._add_sample_users()
+
+    def _migrate_existing_sessions(self):
+        """Обновление существующих сессий - заменяем логин на ФИО в поле user_name"""
+        try:
+            if self.use_postgres:
+                cursor = self._get_cursor()
+                cursor.execute(f"""
+                    UPDATE {self.schema}.checklist_sessions s
+                    SET user_name = u.full_name
+                    FROM {self.schema}.users u
+                    WHERE s.user_name = u.name
+                """)
+                self._get_connection().commit()
+                print("✅ Миграция сессий выполнена")
+            else:
+                cursor = self._get_cursor()
+                cursor.execute("""
+                    UPDATE checklist_sessions 
+                    SET user_name = (
+                        SELECT full_name FROM users 
+                        WHERE users.name = checklist_sessions.user_name
+                    )
+                    WHERE EXISTS (
+                        SELECT 1 FROM users 
+                        WHERE users.name = checklist_sessions.user_name
+                    )
+                """)
+                self._get_connection().commit()
+                print("✅ Миграция сессий выполнена")
+        except Exception as e:
+            print(f"Ошибка миграции: {e}")
 
     def _add_sample_users(self):
         """Добавление тестовых пользователей"""
@@ -370,17 +404,23 @@ class DatabaseManager:
             query = query.replace('%s', '?')
         self._execute(query, (item_id,))
 
-    def create_session(self, user_name: str, filial_id: int, vsp_id: int, op_date, status='draft') -> int:
-        query = f"INSERT INTO {self._table_name('checklist_sessions')} (user_name, filial_id, vsp_id, operation_date, status) VALUES (%s, %s, %s, %s, %s)"
+    def create_session(self, user_full_name: str, filial_id: int, vsp_id: int, op_date, status='draft') -> int:
+        """Создание сессии с сохранением ФИО в поле user_name"""
+        query = f"""
+            INSERT INTO {self._table_name('checklist_sessions')} 
+            (user_name, filial_id, vsp_id, operation_date, status) 
+            VALUES (%s, %s, %s, %s, %s)
+        """
         if not self.use_postgres:
             query = query.replace('%s', '?')
+        
         if self.use_postgres:
             query += " RETURNING id"
-            row = self._execute(query, (user_name, filial_id, vsp_id, op_date, status), fetch_one=True)
+            row = self._execute(query, (user_full_name, filial_id, vsp_id, op_date, status), fetch_one=True)
             return row['id'] if isinstance(row, dict) else row[0]
         else:
             cursor = self._get_cursor()
-            cursor.execute(query, (user_name, filial_id, vsp_id, op_date, status))
+            cursor.execute(query, (user_full_name, filial_id, vsp_id, op_date, status))
             self._get_connection().commit()
             return cursor.lastrowid
 
@@ -408,7 +448,8 @@ class DatabaseManager:
             query = query.replace('%s', '?')
         self._execute(query, (status, session_id))
 
-    def get_user_draft_sessions(self, user_name: str) -> pd.DataFrame:
+    def get_user_draft_sessions(self, full_name: str) -> pd.DataFrame:
+        """Получить все черновики пользователя по ФИО"""
         if self.use_postgres:
             query = f"""
                 SELECT s.id, s.operation_date, f.name as filial_name, v.name as vsp_name, 
@@ -423,7 +464,7 @@ class DatabaseManager:
                 GROUP BY s.id, f.name, v.name, s.operation_date, s.updated_at
                 ORDER BY s.updated_at DESC
             """
-            return self._to_df(query, (user_name,))
+            return self._to_df(query, (full_name,))
         else:
             query = """
                 SELECT s.id, s.operation_date, f.name as filial_name, v.name as vsp_name, 
@@ -438,9 +479,10 @@ class DatabaseManager:
                 GROUP BY s.id
                 ORDER BY s.updated_at DESC
             """
-            return self._to_df(query, (user_name,))
+            return self._to_df(query, (full_name,))
 
-    def get_last_user_session_data(self, user_name: str) -> Optional[Dict[str, Any]]:
+    def get_last_user_session_data(self, full_name: str) -> Optional[Dict[str, Any]]:
+        """Получить последние данные пользователя по ФИО"""
         if self.use_postgres:
             query = f"""
                 SELECT f.id as filial_id, f.name as filial_name, v.id as vsp_id, v.name as vsp_name
@@ -451,7 +493,7 @@ class DatabaseManager:
                 ORDER BY s.created_at DESC
                 LIMIT 1
             """
-            result = self._to_df(query, (user_name,))
+            result = self._to_df(query, (full_name,))
         else:
             query = """
                 SELECT f.id as filial_id, f.name as filial_name, v.id as vsp_id, v.name as vsp_name
@@ -462,10 +504,11 @@ class DatabaseManager:
                 ORDER BY s.created_at DESC
                 LIMIT 1
             """
-            result = self._to_df(query, (user_name,))
+            result = self._to_df(query, (full_name,))
         return result.iloc[0].to_dict() if not result.empty else None
 
-    def get_last_user_any_session_data(self, user_name: str) -> Optional[Dict[str, Any]]:
+    def get_last_user_any_session_data(self, full_name: str) -> Optional[Dict[str, Any]]:
+        """Получить последние данные пользователя из любых сессий по ФИО"""
         if self.use_postgres:
             query = f"""
                 SELECT f.id as filial_id, f.name as filial_name, v.id as vsp_id, v.name as vsp_name
@@ -476,7 +519,7 @@ class DatabaseManager:
                 ORDER BY s.created_at DESC
                 LIMIT 1
             """
-            result = self._to_df(query, (user_name,))
+            result = self._to_df(query, (full_name,))
         else:
             query = """
                 SELECT f.id as filial_id, f.name as filial_name, v.id as vsp_id, v.name as vsp_name
@@ -487,7 +530,7 @@ class DatabaseManager:
                 ORDER BY s.created_at DESC
                 LIMIT 1
             """
-            result = self._to_df(query, (user_name,))
+            result = self._to_df(query, (full_name,))
         return result.iloc[0].to_dict() if not result.empty else None
 
     def get_session_data(self, session_id: int) -> Optional[Dict[str, Any]]:
@@ -584,7 +627,8 @@ class DatabaseManager:
             """
         return self._to_df(query)
 
-    def get_user_sessions(self, user_name: str) -> pd.DataFrame:
+    def get_user_sessions(self, full_name: str) -> pd.DataFrame:
+        """Получить все сессии пользователя по ФИО"""
         if self.use_postgres:
             query = f"""
                 SELECT 
@@ -609,7 +653,7 @@ class DatabaseManager:
                 GROUP BY s.id, f.name, v.name, s.operation_date, s.status, s.created_at, s.updated_at
                 ORDER BY s.created_at DESC
             """
-            return self._to_df(query, (user_name,))
+            return self._to_df(query, (full_name,))
         else:
             query = """
                 SELECT 
@@ -634,7 +678,7 @@ class DatabaseManager:
                 GROUP BY s.id
                 ORDER BY s.created_at DESC
             """
-            return self._to_df(query, (user_name,))
+            return self._to_df(query, (full_name,))
 
 
 def export_to_excel(df: pd.DataFrame) -> Optional[bytes]:
@@ -750,10 +794,10 @@ if "update_counter" not in st.session_state:
 
 
 def load_last_user_data():
-    if st.session_state.user_name and not st.session_state.data_loaded and st.session_state.auth_valid:
-        last_data = db.get_last_user_session_data(st.session_state.user_name)
+    if st.session_state.user_full_name and not st.session_state.data_loaded and st.session_state.auth_valid:
+        last_data = db.get_last_user_session_data(st.session_state.user_full_name)
         if not last_data:
-            last_data = db.get_last_user_any_session_data(st.session_state.user_name)
+            last_data = db.get_last_user_any_session_data(st.session_state.user_full_name)
         if last_data:
             st.session_state.last_filial_name = last_data['filial_name']
             st.session_state.last_vsp_name = last_data['vsp_name']
@@ -776,7 +820,7 @@ with st.sidebar:
     if st.session_state.auth_valid and st.session_state.user_full_name:
         st.markdown(f"**Пользователь:**")
         st.markdown(f"**{st.session_state.user_full_name}**")
-        st.caption(f"({st.session_state.user_name})")
+        st.caption(f"Логин: {st.session_state.user_name}")
         
         if st.button("🔄 Сменить пользователя", use_container_width=True):
             for key in ['user_name', 'user_full_name', 'auth_valid', 'last_filial_name', 'last_vsp_name',
@@ -880,8 +924,8 @@ tab_history, tab_main = st.tabs(["📜 История проверок", "📝 �
 
 with tab_main:
     if st.session_state.step == 0:
-        if st.session_state.auth_valid and st.session_state.user_name:
-            drafts_df = db.get_user_draft_sessions(st.session_state.user_name)
+        if st.session_state.auth_valid and st.session_state.user_full_name:
+            drafts_df = db.get_user_draft_sessions(st.session_state.user_full_name)
             if not drafts_df.empty:
                 drafts_df = drafts_df[drafts_df['operation_date'] == datetime.date.today()]
         else:
@@ -930,7 +974,7 @@ with tab_main:
                         st.session_state.auth_valid = True
                         st.success(f"✅ Добро пожаловать, {full_name}!")
                         
-                        last_data = db.get_last_user_session_data(user_name_normalized)
+                        last_data = db.get_last_user_session_data(full_name)
                         if last_data:
                             st.session_state.last_filial_name = last_data['filial_name']
                             st.session_state.last_vsp_name = last_data['vsp_name']
@@ -1026,7 +1070,7 @@ with tab_main:
                         
                         if submitted and selected_vsp_id:
                             session_id = db.create_session(
-                                st.session_state.user_name,
+                                st.session_state.user_full_name,  # Сохраняем ФИО в БД
                                 selected_filial_id,
                                 selected_vsp_id,
                                 op_date,
@@ -1043,8 +1087,8 @@ with tab_main:
 
 with tab_history:
     st.markdown("### 📜 История ваших проверок")
-    if st.session_state.auth_valid and st.session_state.user_name:
-        history_df = db.get_user_sessions(st.session_state.user_name)
+    if st.session_state.auth_valid and st.session_state.user_full_name:
+        history_df = db.get_user_sessions(st.session_state.user_full_name)
         if not history_df.empty:
             st.dataframe(history_df, use_container_width=True, height=400)
             selected_session_id = st.selectbox(
@@ -1121,7 +1165,7 @@ if st.session_state.step == 1:
     st.subheader(f"📋 Чек-лист: {filial_name} / {vsp_name}")
     status_text = "Черновик" if session_data['info']['status'] == 'draft' else "Завершена"
     col1, col2, col3, col4, col5 = st.columns(5)
-    col1.markdown(f"**👤 Сотрудник:** {st.session_state.user_full_name if st.session_state.user_full_name else session_data['info']['user_name']}")
+    col1.markdown(f"**👤 Сотрудник:** {session_data['info']['user_name']}")
     col2.markdown(f"**🏢 Филиал:** {filial_name}")
     col3.markdown(f"**🏪 ВСП:** {vsp_name}")
     col4.markdown(f"**📅 Дата:** {session_data['info']['operation_date']}")
