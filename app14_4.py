@@ -104,9 +104,22 @@ class DatabaseManager:
             return f"{self.schema}.{table}"
         return table
 
+    # Универсальные методы с автозаменой плейсхолдеров для SQLite
+    def _to_df(self, query: str, params=None) -> pd.DataFrame:
+        try:
+            if not self.use_postgres:
+                query = query.replace('%s', '?')
+            conn = self._get_connection()
+            return pd.read_sql_query(query, conn, params=params or ())
+        except Exception as e:
+            self._reset_connection()
+            raise e
+
     def _execute(self, query: str, params=None, fetch_one=False, fetch_all=False, commit=True):
         try:
             cursor = self._get_cursor()
+            if not self.use_postgres:
+                query = query.replace('%s', '?')
             cursor.execute(query, params or ())
             result = None
             if fetch_one:
@@ -118,14 +131,6 @@ class DatabaseManager:
             return result
         except Exception as e:
             self._reset_cursor()
-            self._reset_connection()
-            raise e
-
-    def _to_df(self, query: str, params=None) -> pd.DataFrame:
-        try:
-            conn = self._get_connection()
-            return pd.read_sql_query(query, conn, params=params or ())
-        except Exception as e:
             self._reset_connection()
             raise e
 
@@ -349,10 +354,7 @@ class DatabaseManager:
         return self.get_filials()
 
     def get_vsp_by_filial(self, filial_id: int) -> pd.DataFrame:
-        if self.use_postgres:
-            return self._to_df(f"SELECT id, name FROM {self._table_name('vsp')} WHERE filial_id = %s ORDER BY name", (filial_id,))
-        else:
-            return self._to_df(f"SELECT id, name FROM {self._table_name('vsp')} WHERE filial_id = ? ORDER BY name", (filial_id,))
+        return self._to_df(f"SELECT id, name FROM {self._table_name('vsp')} WHERE filial_id = %s ORDER BY name", (filial_id,))
 
     def get_all_vsp(self, filial_id: int = None) -> pd.DataFrame:
         if filial_id:
@@ -367,39 +369,29 @@ class DatabaseManager:
         row = self._execute(f"SELECT COALESCE(MAX(item_order), 0) + 1 as next_order FROM {self._table_name('checklist_templates')}", fetch_one=True)
         next_order = row['next_order'] if isinstance(row, dict) else row[0] if row else 1
         query = f"INSERT INTO {self._table_name('checklist_templates')} (section_name, item_order, description, additional_info, filter_value, events_value) VALUES (%s, %s, %s, %s, %s, %s)"
-        if not self.use_postgres:
-            query = query.replace('%s', '?')
         self._execute(query, ('Основной', next_order, description, additional_info, filter_value, events_value))
 
     def update_template_item(self, item_id: int, description: str, additional_info: str, filter_value: str = "", events_value: str = ""):
         query = f"UPDATE {self._table_name('checklist_templates')} SET description = %s, additional_info = %s, filter_value = %s, events_value = %s WHERE id = %s"
-        if not self.use_postgres:
-            query = query.replace('%s', '?')
         self._execute(query, (description, additional_info, filter_value, events_value, item_id))
 
     def delete_template_item(self, item_id: int):
         del_ans = f"DELETE FROM {self._table_name('checklist_answers')} WHERE template_item_id=%s"
-        if not self.use_postgres:
-            del_ans = del_ans.replace('%s', '?')
         self._execute(del_ans, (item_id,))
         query = f"DELETE FROM {self._table_name('checklist_templates')} WHERE id = %s"
-        if not self.use_postgres:
-            query = query.replace('%s', '?')
         self._execute(query, (item_id,))
 
     def create_session(self, user_full_name: str, filial_id: int, vsp_id: int, op_date, status='draft') -> int:
         query = f"INSERT INTO {self._table_name('checklist_sessions')} (user_name, filial_id, vsp_id, operation_date, status) VALUES (%s, %s, %s, %s, %s)"
-        if not self.use_postgres:
-            query = query.replace('%s', '?')
         if self.use_postgres:
             query += " RETURNING id"
             row = self._execute(query, (user_full_name, filial_id, vsp_id, op_date, status), fetch_one=True)
             return row['id'] if isinstance(row, dict) else row[0]
         else:
-            cur = self._get_cursor()
-            cur.execute(query, (user_full_name, filial_id, vsp_id, op_date, status))
+            cursor = self._get_cursor()
+            cursor.execute(query, (user_full_name, filial_id, vsp_id, op_date, status))
             self._get_connection().commit()
-            return cur.lastrowid
+            return cursor.lastrowid
 
     def check_user_by_name(self, name: str):
         try:
@@ -417,8 +409,6 @@ class DatabaseManager:
 
     def update_session_status(self, session_id: int, status: str):
         query = f"UPDATE {self._table_name('checklist_sessions')} SET status = %s WHERE id = %s"
-        if not self.use_postgres:
-            query = query.replace('%s', '?')
         self._execute(query, (status, session_id))
 
     def get_user_draft_sessions(self, full_name: str) -> pd.DataFrame:
