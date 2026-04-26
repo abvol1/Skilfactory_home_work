@@ -1,5 +1,3 @@
-from email.policy import default
-
 import streamlit as st
 import pandas as pd
 import sqlite3
@@ -9,6 +7,7 @@ from typing import List, Dict, Any, Optional
 import copy
 import os
 import time
+st.set_page_config(page_title="Чек-лист ВСП", layout="wide", initial_sidebar_state="expanded", page_icon="📋")
 
 # Добавляем импорт для работы с Excel
 try:
@@ -18,7 +17,7 @@ try:
     OPENPYXL_AVAILABLE = True
 except ImportError:
     OPENPYXL_AVAILABLE = False
-    print("OpenPyXL не установлен. Установите: pip install openpyxl")
+    st.write("OpenPyXL не установлен. Установите: pip install openpyxl")
 
 # Попробуем импортировать psycopg2
 try:
@@ -29,23 +28,23 @@ try:
     POSTGRES_AVAILABLE = True
 except ImportError:
     POSTGRES_AVAILABLE = False
-    print("Psycopg2 не установлен. Работаем в режиме SQLite.")
+    st.write("Psycopg2 не установлен. Работаем в режиме SQLite.")
 
 # ==============================================================================
 # 1. КОНФИГУРАЦИЯ
 # ==============================================================================
-USE_POSTGRES = False  # Переключите на True при работе с PostgreSQL
+USE_POSTGRES = True  # Переключите на True при работе с PostgreSQL
 
 PG_CONFIG = {
-    "host": "localhost",
-    "port": 5432,
-    "database": "checklist_db",
-    "user": "postgres",
-    "password": "password",
-    "schema": "public"
+    "host": "",
+    "port": ,
+    "database": "",
+    "user": "",
+    "password": "",
+    "schema": ""
 }
 
-SQLITE_PATH = "checklist_app.db"
+SQLITE_PATH = ""
 FORCE_RECREATE_DB = False
 ADMIN_PASSWORD = "admin123"
 
@@ -56,7 +55,7 @@ ADMIN_PASSWORD = "admin123"
 class DatabaseManager:
     def __init__(self):
         self.use_postgres = USE_POSTGRES and POSTGRES_AVAILABLE
-        self.schema = PG_CONFIG.get('schema', 'public') if self.use_postgres else None
+        self.schema = PG_CONFIG.get('', '') if self.use_postgres else None
 
     def get_connection(self):
         if self.use_postgres:
@@ -282,10 +281,16 @@ class DatabaseManager:
             f"SELECT id, item_order, description, additional_info, filter_value, events_value FROM {self._table_name('checklist_templates')} ORDER BY item_order")
 
     def add_template_item(self, description: str, additional_info: str, filter_value: str = "", events_value: str = ""):
-        next_order = self._execute(
-            f"SELECT COALESCE(MAX(item_order), 0) + 1 FROM {self._table_name('checklist_templates')}",
-            fetch_one=True
-        )[0]
+        row = self._execute(
+            f"SELECT COALESCE(MAX(item_order), 0) + 1 as next_order FROM {self._table_name('checklist_templates')}",fetch_one=True)
+        if row:
+            if isinstance(row,dict):
+                next_order=row['next_order']
+            else:
+                next_order=row[0]
+        else:
+            next_order=1
+        
         query = f"INSERT INTO {self._table_name('checklist_templates')} (section_name, item_order, description, additional_info, filter_value, events_value) VALUES (%s, %s, %s, %s, %s, %s)"
         if not self.use_postgres:
             query = query.replace('%s', '?')
@@ -299,6 +304,12 @@ class DatabaseManager:
         self._execute(query, (description, additional_info, filter_value, events_value, item_id))
 
     def delete_template_item(self, item_id: int):
+        #Cначала удалим связанные ответы
+        delete_answers_query=f"DELETE FROM {self._table_name('checklist_answers')} WHERE template_item_id=%s"
+        if not self.use_postgres:
+            delete_answers_query=delete_answers_query.replace('%s','?')
+        self._execute(delete_answers_query,(item_id,))
+        #Затем удаляем сам  шаблон
         query = f"DELETE FROM {self._table_name('checklist_templates')} WHERE id = %s"
         if not self.use_postgres:
             query = query.replace('%s', '?')
@@ -320,6 +331,14 @@ class DatabaseManager:
             conn.commit()
             conn.close()
             return session_id
+    def check_user_by_name(self, name: str):
+        query = f"SELECT full_name FROM {self._table_name('users')} WHERE LOWER(name) = LOWER(%s)"
+        if not self.use_postgres:
+            query = query.replace('%s', '?')
+        df = self._to_df(query, (name,))
+        if not df.empty:
+            return True, df.iloc[0]['full_name']
+        return False, None
 
     def update_session_status(self, session_id: int, status: str):
         query = f"UPDATE {self._table_name('checklist_sessions')} SET status = %s WHERE id = %s"
@@ -526,32 +545,97 @@ class DatabaseManager:
             """
         return self._to_df(query)
 
+    def get_user_sessions(self, user_name: str) -> pd.DataFrame:
+     """Получить все сессии пользователя (завершённые и черновики) с деталями"""
+     if self.use_postgres:
+        query = f"""
+            SELECT 
+                s.id,
+                s.operation_date as "Дата проверки",
+                f.name as "Филиал",
+                v.name as "ВСП",
+                CASE s.status 
+                    WHEN 'completed' THEN ' Завершена'
+                    WHEN 'draft' THEN ' Черновик'
+                    ELSE s.status
+                END as "Статус",
+                s.created_at as "Дата создания",
+                s.updated_at as "Дата обновления",
+                COUNT(a.id) as "Выполнено проверок",
+                (SELECT COUNT(*) FROM {self.schema}.checklist_templates) as "Всего проверок"
+            FROM {self.schema}.checklist_sessions s
+            JOIN {self.schema}.filials f ON s.filial_id = f.id
+            JOIN {self.schema}.vsp v ON s.vsp_id = v.id
+            LEFT JOIN {self.schema}.checklist_answers a ON s.id = a.session_id AND a.is_completed = true
+            WHERE s.user_name = %s
+            GROUP BY s.id, f.name, v.name, s.operation_date, s.status, s.created_at, s.updated_at
+            ORDER BY s.created_at DESC
+        """
+        return self._to_df(query, (user_name,))
+     else:
+        query = """
+            SELECT 
+                s.id,
+                s.operation_date as "Дата проверки",
+                f.name as "Филиал",
+                v.name as "ВСП",
+                CASE s.status 
+                    WHEN 'completed' THEN ' Завершена'
+                    WHEN 'draft' THEN ' Черновик'
+                    ELSE s.status
+                END as "Статус",
+                s.created_at as "Дата создания",
+                s.updated_at as "Дата обновления",
+                COUNT(a.id) as "Выполнено проверок",
+                (SELECT COUNT(*) FROM checklist_templates) as "Всего проверок"
+            FROM checklist_sessions s
+            JOIN filials f ON s.filial_id = f.id
+            JOIN vsp v ON s.vsp_id = v.id
+            LEFT JOIN checklist_answers a ON s.id = a.session_id AND a.is_completed = 1
+            WHERE s.user_name = ?
+            GROUP BY s.id
+            ORDER BY s.created_at DESC
+        """
+        return self._to_df(query, (user_name,))
+
 
 def export_to_excel(df: pd.DataFrame) -> bytes:
     if not OPENPYXL_AVAILABLE:
         st.error("Для экспорта в Excel необходимо установить openpyxl: pip install openpyxl")
         return None
-    output = pd.ExcelWriter('temp_export.xlsx', engine='openpyxl')
-    df.to_excel(output, sheet_name='Отчет по проверкам', index=False)
-    output.close()
-    with open('temp_export.xlsx', 'rb') as f:
-        excel_data = f.read()
-    os.remove('temp_export.xlsx')
-    return excel_data
+    temp_path="/tmp/temp_export.xlsx"
+    try:
+        
+        output = pd.ExcelWriter(temp_path, engine='openpyxl')
+        with output as writer:
+           df.to_excel(writer, sheet_name='Отчет по проверкам', index=False)
+        #output.close()
+        with open(temp_path, 'rb') as f:
+           excel_data = f.read()
+        #os.remove('temp_export.xlsx')
+        return excel_data
+    except Exception as e:
+        st.error(f"Ошибка: {e}")
+        return None
+    finally:
+       if os.path.exists(temp_path):
+          os.unlink(temp_path)
+
+
+
+
 
 
 # ==============================================================================
 # 3. ИНИЦИАЛИЗАЦИЯ
 # ==============================================================================
-st.set_page_config(page_title="Чек-лист ВСП", layout="wide", initial_sidebar_state="expanded", page_icon="📋")
-
-#ВАЖНО ИЗМЕНЕНИЕ УВЕЛИЧИТЬ ЧЕК БОКСЫ 4
+#ВАЖНО ИЗМЕНЕНИЕ УВЕЛИЧИТЬ ЧЕК БОКСЫ В 1,5 РАЗ!!!
 
 st.markdown("""
 <style>
     /* Увеличиваем размер чекбоксов */
     div[data-testid="stCheckbox"] label span {
-        transform: scale(1.5);
+        transform: scale(1.5); 
         margin-right: 12px;
     }
     /* Увеличиваем отступы для удобства клика */
@@ -642,6 +726,13 @@ if "data_loaded" not in st.session_state:
     st.session_state.data_loaded = False
 if "update_counter" not in st.session_state:
     st.session_state.update_counter = 0
+
+if "user_name" not in st.session_state:
+    st.session_state.user_name = ""
+if "user_full_name" not in st.session_state:
+    st.session_state.user_full_name = ""
+if "auth_valid" not in st.session_state:
+    st.session_state.auth_valid = False
 
 
 # Функция для загрузки последних данных пользователя при старте
@@ -751,7 +842,7 @@ with st.sidebar:
         with st.expander("➕ Добавить проверку"):
             new_desc = st.text_area("Наименование процедуры", key="new_desc", height=68, help="Обязательное поле")
             new_info = st.text_area("Описание процедуры", key="new_info", height=68, help="Пояснение к проверке")
-            #ВАЖНО ИЗМЕНЕНИЕ 2 ДЕЛАЕМ НЕ В СТРОЧНОМ ВИДЕ И В СПИСОЧНОМ МЕНЯЯ НЕ st.text_area
+            #ФИЛЬТР В ВИДЕ СПИСКА ВАЖНО!
             new_filter = st.text_area("🔍 Фильтр", key="new_filter",
                                        placeholder="Например: Статус: Активно, Периодичность: Ежедневно",
                                        help="Значение фильтра для этой проверки")
@@ -776,9 +867,10 @@ with st.sidebar:
                     x: f"ID {x} - {template_df[template_df['id'] == x]['description'].iloc[0][:50]}")
                 row = template_df[template_df['id'] == sel_id].iloc[0]
 
-                edit_desc = st.text_area("Наименование процедуры", value=row['description'], key="edit_desc", height=68)  #ВАЖНО ! ИЗМЕНЕНИЕ 3
+                edit_desc = st.text_area("Наименование процедуры", value=row['description'], key="edit_desc", height=68)
                 edit_info = st.text_area("Описание процедуры", value=row['additional_info'] or "", key="edit_info",
                                          height=68)
+                #ФИЛЬТР В ВИДЕ СПИСКА ВАЖНО!
                 edit_filter = st.text_area("🔍 Фильтр", value=row['filter_value'] or "", key="edit_filter",
                                             placeholder="Например: Статус: Активно, Периодичность: Ежедневно")
                 edit_events = st.text_area("📌 Мероприятия", value=row['events_value'] or "", key="edit_events",
@@ -824,20 +916,27 @@ with st.sidebar:
 # ==============================================================================
 # 5. ОСНОВНАЯ ЛОГИКА
 # ==============================================================================
-st.title("📋 Система контроля качества ВСП")
-st.caption("Заполнение чек-листа операционной проверки")
+st.title("📋 ")
+st.caption("Заполнение данных о пользователе чек-листа операционной проверки")
+
 
 # Шаг 0: Выбор действия (новая проверка или продолжение черновика)
 if st.session_state.step == 0:
-    # Проверяем наличие черновиков у пользователя
+    # Проверяем наличие черновиков 
     if st.session_state.user_name:
         drafts_df = db.get_user_draft_sessions(st.session_state.user_name)
+        #у пользователя и текущей системной даты (если дата текущая то можно дозаполнить черновик, а если наступила следующая дата то дозаполнение черновика невозможно)
+        #drafts_df['operation_date']=колонка с операционной датой в черновиках
+        #datetime.date.today()=текущая системная дата
+        
+        drafts_df=drafts_df[drafts_df['operation_date']== datetime.date.today()]
+        
     else:
         drafts_df = pd.DataFrame()
 
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.markdown("### 📝 Начать проверку")
+        #st.markdown("### 📝 Начать проверку")
 
         # Если есть черновики, показываем выбор
         if not drafts_df.empty:
@@ -846,7 +945,7 @@ if st.session_state.step == 0:
             # Выбор действия
             action = st.radio(
                 "Выберите действие:",
-                ["🆕 Начать новую проверку", "📂 Продолжить сохраненную проверку"],
+                ["📂 Продолжить сохраненную проверку"],
                 index=0
             )
 
@@ -872,7 +971,7 @@ if st.session_state.step == 0:
                         st.divider()
 
                 st.markdown("---")
-                st.markdown("#### Или начните новую проверку:")
+                #st.markdown("#### Или начните новую проверку:")
 
         # ФОРМА ДЛЯ НОВОЙ ПРОВЕРКИ (с полем ФИО, Филиал, ВСП, Дата)
         filials_df = db.get_filials()
@@ -881,44 +980,67 @@ if st.session_state.step == 0:
             filial_map = dict(zip(filials_df['name'], filials_df['id']))
 
             # ПОЛЕ ДЛЯ ВВОДА ФИО
-            user_name_input = st.text_input(
-                "👤 ФИО сотрудника",
+            user_name_raw = st.text_input(
+                "👤 Учетная запись сотрудника",
                 value=st.session_state.user_name,
-                placeholder="Введите вашу Фамилию Имя Отчество",
-                help="Пожалуйста, введите ваши полные ФИО",
-                key=f"user_name_input_field_{st.session_state.update_counter}"
+                placeholder="GO_IVANOV_AV",
+                help="Пожалуйста, введите вашу учетную запись",
+                key=f"user_name_raw_field_{st.session_state.update_counter}"
             )
 
-            # АВТОМАТИЧЕСКАЯ ПОДСТАНОВКА ФИЛИАЛА И ВСП ПРИ ИЗМЕНЕНИИ ФИО
-            if user_name_input and user_name_input != st.session_state.user_name:
-                # Пользователь ввел новое ФИО
-                st.session_state.user_name = user_name_input
-                st.session_state.data_loaded = False  # Сбрасываем флаг загрузки
-                # Получаем последние данные для этого пользователя
-                last_data = db.get_last_user_session_data(user_name_input)
-                if not last_data:
-                    last_data = db.get_last_user_any_session_data(user_name_input)
 
-                if last_data:
-                    # Подставляем последние филиал и ВСП
-                    st.session_state.last_filial_name = last_data['filial_name']
-                    st.session_state.last_vsp_name = last_data['vsp_name']
-                    st.session_state.last_filial_id = last_data['filial_id']
-                    st.session_state.last_vsp_id = last_data['vsp_id']
-                    # Обновляем выбранные значения
-                    st.session_state.selected_filial_id = last_data['filial_id']
-                    st.session_state.selected_vsp_id = last_data['vsp_id']
+            user_name_normalized = user_name_raw.lower().strip() if user_name_raw else ""
+
+            if user_name_normalized and user_name_normalized != st.session_state.user_name:
+                exists, full_name = db.check_user_by_name(user_name_normalized)
+                if exists:
+                    st.session_state.user_name = user_name_normalized
+                    st.session_state.user_full_name = full_name
+                    st.session_state.auth_valid = True
+                    st.toast(f" Добро пожаловать, {full_name}!", icon="✔️")
+           
+                    last_data = db.get_last_user_session_data(user_name_normalized)
+ # АВТОМАТИЧЕСКАЯ ПОДСТАНОВКА ФИЛИАЛА И ВСП ПРИ ИЗМЕНЕНИИ ФИО
+                    if last_data:
+                       # Подставляем последние филиал и ВСП
+                       st.session_state.last_filial_name = last_data['filial_name']
+                       st.session_state.last_vsp_name = last_data['vsp_name']
+                       st.session_state.last_filial_id = last_data['filial_id']
+                       st.session_state.last_vsp_id = last_data['vsp_id']
+                       # Обновляем выбранные значения
+                       st.session_state.selected_filial_id = last_data['filial_id']
+                       st.session_state.selected_vsp_id = last_data['vsp_id']
+                       st.session_state.update_counter+=1 #принудительно обновить интерфейс
+
+                    
+                       
+                    else:
+                       # Новый пользователь, сбрасываем последние значения
+                       st.session_state.last_filial_name = None
+                       st.session_state.last_vsp_name = None
+                       st.session_state.last_filial_id = None
+                       st.session_state.last_vsp_id = None
+                       st.session_state.selected_filial_id = None
+                       st.session_state.selected_vsp_id = None
+
+                    
                 else:
-                    # Новый пользователь, сбрасываем последние значения
-                    st.session_state.last_filial_name = None
-                    st.session_state.last_vsp_name = None
-                    st.session_state.last_filial_id = None
-                    st.session_state.last_vsp_id = None
-                    st.session_state.selected_filial_id = None
-                    st.session_state.selected_vsp_id = None
-                st.session_state.data_loaded = True
-                st.session_state.update_counter += 1
-                st.rerun()
+                    st.session_state.auth_valid = False
+                    st.session_state.user_name = ""
+                    st.session_state.user_full_name = ""
+                    st.toast("❌ Пользователь не найден", icon="❌")
+                #st.rerun()
+
+            if st.session_state.auth_valid:
+                #st.success(f"Вы вошли как: {st.session_state.user_full_name} ({st.session_state.user_name})")
+                nam=st.session_state.user_full_name
+                nam=nam.split()[1]
+                #st.success(f"Здравствуйте : {nam} прошу Вас укажите ниже свой ФИЛИАЛ И ВСП в дальнейшем эти данные автоматически будут определяться!")   ЭТО ОКНО ОСТАЕТСЯ НО ЕСТЬ st.toast - СООБЩЕНИЕ ПОКАЖЕТСЯ И ПРОПАДЕТ САМО СОБОЙ
+              
+
+
+
+
 
             # ОПРЕДЕЛЯЕМ ИНДЕКС ДЛЯ ФИЛИАЛА
             current_filial_index = 0
@@ -984,16 +1106,20 @@ if st.session_state.step == 0:
             st.stop()
 
         with st.form(key=f"session_form_{st.session_state.update_counter}"):
-            # Дата (всегда текущая)
+           # Дата (всегда текущая)
             op_date = st.date_input("📅 Дата", value=datetime.date.today(), format="DD.MM.YYYY", disabled=True) # ВАЖНО !ТАК ДАТУ НЕ ВИБРАТЬ  disabled=True
 
-
-            submitted = st.form_submit_button("▶️ НАЧАТЬ ЗАПОЛНЕНИЕ", type="primary", use_container_width=True)
+            submitted = st.form_submit_button(
+               "▶️ НАЧАТЬ ЗАПОЛНЕНИЕ",
+               type="primary",
+               use_container_width=True,
+               disabled=not st.session_state.auth_valid
+           )
 
             if submitted and selected_vsp_id:
-                if user_name_input and user_name_input.strip():
+                if user_name_raw and user_name_raw.strip():
                     # Обновляем имя пользователя в session_state
-                    st.session_state.user_name = user_name_input.strip()
+                    st.session_state.user_name = user_name_raw.strip()
                     # Сохраняем последние выбранные филиал и ВСП
                     st.session_state.last_filial_name = selected_filial_name
                     st.session_state.last_vsp_name = selected_vsp_name
@@ -1014,7 +1140,7 @@ if st.session_state.step == 0:
                     st.error("❌ Пожалуйста, введите ваше ФИО!")
 
 # Шаг 1: Заполнение чек-листа
-elif st.session_state.step == 1:
+if st.session_state.step == 1:
     if "current_session_id" not in st.session_state:
         st.error("Сессия не найдена")
         st.session_state.step = 0
@@ -1058,7 +1184,7 @@ elif st.session_state.step == 1:
         conn.close()
     except Exception as e:
         filial_name, vsp_name = "?", "?"
-        print(f"Error getting filial/vsp: {e}")
+        st.write(f"Error getting filial/vsp: {e}")
 
     st.subheader(f"📋 Чек-лист: {filial_name} / {vsp_name}")
 
@@ -1080,7 +1206,7 @@ elif st.session_state.step == 1:
     header_cols[0].markdown("**№**")
     header_cols[1].markdown("**Наименование проверки**")
     header_cols[2].markdown("**Доп. информация**")
-    header_cols[3].markdown("**Выполнено**")
+    header_cols[3].markdown("**Статус**")
     st.markdown("---")
 
     # Отображение всех проверок с ВСПЛЫВАЮЩИМ ОКНОМ (3 ПОЛЯ: Описание, Фильтр, Мероприятия)
@@ -1110,15 +1236,16 @@ elif st.session_state.step == 1:
 
                 with tab2:  # ВАЖНО ИЗМЕНЕНИЕ 1 -ЗАМЕНИТЬ ПОЛНОСТЬЮСЬ with tab2
                     st.markdown("**Фильтр:**")
+                    st.info(add_info if add_info else "Описание отсутствует")
                     if filter_text != "Не задан":
                         # ВАЖНО Показываем выбор даты, если в фильтре есть маркер [ДАТА]
-                        if "[ДАТА]" in filter_text:
+                        if "[Дата1]" in filter_text:
                             # ВАЖНОЕ ИЗМЕНЕНИЕ  Дата по умолчанию: вчера (на день меньше текущей)
                             default_date = datetime.date.today() - datetime.timedelta(days=1)
-                            selected_date = st.date_input("📅Выберите дату пред.раб.день", key=f"date_{item_id}",value=default_date,format="DD.MM.YYYY") #формат отображения в виджете
+                            selected_date = st.date_input("📅Выберите дату пред.раб.день (если были праздники или выходные)", key=f"date_{item_id}",value=default_date,format="DD.MM.YYYY") #формат отображения в виджете
 
                             date_str = selected_date.strftime("%d.%m.%y")
-                            filter_text = filter_text.replace("[ДАТА]", date_str)
+                            filter_text = filter_text.replace("[Дата1]", date_str)
                         else:
                             display_filter = filter_text
                             selected_date = None
@@ -1172,9 +1299,13 @@ elif st.session_state.step == 1:
             new_val = st.checkbox(" ", value=current, key=f"chk_{item_id}", label_visibility="collapsed")
             if new_val != current:
                 st.session_state.temp_answers[item_id] = new_val
-            st.markdown("🟢 Выполнено" if new_val else "⚪ Не выполнено")
-
-        st.markdown("---")
+           # st.markdown("✔️ Выполнено" if new_val else "⚪ Не выполнено")
+        
+#БОЛЕЕ ТОНКИЙ ОТСТУП ДЛЯ КОМПАКТНОСТИ
+       #st.markdown("---")
+        st.markdown("<hr style='margin: 2px 0; border: 0.5px solid #e0e0e0;'>",unsafe_allow_html=True)  
+                   
+       
 
     # Кнопки управления
     col_a, col_b, col_c, col_d = st.columns([1, 1, 1, 2])
@@ -1235,22 +1366,6 @@ elif st.session_state.step == 1:
             has_filters = any(row['filter_value'] for _, row in template_full.iterrows())
             has_events = any(row['events_value'] for _, row in template_full.iterrows())
 
-            if has_filters or has_events:
-                st.markdown("---")
-                st.markdown("#### 📋 Дополнительная информация (задана администратором):")
-
-                if has_filters:
-                    st.markdown("**🔍 Фильтры:**")
-                    for _, row in template_full.iterrows():
-                        if row['filter_value']:
-                            st.caption(f"• {row['description'][:50]}: {row['filter_value']}")
-
-                if has_events:
-                    st.markdown("**📌 Мероприятия:**")
-                    for _, row in template_full.iterrows():
-                        if row['events_value']:
-                            with st.expander(f"📌 {row['description'][:50]}"):
-                                st.write(row['events_value'])
 
     if col_d.button("✅ ЗАВЕРШИТЬ ПРОВЕРКУ", type="primary", use_container_width=True):
         completed_count = sum(1 for v in st.session_state.temp_answers.values() if v)
@@ -1258,15 +1373,23 @@ elif st.session_state.step == 1:
 
         if completed_count < total_count:
             # Просто показываем предупреждение, но не завершаем
-            st.warning(
-                f"⚠️ Выполнено только {completed_count} из {total_count} проверок. Заполните все проверки для завершения!")
-            time.sleep(2)
-            st.rerun()
+            #st.warning(
+                #f"⚠️ Выполнено только {completed_count} из {total_count} проверок. Заполните все проверки для завершения!")
+            #time.sleep(2)
+            #st.rerun()
+
+            #Показать всплывающее окно
+            st.toast(f"⚠️ Выполнено только {completed_count} из {total_count} проверок. Заполните все проверки для завершения!",icon="❗")
         else:
             # Все проверки выполнены - завершаем
             db.save_answers(session_id, st.session_state.temp_answers)
             db.update_session_status(session_id, 'completed')
             st.success("🎉 Отлично! Все проверки выполнены! Чек-лист успешно завершен!")
+            
+            nam=st.session_state.user_full_name
+            nam=nam.split()[1]
+            st.toast(f"🔥🔥🔥 Здравствуйте : {nam} в следующий раз Ваш ФИЛИАЛ И ВСП будут указаны автоматически!")
+            
             st.balloons()
             st.session_state.step = 0
             if "current_session_id" in st.session_state:
@@ -1277,3 +1400,51 @@ elif st.session_state.step == 1:
                 del st.session_state.resume_session_id
             time.sleep(2)
             st.rerun()
+else:  # step == 0 (показываем вкладки)
+    # Создаём две вкладки
+    tab_history,tab_main = st.tabs([" История проверок","."])
+    
+    with tab_main:
+        # СЮДА ВСТАВИТЬ ВЕСЬ СУЩЕСТВУЮЩИЙ КОД ШАГА 0 (без проверки на step == 0)
+        # Т.е. всё, что было внутри if st.session_state.step == 0: ... (кроме самой строки if)
+        # Например, начиная с "col1, col2, col3 = st.columns([1, 2, 1])" и до конца блока.
+    # Проверяем наличие черновиков у пользователя
+        col1, col2, col3 = st.columns([1, 2, 1])
+
+  
+    with tab_history:
+        st.markdown("###  История ваших проверок")
+        if st.session_state.user_name:
+            history_df = db.get_user_sessions(st.session_state.user_name)
+            if not history_df.empty:
+                # Показываем таблицу
+                st.dataframe(history_df, use_container_width=True, height=400)
+                
+                # Дополнительно: кнопка для просмотра деталей выбранной сессии
+                selected_session_id = st.selectbox(
+                    "Выберите сессию для просмотра деталей",
+                    options=history_df['id'].tolist(),
+                    format_func=lambda x: f"Сессия #{x} - {history_df[history_df['id']==x]['Дата проверки'].iloc[0]}"
+                )
+                if selected_session_id:
+                    if st.button(" Показать результаты", key="view_session"):
+                        # Загружаем данные сессии и показываем в popover или expander
+                        session_data = db.get_session_data(selected_session_id)
+                        if session_data:
+                            with st.expander(f"Результаты проверки #{selected_session_id}", expanded=True):
+                                st.markdown(f"**Дата:** {session_data['info']['operation_date']}")
+                                st.markdown(f"**Статус:** {'✔️ Завершена' if session_data['info']['status']=='completed' else '📄 Черновик'}")
+                                # Получаем шаблон и ответы
+                                template_df = db.get_checklist_template()
+                                answers=session_data['answers']
+                                st.markdown("**Проверки:**")
+                                for _, row in template_df.iterrows():
+                                    is_completed = answers.get(row['id'], False)
+                                    status_icon = "✔️" if is_completed else "❌"
+                                    st.markdown(f"{status_icon} {row['description']}")
+                        else:
+                            st.error("Не удалось загрузить данные сессии")
+            else:
+                st.info("У вас пока нет завершённых проверок.")
+        else:
+            st.warning("Пожалуйста, введите вашу учетную запись, чтобы увидеть историю.")
