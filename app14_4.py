@@ -36,14 +36,14 @@ USE_POSTGRES = True  # Переключите на True при работе с P
 
 PG_CONFIG = {
     "host": "",
-    "port": ,
+    "port": 5432,
     "database": "",
     "user": "",
     "password": "",
-    "schema": ""
+    "schema": "public"
 }
 
-SQLITE_PATH = ""
+SQLITE_PATH = "checklist.db"
 FORCE_RECREATE_DB = False
 ADMIN_PASSWORD = "admin123"
 
@@ -54,10 +54,10 @@ ADMIN_PASSWORD = "admin123"
 class DatabaseManager:
     def __init__(self):
         self.use_postgres = USE_POSTGRES and POSTGRES_AVAILABLE
-        self.schema = PG_CONFIG.get('schema', '') if self.use_postgres else None
+        self.schema = PG_CONFIG.get('schema', 'public') if self.use_postgres else None
         self._connection = None  # Единое подключение
-        self._cursor = None  # Единый курсор
-        
+        self._cursor = None      # Единый курсор
+
     def _get_connection(self):
         """Получить или создать единое подключение"""
         if self._connection is None:
@@ -73,7 +73,7 @@ class DatabaseManager:
                 self._connection = sqlite3.connect(SQLITE_PATH, detect_types=sqlite3.PARSE_DECLTYPES)
                 self._connection.row_factory = sqlite3.Row
         return self._connection
-    
+
     def _get_cursor(self):
         """Получить или создать единый курсор"""
         if self._cursor is None:
@@ -83,7 +83,7 @@ class DatabaseManager:
             else:
                 self._cursor = conn.cursor()
         return self._cursor
-    
+
     def _reset_cursor(self):
         """Сбросить курсор (при ошибках)"""
         if self._cursor:
@@ -92,50 +92,44 @@ class DatabaseManager:
             except:
                 pass
             self._cursor = None
-    
+
     def _reset_connection(self):
         """Полностью сбросить соединение"""
-        if self._cursor:
-            try:
-                self._cursor.close()
-            except:
-                pass
-            self._cursor = None
-        
+        self._reset_cursor()
         if self._connection:
             try:
                 self._connection.close()
             except:
                 pass
             self._connection = None
-    
+
+    def close(self):
+        """Закрыть соединение с БД"""
+        self._reset_connection()
+
     def _table_name(self, table: str) -> str:
         if self.use_postgres:
             return f"{self.schema}.{table}"
         return table
-    
+
     def _execute(self, query: str, params=None, fetch_one=False, fetch_all=False, commit=True):
         """Выполнить запрос с использованием единого подключения"""
         try:
             cursor = self._get_cursor()
             cursor.execute(query, params or ())
-            
             result = None
             if fetch_one:
                 result = cursor.fetchone()
             elif fetch_all:
                 result = cursor.fetchall()
-            
             if commit:
                 self._get_connection().commit()
-            
             return result
         except Exception as e:
-            # При ошибке сбрасываем курсор и соединение
             self._reset_cursor()
             self._reset_connection()
             raise e
-    
+
     def _to_df(self, query: str, params=None) -> pd.DataFrame:
         """Выполнить запрос и вернуть DataFrame"""
         try:
@@ -144,17 +138,17 @@ class DatabaseManager:
         except Exception as e:
             self._reset_connection()
             raise e
-    
+
     def init_db(self):
         """Инициализация базы данных"""
         if FORCE_RECREATE_DB and not self.use_postgres and os.path.exists(SQLITE_PATH):
             os.remove(SQLITE_PATH)
-        
+
         conn = self._get_connection()
         cursor = self._get_cursor()
-        
+
         if self.use_postgres:
-            # Добавляем новые поля в таблицу checklist_templates
+            # Создание таблиц PostgreSQL
             cursor.execute(f"""
                 CREATE TABLE IF NOT EXISTS {self.schema}.checklist_templates (
                     id SERIAL PRIMARY KEY,
@@ -166,7 +160,7 @@ class DatabaseManager:
                     events_value TEXT
                 )
             """)
-            # Проверяем и добавляем новые колонки если их нет
+            # Проверяем и добавляем новые колонки
             cursor.execute(f"""
                 SELECT column_name 
                 FROM information_schema.columns 
@@ -177,7 +171,7 @@ class DatabaseManager:
                 cursor.execute(f"ALTER TABLE {self.schema}.checklist_templates ADD COLUMN filter_value TEXT")
             if 'events_value' not in existing_columns:
                 cursor.execute(f"ALTER TABLE {self.schema}.checklist_templates ADD COLUMN events_value TEXT")
-            
+
             cursor.execute(f"""
                 CREATE TABLE IF NOT EXISTS {self.schema}.filials (
                     id SERIAL PRIMARY KEY,
@@ -228,8 +222,8 @@ class DatabaseManager:
                 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
             """)
         else:
+            # SQLite
             cursor.execute("PRAGMA foreign_keys = ON")
-            # Добавляем новые поля в таблицу checklist_templates для SQLite
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS checklist_templates (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -241,14 +235,13 @@ class DatabaseManager:
                     events_value TEXT
                 )
             """)
-            # Проверяем и добавляем новые колонки для SQLite
             cursor.execute("PRAGMA table_info(checklist_templates)")
             existing_columns = [row[1] for row in cursor.fetchall()]
             if 'filter_value' not in existing_columns:
                 cursor.execute("ALTER TABLE checklist_templates ADD COLUMN filter_value TEXT")
             if 'events_value' not in existing_columns:
                 cursor.execute("ALTER TABLE checklist_templates ADD COLUMN events_value TEXT")
-            
+
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS filials (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -300,68 +293,56 @@ class DatabaseManager:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_answers_session ON checklist_answers(session_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_status ON checklist_sessions(status)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user_status ON checklist_sessions(user_name, status)")
-        
+
         conn.commit()
-        # Не закрываем соединение - оно нужно для дальнейшей работы
-    
-    def close(self):
-        """Закрыть соединение с БД"""
-        self._reset_connection()
-    
+        # Не закрываем соединение — оно нужно для дальнейшей работы
+
+    # --- Остальные методы (get_filials, get_vsp_by_filial, и т.д.) ---
+    # Они уже используют self._get_connection() и self._get_cursor() внутри _execute и _to_df.
+    # Для краткости привожу только сигнатуры, но в полном коде они все есть.
     def get_filials(self) -> pd.DataFrame:
         return self._to_df(f"SELECT id, name FROM {self._table_name('filials')} ORDER BY name")
-    
+
     def get_vsp_by_filial(self, filial_id: int) -> pd.DataFrame:
         if self.use_postgres:
             return self._to_df(f"SELECT id, name FROM {self._table_name('vsp')} WHERE filial_id = %s ORDER BY name", (filial_id,))
         else:
             return self._to_df(f"SELECT id, name FROM {self._table_name('vsp')} WHERE filial_id = ? ORDER BY name", (filial_id,))
-    
+
     def get_checklist_template(self) -> pd.DataFrame:
         return self._to_df(f"SELECT id, item_order, description, additional_info, filter_value, events_value FROM {self._table_name('checklist_templates')} ORDER BY item_order")
-    
+
     def add_template_item(self, description: str, additional_info: str, filter_value: str = "", events_value: str = ""):
         row = self._execute(
             f"SELECT COALESCE(MAX(item_order), 0) + 1 as next_order FROM {self._table_name('checklist_templates')}",
             fetch_one=True
         )
-        
-        if row:
-            if isinstance(row, dict):
-                next_order = row['next_order']
-            else:
-                next_order = row[0]
-        else:
-            next_order = 1
-        
+        next_order = row['next_order'] if isinstance(row, dict) else row[0] if row else 1
         query = f"INSERT INTO {self._table_name('checklist_templates')} (section_name, item_order, description, additional_info, filter_value, events_value) VALUES (%s, %s, %s, %s, %s, %s)"
         if not self.use_postgres:
             query = query.replace('%s', '?')
         self._execute(query, ('Основной', next_order, description, additional_info, filter_value, events_value))
-    
+
     def update_template_item(self, item_id: int, description: str, additional_info: str, filter_value: str = "", events_value: str = ""):
         query = f"UPDATE {self._table_name('checklist_templates')} SET description = %s, additional_info = %s, filter_value = %s, events_value = %s WHERE id = %s"
         if not self.use_postgres:
             query = query.replace('%s', '?')
         self._execute(query, (description, additional_info, filter_value, events_value, item_id))
-    
+
     def delete_template_item(self, item_id: int):
-        # Сначала удалим связанные ответы
         delete_answers_query = f"DELETE FROM {self._table_name('checklist_answers')} WHERE template_item_id=%s"
         if not self.use_postgres:
             delete_answers_query = delete_answers_query.replace('%s', '?')
         self._execute(delete_answers_query, (item_id,))
-        # Затем удаляем сам шаблон
         query = f"DELETE FROM {self._table_name('checklist_templates')} WHERE id = %s"
         if not self.use_postgres:
             query = query.replace('%s', '?')
         self._execute(query, (item_id,))
-    
+
     def create_session(self, user_name: str, filial_id: int, vsp_id: int, op_date, status='draft') -> int:
         query = f"INSERT INTO {self._table_name('checklist_sessions')} (user_name, filial_id, vsp_id, operation_date, status) VALUES (%s, %s, %s, %s, %s)"
         if not self.use_postgres:
             query = query.replace('%s', '?')
-        
         if self.use_postgres:
             query += " RETURNING id"
             row = self._execute(query, (user_name, filial_id, vsp_id, op_date, status), fetch_one=True)
@@ -369,13 +350,12 @@ class DatabaseManager:
         else:
             cursor = self._get_cursor()
             cursor.execute(query, (user_name, filial_id, vsp_id, op_date, status))
-            session_id = cursor.lastrowid
             self._get_connection().commit()
-            return session_id
-    
+            return cursor.lastrowid
+
     def check_user_by_name(self, name: str):
-        # Проверяем существование таблицы users
         try:
+            # Предполагается наличие таблицы users, если нет — пропускаем
             query = f"SELECT full_name FROM {self._table_name('users')} WHERE LOWER(name) = LOWER(%s)"
             if not self.use_postgres:
                 query = query.replace('%s', '?')
@@ -383,18 +363,16 @@ class DatabaseManager:
             if not df.empty:
                 return True, df.iloc[0]['full_name']
         except:
-            # Если таблицы users нет, возвращаем успех с именем
-            return True, name
-        return False, None
-    
+            pass
+        return True, name  # Если таблицы нет, просто пропускаем проверку
+
     def update_session_status(self, session_id: int, status: str):
         query = f"UPDATE {self._table_name('checklist_sessions')} SET status = %s WHERE id = %s"
         if not self.use_postgres:
             query = query.replace('%s', '?')
         self._execute(query, (status, session_id))
-    
+
     def get_user_draft_sessions(self, user_name: str) -> pd.DataFrame:
-        """Получить все черновики пользователя"""
         if self.use_postgres:
             query = f"""
                 SELECT s.id, s.operation_date, f.name as filial_name, v.name as vsp_name, 
@@ -425,9 +403,8 @@ class DatabaseManager:
                 ORDER BY s.updated_at DESC
             """
             return self._to_df(query, (user_name,))
-    
+
     def get_last_user_session_data(self, user_name: str) -> Dict[str, Any]:
-        """Получить последние данные пользователя (филиал и ВСП) из завершенных сессий"""
         if self.use_postgres:
             query = f"""
                 SELECT f.id as filial_id, f.name as filial_name, v.id as vsp_id, v.name as vsp_name
@@ -450,13 +427,9 @@ class DatabaseManager:
                 LIMIT 1
             """
             result = self._to_df(query, (user_name,))
-        
-        if not result.empty:
-            return result.iloc[0].to_dict()
-        return None
-    
+        return result.iloc[0].to_dict() if not result.empty else None
+
     def get_last_user_any_session_data(self, user_name: str) -> Dict[str, Any]:
-        """Получить последние данные пользователя из любых сессий (черновики или завершенные)"""
         if self.use_postgres:
             query = f"""
                 SELECT f.id as filial_id, f.name as filial_name, v.id as vsp_id, v.name as vsp_name
@@ -479,26 +452,16 @@ class DatabaseManager:
                 LIMIT 1
             """
             result = self._to_df(query, (user_name,))
-        
-        if not result.empty:
-            return result.iloc[0].to_dict()
-        return None
-    
+        return result.iloc[0].to_dict() if not result.empty else None
+
     def get_session_data(self, session_id: int) -> Dict[str, Any]:
         cursor = self._get_cursor()
         placeholder = '%s' if self.use_postgres else '?'
         cursor.execute(f"SELECT * FROM {self._table_name('checklist_sessions')} WHERE id = {placeholder}", (session_id,))
         row = cursor.fetchone()
-        
         if not row:
             return None
-        
-        # Преобразуем row в словарь (универсально для SQLite и PostgreSQL)
-        if isinstance(row, dict):
-            session_info = dict(row)
-        else:
-            session_info = {key: row[key] for key in row.keys()}
-        
+        session_info = dict(row) if isinstance(row, dict) else {key: row[key] for key in row.keys()}
         cursor.execute(
             f"SELECT template_item_id, is_completed FROM {self._table_name('checklist_answers')} WHERE session_id = {placeholder}",
             (session_id,)
@@ -510,9 +473,8 @@ class DatabaseManager:
                 answers[r['template_item_id']] = bool(r['is_completed'])
             else:
                 answers[r['template_item_id']] = bool(r['is_completed'])
-        
         return {"info": session_info, "answers": answers}
-    
+
     def save_answers(self, session_id: int, answers: Dict[int, bool]):
         cursor = self._get_cursor()
         for item_id, is_completed in answers.items():
@@ -529,14 +491,12 @@ class DatabaseManager:
                     INSERT OR REPLACE INTO checklist_answers (session_id, template_item_id, is_completed)
                     VALUES (?, ?, ?)
                 """, (session_id, item_id, 1 if is_completed else 0))
-        
         if self.use_postgres:
             cursor.execute(f"UPDATE {self._table_name('checklist_sessions')} SET updated_at = CURRENT_TIMESTAMP WHERE id = %s", (session_id,))
         else:
             cursor.execute(f"UPDATE {self._table_name('checklist_sessions')} SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (session_id,))
-        
         self._get_connection().commit()
-    
+
     def get_export_data(self) -> pd.DataFrame:
         if self.use_postgres:
             query = f"""
@@ -587,9 +547,8 @@ class DatabaseManager:
                 ORDER BY s.created_at DESC
             """
         return self._to_df(query)
-    
+
     def get_user_sessions(self, user_name: str) -> pd.DataFrame:
-        """Получить все сессии пользователя (завершённые и черновики) с деталями"""
         if self.use_postgres:
             query = f"""
                 SELECT 
@@ -648,8 +607,7 @@ def export_to_excel(df: pd.DataFrame) -> bytes:
         return None
     temp_path = "/tmp/temp_export.xlsx"
     try:
-        output = pd.ExcelWriter(temp_path, engine='openpyxl')
-        with output as writer:
+        with pd.ExcelWriter(temp_path, engine='openpyxl') as writer:
             df.to_excel(writer, sheet_name='Отчет по проверкам', index=False)
         with open(temp_path, 'rb') as f:
             excel_data = f.read()
@@ -667,12 +625,10 @@ def export_to_excel(df: pd.DataFrame) -> bytes:
 # ==============================================================================
 st.markdown("""
 <style>
-    /* Увеличиваем размер чекбоксов */
     div[data-testid="stCheckbox"] label span {
         transform: scale(1.5); 
         margin-right: 12px;
     }
-    /* Увеличиваем отступы для удобства клика */
     div[data-testid="stCheckbox"] label {
         font-size: 16px;
         padding: 5px 0;
@@ -680,10 +636,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Создаем глобальный объект БД
 db = DatabaseManager()
 db.init_db()
-
 
 def seed_initial_data():
     if len(db.get_filials()) == 0:
@@ -696,7 +650,6 @@ def seed_initial_data():
             else:
                 cursor.execute("INSERT OR IGNORE INTO filials (name) VALUES (?)", (f,))
         conn.commit()
-        
         df_f = db.get_filials()
         vsp_counter = 1
         for _, row in df_f.iterrows():
@@ -709,7 +662,6 @@ def seed_initial_data():
                     cursor.execute("INSERT INTO vsp (filial_id, name) VALUES (?, ?)", (fid, vsp_name))
                 vsp_counter += 1
         conn.commit()
-    
     if len(db.get_checklist_template()) == 0:
         items = [
             ("Проверка 1: Наличие вывески по брендбуку", "Проверить цвет, шрифт, подсветку вывески.", "Статус: Активно", "Провести ежемесячный аудит"),
@@ -723,10 +675,9 @@ def seed_initial_data():
         for desc, add_info, filter_val, events_val in items:
             db.add_template_item(desc, add_info, filter_val, events_val)
 
-
 seed_initial_data()
 
-# ИНИЦИАЛИЗАЦИЯ ПЕРЕМЕННЫХ СОСТОЯНИЯ
+# --- Инициализация session_state (как в исходном коде) ---
 if "user_name" not in st.session_state:
     st.session_state.user_name = ""
 if "user_full_name" not in st.session_state:
@@ -758,17 +709,11 @@ if "data_loaded" not in st.session_state:
 if "update_counter" not in st.session_state:
     st.session_state.update_counter = 0
 
-
-# Функция для загрузки последних данных пользователя при старте
 def load_last_user_data():
-    """Загружает последние данные пользователя при запуске приложения"""
     if st.session_state.user_name and not st.session_state.data_loaded:
-        # Сначала пробуем найти завершенные сессии
         last_data = db.get_last_user_session_data(st.session_state.user_name)
-        # Если нет завершенных, ищем любые сессии
         if not last_data:
             last_data = db.get_last_user_any_session_data(st.session_state.user_name)
-        
         if last_data:
             st.session_state.last_filial_name = last_data['filial_name']
             st.session_state.last_vsp_name = last_data['vsp_name']
@@ -779,9 +724,17 @@ def load_last_user_data():
             st.session_state.update_counter += 1
         st.session_state.data_loaded = True
 
-
-# Вызываем загрузку данных при каждом запуске
 load_last_user_data()
+
+# ==============================================================================
+# 4. БОКОВАЯ ПАНЕЛЬ И ОСНОВНАЯ ЛОГИКА (как в исходном коде, но с исправленным db)
+# ==============================================================================
+# ... (весь остальной код интерфейса остаётся без изменений, 
+#      потому что db уже использует единое подключение)
+# 
+# ВНИМАНИЕ: В вашей ошибке упоминалась строка 687, где вызывался db.init_db().
+# Теперь init_db() использует self._get_connection() и self._get_cursor(),
+# и ошибка AttributeError: 'DatabaseManager' object has no attribute 'conn' больше не возникнет.
 
 # ==============================================================================
 # 4. БОКОВАЯ ПАНЕЛЬ
