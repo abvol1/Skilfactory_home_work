@@ -145,7 +145,8 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS {self.schema}.users (
                     id SERIAL PRIMARY KEY,
                     name VARCHAR(255) UNIQUE NOT NULL,
-                    full_name VARCHAR(255) NOT NULL
+                    full_name VARCHAR(255) NOT NULL,
+                    name_filial VARCHAR(255)
                 )
             """)
             cursor.execute(f"""
@@ -213,7 +214,8 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT UNIQUE NOT NULL,
-                    full_name TEXT NOT NULL
+                    full_name TEXT NOT NULL,
+                    name_filial TEXT
                 )
             """)
             
@@ -325,7 +327,7 @@ class DatabaseManager:
             print(f"Ошибка миграции: {e}")
 
     def _add_sample_users(self):
-        """Добавление тестовых пользователей"""
+        """Добавление тестовых пользователей с филиалами"""
         try:
             if self.use_postgres:
                 cursor = self._get_cursor()
@@ -333,13 +335,14 @@ class DatabaseManager:
                 count = cursor.fetchone()['cnt']
                 if count == 0:
                     users = [
-                        ('go_ivanov_av', 'Иванов Александр Владимирович'),
-                        ('go_petrov_iv', 'Петров Игорь Викторович'),
-                        ('go_sidorov_nn', 'Сидоров Николай Николаевич'),
-                        ('test_user', 'Тестовый Пользователь'),
+                        ('go_ivanov_av', 'Иванов Александр Владимирович', 'Центральный офис'),
+                        ('go_petrov_iv', 'Петров Игорь Викторович', 'Филиал Север'),
+                        ('go_sidorov_nn', 'Сидоров Николай Николаевич', 'Филиал Юг'),
+                        ('test_user', 'Тестовый Пользователь', 'Центральный офис'),
                     ]
-                    for name, full_name in users:
-                        cursor.execute(f"INSERT INTO {self.schema}.users (name, full_name) VALUES (%s, %s)", (name, full_name))
+                    for name, full_name, filial in users:
+                        cursor.execute(f"INSERT INTO {self.schema}.users (name, full_name, name_filial) VALUES (%s, %s, %s)", 
+                                     (name, full_name, filial))
                     self._get_connection().commit()
             else:
                 cursor = self._get_cursor()
@@ -347,13 +350,14 @@ class DatabaseManager:
                 count = cursor.fetchone()[0]
                 if count == 0:
                     users = [
-                        ('go_ivanov_av', 'Иванов Александр Владимирович'),
-                        ('go_petrov_iv', 'Петров Игорь Викторович'),
-                        ('go_sidorov_nn', 'Сидоров Николай Николаевич'),
-                        ('test_user', 'Тестовый Пользователь'),
+                        ('go_ivanov_av', 'Иванов Александр Владимирович', 'Центральный офис'),
+                        ('go_petrov_iv', 'Петров Игорь Викторович', 'Филиал Север'),
+                        ('go_sidorov_nn', 'Сидоров Николай Николаевич', 'Филиал Юг'),
+                        ('test_user', 'Тестовый Пользователь', 'Центральный офис'),
                     ]
-                    for name, full_name in users:
-                        cursor.execute("INSERT INTO users (name, full_name) VALUES (?, ?)", (name, full_name))
+                    for name, full_name, filial in users:
+                        cursor.execute("INSERT INTO users (name, full_name, name_filial) VALUES (?, ?, ?)", 
+                                     (name, full_name, filial))
                     self._get_connection().commit()
         except Exception as e:
             print(f"Ошибка добавления пользователей: {e}")
@@ -425,22 +429,24 @@ class DatabaseManager:
             return cursor.lastrowid
 
     def check_user_by_name(self, name: str):
-        """Проверка существования пользователя и получение ФИО"""
+        """Проверка существования пользователя, получение ФИО и филиала"""
         try:
             if self.use_postgres:
-                query = f"SELECT full_name FROM {self.schema}.users WHERE LOWER(name) = LOWER(%s)"
+                query = f"SELECT full_name, name_filial FROM {self.schema}.users WHERE LOWER(name) = LOWER(%s)"
                 result = self._to_df(query, (name,))
             else:
-                query = f"SELECT full_name FROM users WHERE LOWER(name) = LOWER(?)"
+                query = f"SELECT full_name, name_filial FROM users WHERE LOWER(name) = LOWER(?)"
                 result = self._to_df(query, (name,))
             
             if not result.empty:
-                return True, result.iloc[0]['full_name']
+                full_name = result.iloc[0]['full_name']
+                filial = result.iloc[0]['name_filial'] if 'name_filial' in result.columns else None
+                return True, full_name, filial
             else:
-                return False, None
+                return False, None, None
         except Exception as e:
             print(f"Ошибка проверки пользователя: {e}")
-            return False, None
+            return False, None, None
 
     def update_session_status(self, session_id: int, status: str):
         query = f"UPDATE {self._table_name('checklist_sessions')} SET status = %s WHERE id = %s"
@@ -799,12 +805,16 @@ def load_last_user_data():
         if not last_data:
             last_data = db.get_last_user_any_session_data(st.session_state.user_full_name)
         if last_data:
-            st.session_state.last_filial_name = last_data['filial_name']
+            if not st.session_state.last_filial_name:
+                st.session_state.last_filial_name = last_data['filial_name']
             st.session_state.last_vsp_name = last_data['vsp_name']
-            st.session_state.last_filial_id = last_data['filial_id']
             st.session_state.last_vsp_id = last_data['vsp_id']
-            st.session_state.selected_filial_id = last_data['filial_id']
-            st.session_state.selected_vsp_id = last_data['vsp_id']
+            if not st.session_state.selected_vsp_id:
+                st.session_state.selected_vsp_id = last_data['vsp_id']
+            if not st.session_state.selected_filial_id:
+                st.session_state.selected_filial_id = last_data['filial_id']
+            if not st.session_state.last_filial_id:
+                st.session_state.last_filial_id = last_data['filial_id']
             st.session_state.update_counter += 1
         st.session_state.data_loaded = True
 
@@ -967,21 +977,34 @@ with tab_main:
 
                 # Проверка пользователя при изменении ввода
                 if user_name_normalized and user_name_normalized != st.session_state.user_name and not st.session_state.auth_valid:
-                    exists, full_name = db.check_user_by_name(user_name_normalized)
+                    exists, full_name, user_filial = db.check_user_by_name(user_name_normalized)
                     if exists:
                         st.session_state.user_name = user_name_normalized
                         st.session_state.user_full_name = full_name
                         st.session_state.auth_valid = True
+                        
+                        # Если у пользователя есть филиал в БД, подставляем его
+                        if user_filial and user_filial in filial_names:
+                            st.session_state.last_filial_name = user_filial
+                            st.session_state.selected_filial_id = filial_map[user_filial]
+                            st.session_state.last_filial_id = filial_map[user_filial]
+                            st.session_state.update_counter += 1
+                        
                         st.success(f"✅ Добро пожаловать, {full_name}!")
                         
+                        # Загружаем последние данные пользователя по ФИО
                         last_data = db.get_last_user_session_data(full_name)
                         if last_data:
-                            st.session_state.last_filial_name = last_data['filial_name']
+                            if not st.session_state.last_filial_name:
+                                st.session_state.last_filial_name = last_data['filial_name']
                             st.session_state.last_vsp_name = last_data['vsp_name']
-                            st.session_state.last_filial_id = last_data['filial_id']
                             st.session_state.last_vsp_id = last_data['vsp_id']
-                            st.session_state.selected_filial_id = last_data['filial_id']
-                            st.session_state.selected_vsp_id = last_data['vsp_id']
+                            if not st.session_state.selected_vsp_id:
+                                st.session_state.selected_vsp_id = last_data['vsp_id']
+                            if not st.session_state.selected_filial_id:
+                                st.session_state.selected_filial_id = last_data['filial_id']
+                            if not st.session_state.last_filial_id:
+                                st.session_state.last_filial_id = last_data['filial_id']
                             st.session_state.update_counter += 1
                         st.rerun()
                     else:
@@ -1070,7 +1093,7 @@ with tab_main:
                         
                         if submitted and selected_vsp_id:
                             session_id = db.create_session(
-                                st.session_state.user_full_name,  # Сохраняем ФИО в БД
+                                st.session_state.user_full_name,
                                 selected_filial_id,
                                 selected_vsp_id,
                                 op_date,
