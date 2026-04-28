@@ -1,3 +1,37 @@
+with st.expander("Загрузить файл с пользователями (упрощённо)"):
+    uploaded_file = st.file_uploader("Выберите Excel", type=["xlsx", "xls"])
+    if uploaded_file:
+        df = pd.read_excel(uploaded_file)
+        if 'name' in df.columns and 'full_name' in df.columns and 'name_filial' in df.columns:
+            if st.button("Импортировать"):
+                for _, row in df.iterrows():
+                    login = str(row['name']).strip().lower()
+                    full_name = str(row['full_name']).strip()
+                    name_filial = str(row['name_filial']).strip()   # уже номер филиала
+                    db._execute(f"""
+                        INSERT INTO {db._table_name('users')} (name, full_name, name_filial)
+                        VALUES (%s, %s, %s)
+                        ON CONFLICT (name) DO UPDATE SET
+                            full_name = EXCLUDED.full_name,
+                            name_filial = EXCLUDED.name_filial
+                    """, (login, full_name, name_filial))
+                st.success("Импорт завершён")
+        else:
+            st.error("В файле должны быть колонки: name, full_name, name_filial")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 
