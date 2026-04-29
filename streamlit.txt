@@ -1,170 +1,86 @@
-    st.markdown("### ✅ Список проверок")
-    
-    # Стили для таблицы
-    st.markdown("""
-    <style>
-    /* Обёртка всей таблицы */
-    .checklist-grid {
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        overflow: hidden;
-    }
-    /* Строка таблицы (flex-контейнер) */
-    .grid-row {
+st.markdown("### ✅ Список проверок")
+
+# CSS для табличного вида
+st.markdown("""
+<style>
+    .table-row {
         display: flex;
-        border-bottom: 1px solid #e0e0e0;
+        border-bottom: 1px solid #ccc;
     }
-    .grid-row:last-child {
-        border-bottom: none;
+    .table-row > div {
+        border-right: 1px solid #ccc;
+        padding: 8px 6px;
     }
-    /* Заголовочная строка */
-    .grid-header {
-        background-color: #f2f4f8;
-        font-weight: 600;
-        border-bottom: 2px solid #d0d5dc;
-    }
-    /* Ячейка */
-    .grid-cell {
-        padding: 8px 8px;
-        border-right: 1px solid #e0e0e0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    .grid-cell:last-child {
+    .table-row > div:last-child {
         border-right: none;
     }
-    /* Ширина колонок (должна совпадать с параметром columns в st.columns) */
+    .table-header {
+        background-color: #f0f2f6;
+        font-weight: bold;
+        border-bottom: 2px solid #aaa;
+    }
+    /* чередование фона строк */
+    .table-row:nth-child(even) {
+        background-color: #f9fafb;
+    }
     .col-order { width: 60px; text-align: center; }
-    .col-desc  { flex: 5; }
-    .col-info  { width: 130px; text-align: center; }
-    .col-status{ width: 85px; text-align: center; }
-    /* Чередование фона */
-    .grid-row:not(.grid-header):nth-child(even) {
-        background-color: #fafbfc;
-    }
-    /* Выравнивание содержимого внутри ячеек (для st.columns) */
-    .stColumn > div {
-        width: 100%;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # Заголовки – создаём такую же flex-структуру, как у строк, но через st.columns
-    st.markdown('<div class="checklist-grid">', unsafe_allow_html=True)
-    with st.container():
-        cols = st.columns([0.6, 5, 1.3, 0.9])
-        cols[0].markdown("**№**")
-        cols[1].markdown("**Наименование проверки**")
-        cols[2].markdown("**Доп. информация**")
-        cols[3].markdown("**Статус**")
-    # Нижняя граница заголовка (стилизуем через дополнительный div)
-    st.markdown('<div style="border-bottom: 2px solid #d0d5dc; margin-top: -8px;"></div>', unsafe_allow_html=True)
-    
-    # Выводим строки
-    for idx, row in template.iterrows():
-        item_id = row['id']
-        order = row['item_order']
-        desc = row['description']
-        add_info = row['additional_info']
-        filter_text = row['filter_value'] if row['filter_value'] else "Не задан"
-        events_text = row['events_value'] if row['events_value'] else "Не заданы"
-        current = st.session_state.temp_answers.get(item_id, saved.get(item_id, False))
-        
-        # Для каждой строки создаём колонки (ширины строго как у заголовков)
-        cols = st.columns([0.6, 5, 1.3, 0.9])
-        with cols[0]:
-            st.markdown(f'<div style="text-align: center;">{order}</div>', unsafe_allow_html=True)
-        with cols[1]:
-            st.write(desc)
-        with cols[2]:
-            # Кнопка с подробностями внутри popover
-            with st.popover("ℹ️ Подробнее", use_container_width=True):
-                t1, t2 = st.tabs(["🔍 Фильтр", "📌 Мероприятия"])
-                with t1:
-                    st.markdown("**Описание процедуры:**")
-                    st.info(add_info if add_info else "Описание отсутствует")
-                    if filter_text != "Не задан":
-                        filter_display = filter_text
-                        if "[Дата1]" in filter_text:
-                            default_date = datetime.date.today()
-                            selected_date = st.date_input("📅 Выберите дату", key=f"date_{item_id}", value=default_date, format="DD.MM.YYYY")
-                            filter_display = filter_text.replace("[Дата1]", selected_date.strftime("%d.%m.%y"))
-                        filter_display = filter_display.replace("[РФ]", vsp_name)
-                        st.markdown("**Фильтр:**")
-                        st.code(filter_display, language="text")
-                        # Копирование фильтра (оставьте как было, только уберите лишние st.components если они мешают)
-                        import streamlit.components.v1 as components
-                        js_code = f"""
-                        <div style="margin-top:8px"><button id="copy_{item_id}" style="background:#4CAF50;color:white;padding:8px;border:none;border-radius:5px;width:100%">📋 КОПИРОВАТЬ ФИЛЬТР</button>
-                        <div id="status_{item_id}" style="margin-top:5px;font-size:12px;text-align:center"></div>
-                        <script>
-                        (function(){{
-                            var btn=document.getElementById("copy_{item_id}");
-                            var statusDiv=document.getElementById("status_{item_id}");
-                            var textToCopy={repr(filter_display)};
-                            btn.addEventListener("click",function(){{
-                                navigator.clipboard.writeText(textToCopy).then(function(){{
-                                    statusDiv.innerHTML="✅ Скопировано!";statusDiv.style.color="green";
-                                    setTimeout(function(){{statusDiv.innerHTML="";}},2000);
-                                }},function(){{
-                                    statusDiv.innerHTML="❌ Ошибка";statusDiv.style.color="red";
-                                }});
-                            }});
-                        }})();
-                        </script>
-                        """
-                        components.html(js_code, height=100)
-                    else:
-                        st.info("Фильтр не задан")
-                with t2:
-                    st.markdown("**Мероприятия:**")
-                    st.info(events_text if events_text != "Не заданы" else "Мероприятия не заданы")
-        with cols[3]:
-            new_val = st.checkbox(" ", value=current, key=f"chk_{item_id}", label_visibility="collapsed")
-            if new_val != current:
-                st.session_state.temp_answers[item_id] = new_val
-        
-        # Добавляем тонкую горизонтальную линию после каждой строки (кроме последней)
-        if idx < len(template) - 1:
-            st.markdown('<hr style="margin:0; border:0; border-bottom:1px solid #e0e0e0;">', unsafe_allow_html=True)
-    
-    st.markdown('</div>', unsafe_allow_html=True)  # Закрываем .checklist-grid
-    
-    # ========= КНОПКИ УПРАВЛЕНИЯ (без изменений) =========
-    colA, colB, colC, colD = st.columns([1, 1, 1, 2])
-    if colA.button("🔙 Назад", use_container_width=True):
-        db.save_answers(sid, st.session_state.temp_answers)
-        db.update_session_status(sid, 'draft')
-        st.session_state.step = 0
-        for k in ['current_session_id', 'temp_answers', 'resume_session_id']:
-            if k in st.session_state: del st.session_state[k]
-        st.rerun()
-    if colB.button("💾 Сохранить черновик", use_container_width=True):
-        db.save_answers(sid, st.session_state.temp_answers)
-        db.update_session_status(sid, 'draft')
-        st.success("✅ Черновик сохранён!")
-        time.sleep(1)
-        st.rerun()
-    if colC.button("📋 Предпросмотр", use_container_width=True):
-        with st.expander("📄 Предпросмотр результатов", expanded=True):
-            completed = sum(st.session_state.temp_answers.values())
-            total = len(template)
-            st.info(f"Выполнено {completed}/{total} проверок")
-            for _, r in template.iterrows():
-                status = "✅" if st.session_state.temp_answers.get(r['id'], False) else "❌"
-                st.markdown(f"{status} {r['description']}")
-    if colD.button("✅ ЗАВЕРШИТЬ ПРОВЕРКУ", type="primary", use_container_width=True):
-        completed = sum(st.session_state.temp_answers.values())
-        total = len(template)
-        if completed < total:
-            st.toast(f"⚠️ Выполнено только {completed} из {total} проверок. Заполните все.", icon="❗")
-        else:
-            db.save_answers(sid, st.session_state.temp_answers)
-            db.update_session_status(sid, 'completed')
-            st.success("🎉 Отлично! Чек-лист успешно завершён!")
-            st.balloons()
-            st.session_state.step = 0
-            for k in ['current_session_id', 'temp_answers', 'resume_session_id']:
-                if k in st.session_state: del st.session_state[k]
-            time.sleep(2)
-            st.rerun()
+    .col-desc { flex: 5; }
+    .col-info { width: 130px; text-align: center; }
+    .col-status { width: 85px; text-align: center; }
+</style>
+""", unsafe_allow_html=True)
+
+# Заголовки
+with st.container():
+    cols = st.columns([0.6, 5, 1.3, 0.9])
+    cols[0].markdown("**№**")
+    cols[1].markdown("**Наименование проверки**")
+    cols[2].markdown("**Доп. информация**")
+    cols[3].markdown("**Статус**")
+
+# Обёртка для всех строк (чтобы добавить общую границу)
+st.markdown('<div style="border: 1px solid #ccc; border-top: none;">', unsafe_allow_html=True)
+
+for idx, row in template.iterrows():
+    item_id = row['id']
+    order = row['item_order']
+    desc = row['description']
+    add_info = row['additional_info']
+    filter_text = row['filter_value'] if row['filter_value'] else "Не задан"
+    events_text = row['events_value'] if row['events_value'] else "Не заданы"
+    current = st.session_state.temp_answers.get(item_id, saved.get(item_id, False))
+
+    # Создаём колонки для этой строки
+    cols = st.columns([0.6, 5, 1.3, 0.9])
+    with cols[0]:
+        st.markdown(f'<div style="text-align: center;">{order}</div>', unsafe_allow_html=True)
+    with cols[1]:
+        st.markdown(desc)
+    with cols[2]:
+        # Кнопка "Подробнее" в виде popover
+        with st.popover("ℹ️ Подробнее", use_container_width=True):
+            t1, t2 = st.tabs(["🔍 Фильтр", "📌 Мероприятия"])
+            with t1:
+                st.markdown("**Описание процедуры:**")
+                st.info(add_info if add_info else "Описание отсутствует")
+                if filter_text != "Не задан":
+                    filter_display = filter_text
+                    if "[Дата1]" in filter_text:
+                        default_date = datetime.date.today()
+                        selected_date = st.date_input("📅 Выберите дату", key=f"date_{item_id}", value=default_date, format="DD.MM.YYYY")
+                        filter_display = filter_text.replace("[Дата1]", selected_date.strftime("%d.%m.%y"))
+                    filter_display = filter_display.replace("[РФ]", vsp_name)
+                    st.markdown("**Фильтр:**")
+                    st.code(filter_display, language="text")
+                    # ... код копирования (оставьте как в исходнике) ...
+                else:
+                    st.info("Фильтр не задан")
+            with t2:
+                st.markdown("**Мероприятия:**")
+                st.info(events_text if events_text != "Не заданы" else "Мероприятия не заданы")
+    with cols[3]:
+        new_val = st.checkbox(" ", value=current, key=f"chk_{item_id}", label_visibility="collapsed")
+        if new_val != current:
+            st.session_state.temp_answers[item_id] = new_val
+
+st.markdown('</div>', unsafe_allow_html=True)
