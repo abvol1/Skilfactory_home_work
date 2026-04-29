@@ -1,1 +1,163 @@
+st.markdown("### ✅ Список проверок")
 
+# Стили для таблицы с вертикальными и горизонтальными линиями
+st.markdown("""
+<style>
+.grid-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.grid-table .table-row {
+    display: flex;
+    border-bottom: 1px solid #ccc;
+}
+.grid-table .table-header {
+    display: flex;
+    background-color: #e9ecef;
+    font-weight: 600;
+    border-bottom: 2px solid #aaa;
+}
+.grid-table .cell {
+    padding: 8px 6px;
+    border-right: 1px solid #ccc;
+}
+.grid-table .cell:last-child {
+    border-right: none;
+}
+.col-order { width: 60px; text-align: center; }
+.col-desc { flex: 5; text-align: left; }
+.col-info { width: 130px; text-align: center; }
+.col-status { width: 85px; text-align: center; }
+/* Чётные строки — серый фон для читаемости */
+.grid-table .table-row:nth-child(even) {
+    background-color: #f8f9fa;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# Заголовок таблицы
+st.markdown("""
+<div class="grid-table">
+    <div class="table-header">
+        <div class="cell col-order">№</div>
+        <div class="cell col-desc">Наименование проверки</div>
+        <div class="cell col-info">Доп. информация</div>
+        <div class="cell col-status">Статус</div>
+    </div>
+""", unsafe_allow_html=True)
+
+# Проходим по пунктам чек-листа
+for idx, row in template.iterrows():
+    item_id = row['id']
+    order = row['item_order']
+    desc = row['description']
+    add_info = row['additional_info']
+    filter_text = row['filter_value'] if row['filter_value'] else "Не задан"
+    events_text = row['events_value'] if row['events_value'] else "Не заданы"
+    current = st.session_state.temp_answers.get(item_id, saved.get(item_id, False))
+    
+    # Открываем строку
+    st.markdown(f'<div class="table-row">', unsafe_allow_html=True)
+    
+    # Ячейка "№"
+    st.markdown(f'<div class="cell col-order">{order}</div>', unsafe_allow_html=True)
+    
+    # Ячейка "Наименование проверки"
+    st.markdown(f'<div class="cell col-desc">{desc}</div>', unsafe_allow_html=True)
+    
+    # Ячейка "Доп. информация" (внутри неё будет popover)
+    st.markdown(f'<div class="cell col-info">', unsafe_allow_html=True)
+    # Размещаем popover (это виджет Streamlit, он вставится внутрь ячейки)
+    with st.popover(f"ℹ️ Подробнее", use_container_width=True):
+        t1, t2 = st.tabs(["🔍 Фильтр", "📌 Мероприятия"])
+        with t1:
+            st.markdown("**Описание процедуры:**")
+            st.info(add_info if add_info else "Описание отсутствует")
+            if filter_text != "Не задан":
+                filter_display = filter_text
+                if "[Дата1]" in filter_text:
+                    default_date = datetime.date.today()
+                    selected_date = st.date_input("📅 Выберите дату", key=f"date_{item_id}", value=default_date, format="DD.MM.YYYY")
+                    filter_display = filter_text.replace("[Дата1]", selected_date.strftime("%d.%m.%y"))
+                filter_display = filter_display.replace("[РФ]", vsp_name)
+                st.markdown("**Фильтр:**")
+                st.code(filter_display, language="text")
+                import streamlit.components.v1 as components
+                js_code = f"""
+                <div style="margin-top:8px"><button id="copy_{item_id}" style="background:#4CAF50;color:white;padding:8px;border:none;border-radius:5px;width:100%">📋 КОПИРОВАТЬ ФИЛЬТР</button>
+                <div id="status_{item_id}" style="margin-top:5px;font-size:12px;text-align:center"></div>
+                <script>
+                (function(){{
+                    var btn=document.getElementById("copy_{item_id}");
+                    var statusDiv=document.getElementById("status_{item_id}");
+                    var textToCopy={repr(filter_display)};
+                    btn.addEventListener("click",function(){{
+                        navigator.clipboard.writeText(textToCopy).then(function(){{
+                            statusDiv.innerHTML="✅ Скопировано!";statusDiv.style.color="green";
+                            setTimeout(function(){{statusDiv.innerHTML="";}},2000);
+                        }},function(){{
+                            statusDiv.innerHTML="❌ Ошибка";statusDiv.style.color="red";
+                        }});
+                    }});
+                }})();
+                </script>
+                """
+                components.html(js_code, height=100)
+            else:
+                st.info("Фильтр не задан")
+        with t2:
+            st.markdown("**Мероприятия:**")
+            st.info(events_text if events_text != "Не заданы" else "Мероприятия не заданы")
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Ячейка статуса (чекбокс)
+    st.markdown(f'<div class="cell col-status">', unsafe_allow_html=True)
+    new_val = st.checkbox(" ", value=current, key=f"chk_{item_id}", label_visibility="collapsed")
+    if new_val != current:
+        st.session_state.temp_answers[item_id] = new_val
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Закрываем строку
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# Закрываем обёртку таблицы
+st.markdown('</div>', unsafe_allow_html=True)
+
+# <--- Кнопки управления (оставляем без изменений) --->
+colA, colB, colC, colD = st.columns([1, 1, 1, 2])
+if colA.button("🔙 Назад", use_container_width=True):
+    db.save_answers(sid, st.session_state.temp_answers)
+    db.update_session_status(sid, 'draft')
+    st.session_state.step = 0
+    for k in ['current_session_id', 'temp_answers', 'resume_session_id']:
+        if k in st.session_state: del st.session_state[k]
+    st.rerun()
+if colB.button("💾 Сохранить черновик", use_container_width=True):
+    db.save_answers(sid, st.session_state.temp_answers)
+    db.update_session_status(sid, 'draft')
+    st.success("✅ Черновик сохранён!")
+    time.sleep(1)
+    st.rerun()
+if colC.button("📋 Предпросмотр", use_container_width=True):
+    with st.expander("📄 Предпросмотр результатов", expanded=True):
+        completed = sum(st.session_state.temp_answers.values())
+        total = len(template)
+        st.info(f"Выполнено {completed}/{total} проверок")
+        for _, r in template.iterrows():
+            status = "✅" if st.session_state.temp_answers.get(r['id'], False) else "❌"
+            st.markdown(f"{status} {r['description']}")
+if colD.button("✅ ЗАВЕРШИТЬ ПРОВЕРКУ", type="primary", use_container_width=True):
+    completed = sum(st.session_state.temp_answers.values())
+    total = len(template)
+    if completed < total:
+        st.toast(f"⚠️ Выполнено только {completed} из {total} проверок. Заполните все.", icon="❗")
+    else:
+        db.save_answers(sid, st.session_state.temp_answers)
+        db.update_session_status(sid, 'completed')
+        st.success("🎉 Отлично! Чек-лист успешно завершён!")
+        st.balloons()
+        st.session_state.step = 0
+        for k in ['current_session_id', 'temp_answers', 'resume_session_id']:
+            if k in st.session_state: del st.session_state[k]
+        time.sleep(2)
+        st.rerun()
