@@ -1190,3 +1190,264 @@ if st.session_state.step == 1:
                     if k in st.session_state: del st.session_state[k]
                 time.sleep(2)
                 st.rerun()
+
+
+
+
+
+
+
+
+# =============================================================================
+# 6. ШАГ 1: ЗАПОЛНЕНИЕ ЧЕК-ЛИСТА (ДИАГНОСТИЧЕСКАЯ ВЕРСИЯ)
+# =============================================================================
+if st.session_state.step == 1:
+    if "current_session_id" not in st.session_state:
+        st.error("Сессия не найдена")
+        st.session_state.step = 0
+        st.rerun()
+
+    sid = st.session_state.current_session_id
+    sess = db.get_session_data(sid)
+    if not sess:
+        st.error("Данные сессии отсутствуют")
+        st.stop()
+
+    template = db.get_checklist_template()
+    if template.empty:
+        st.warning("Шаблон пуст")
+        st.stop()
+
+    # Ответы, сохранённые ранее
+    saved = sess['answers']
+    if "temp_answers" not in st.session_state:
+        st.session_state.temp_answers = copy.deepcopy(saved)
+
+    # Получаем информацию о филиале и ВСП текущей сессии
+    cur = db._get_cursor()
+    cur.execute(f"""
+        SELECT f.name AS filial_name, f.id AS filial_id_db, f.check_name,
+               v.name AS vsp_name, s.filial_id AS session_filial_id
+        FROM {db.schema}.checklist_sessions s
+        JOIN {db.schema}.filials f ON s.filial_id = f.id
+        JOIN {db.schema}.vsp v ON s.vsp_id = v.id
+        WHERE s.id = %s
+    """, (sid,))
+    row = cur.fetchone()
+    
+    # ======================== ДИАГНОСТИЧЕСКИЙ БЛОК ========================
+    st.markdown("---")
+    st.markdown("### 🔍 ДИАГНОСТИКА (временный блок)")
+    
+    if row:
+        filial_name = row['filial_name']
+        vsp_name = row['vsp_name']
+        current_filial_id = int(row['session_filial_id'])
+        check_name_value = row['check_name']
+        
+        st.write(f"**ID сессии:** {sid}")
+        st.write(f"**Филиал из сессии:** {filial_name} (ID: {current_filial_id})")
+        st.write(f"**Значение check_name в БД для этого филиала:** `{check_name_value}`")
+        st.write(f"**Тип check_name:** `{type(check_name_value)}`")
+        
+        # Проверяем use_alt напрямую
+        use_alt = bool(check_name_value) if check_name_value is not None else False
+        st.write(f"**use_alt (после преобразования):** `{use_alt}`")
+        
+        # Показываем все альтернативные записи для этого филиала
+        if use_alt:
+            alt_all = db.get_alt_template_for_filial(current_filial_id)
+            st.write(f"**Найдено альтернативных записей в БД:** {len(alt_all)}")
+            if not alt_all.empty:
+                st.dataframe(alt_all)
+            else:
+                st.warning("⚠️ Альтернативных записей нет! check_name = true, но таблица alt пуста.")
+        else:
+            st.info("check_name = false, используем стандартные значения")
+    else:
+        filial_name = "?"
+        vsp_name = "?"
+        current_filial_id = None
+        use_alt = False
+        st.error("Данные филиала не найдены!")
+    
+    st.markdown("---")
+    # ======================== КОНЕЦ ДИАГНОСТИКИ ========================
+
+    # Заголовок формы
+    st.subheader(f"📋 Чек-лист: {filial_name} / {vsp_name}")
+    status_text = "Черновик" if sess['info']['status'] == 'draft' else "Завершена"
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.markdown(f"**👤 Сотрудник:** {sess['info']['user_name']}")
+    c2.markdown(f"**🏢 Филиал:** {filial_name}")
+    c3.markdown(f"**🏪 ВСП:** {vsp_name}")
+    c4.markdown(f"**📅 Дата:** {sess['info']['operation_date']}")
+    c5.markdown(f"**📌 Статус:** {status_text}")
+    st.divider()
+    st.markdown("### ✔️ Список проверок")
+
+    # Заголовки таблицы
+    header = st.columns([1, 5, 2, 1])
+    header[0].markdown("**№**")
+    header[1].markdown("**Наименование проверки**")
+    header[2].markdown('<div style="text-align: center; font-weight:900; font-style: italic; text-shadow: 0.8px 0 0 currentColor;">Доп. информация</div>', unsafe_allow_html=True)
+    header[3].markdown("**Статус**")
+    st.markdown("<hr style='margin:8px 0;border:1.5px solid #000000;'>", unsafe_allow_html=True)
+
+    # Построение строк чек-листа
+    for _, tpl in template.iterrows():
+        item_id = tpl['id']
+        order = tpl['item_order']
+        desc = tpl['description']
+
+        # Стандартные значения из шаблона
+        std_filter = tpl['filter_value'] or "Не задан"
+        std_info = tpl['additional_info'] or "Описание отсутствует"
+        std_events = tpl['events_value'] or "Мероприятия не заданы"
+
+        # Попытка получить альтернативные значения
+        if use_alt and current_filial_id:
+            alt = db.get_alt_template_item(current_filial_id, item_id)
+        else:
+            alt = None
+
+        # Логика выбора (с подробным логом для первого пункта)
+        if item_id == template.iloc[0]['id']:  # только для первого пункта покажем детали
+            st.markdown(f"**🔍 Отладка для пункта №{order}:**")
+            st.write(f"  - use_alt: `{use_alt}`")
+            st.write(f"  - current_filial_id: `{current_filial_id}`")
+            st.write(f"  - alt из БД: `{alt}`")
+            st.write(f"  - std_filter: `{std_filter[:50]}...`")
+            st.write(f"  - std_info: `{std_info[:50]}...`")
+            
+            if alt is not None:
+                chosen_filter = alt['alt_filter_value'] if alt['alt_filter_value'] else std_filter
+                chosen_info = alt['alt_additional_info'] if alt['alt_additional_info'] else std_info
+                chosen_events = alt['alt_events_value'] if alt['alt_events_value'] else std_events
+                st.write(f"  - Выбран filter: `{chosen_filter[:50]}...`")
+                st.write(f"  - Выбран info: `{chosen_info[:50]}...`")
+            else:
+                chosen_filter = std_filter
+                chosen_info = std_info
+                chosen_events = std_events
+                st.write(f"  - Используем стандартные значения")
+        else:
+            # Для остальных пунктов — та же логика без лога
+            if alt is not None:
+                chosen_filter = alt['alt_filter_value'] if alt['alt_filter_value'] else std_filter
+                chosen_info = alt['alt_additional_info'] if alt['alt_additional_info'] else std_info
+                chosen_events = alt['alt_events_value'] if alt['alt_events_value'] else std_events
+            else:
+                chosen_filter = std_filter
+                chosen_info = std_info
+                chosen_events = std_events
+
+        # Текущее состояние чекбокса
+        current = st.session_state.temp_answers.get(item_id, saved.get(item_id, False))
+
+        # Отрисовка строки
+        cols = st.columns([1, 5, 2, 1])
+        cols[0].write(f"**{order}**")
+        cols[1].markdown(desc)
+
+        # Popover с подробной информацией
+        with cols[2]:
+            with st.popover(f"ℹ️ Подробнее о проверке №{order}", use_container_width=True):
+                t1, t2 = st.tabs(["🔍 Фильтр", "📌 Мероприятия"])
+                with t1:
+                    st.markdown("**Описание процедуры:**")
+                    st.info(chosen_info)
+                    if chosen_filter != "Не задан":
+                        filter_display = chosen_filter
+                        if "[Дата1]" in chosen_filter:
+                            default_date = datetime.date.today()
+                            selected_date = st.date_input(
+                                "📅Выберите дату", key=f"date_{item_id}",
+                                value=default_date, format="DD.MM.YYYY"
+                            )
+                            date_str = selected_date.strftime("%d.%m.%y")
+                            filter_display = chosen_filter.replace("[Дата1]", date_str)
+                        filter_display = filter_display.replace("[РФ]", vsp_name)
+                        st.code(filter_display, language="text")
+
+                        import streamlit.components.v1 as components
+                        js_code = f"""
+                        <div style="margin-top:8px">
+                            <button id="copy_{item_id}" style="background:#4CAF50;color:white;padding:8px;border:none;border-radius:5px;width:100%">
+                                📋 КОПИРОВАТЬ ФИЛЬТР
+                            </button>
+                            <div id="status_{item_id}" style="margin-top:5px;font-size:12px;text-align:center"></div>
+                        </div>
+                        <script>
+                        (function(){{
+                            var btn=document.getElementById("copy_{item_id}");
+                            var statusDiv=document.getElementById("status_{item_id}");
+                            var textToCopy={repr(filter_display)};
+                            btn.addEventListener("click",function(){{
+                                navigator.clipboard.writeText(textToCopy).then(function(){{
+                                    statusDiv.innerHTML="✅ Скопировано!";statusDiv.style.color="green";
+                                    setTimeout(function(){{statusDiv.innerHTML="";}},2000);
+                                }},function(){{
+                                    statusDiv.innerHTML="❌ Ошибка";statusDiv.style.color="red";
+                                }});
+                            }});
+                        }})();
+                        </script>
+                        """
+                        components.html(js_code, height=100)
+                    else:
+                        st.info("Фильтр не задан")
+                with t2:
+                    st.markdown("**Мероприятия:**")
+                    st.info(chosen_events)
+
+        # Чекбокс выполнения
+        with cols[3]:
+            new_val = st.checkbox(" ", value=current, key=f"chk_{item_id}", label_visibility="collapsed")
+            if new_val != current:
+                st.session_state.temp_answers[item_id] = new_val
+
+        st.markdown("<hr style='margin:8px 0;border:1.5px solid #000000;'>", unsafe_allow_html=True)
+
+    # Кнопки управления
+    colA, colB, colC, colD = st.columns([1, 1, 1, 2])
+    with colA:
+        if st.button("🔙 Назад", use_container_width=True):
+            db.save_answers(sid, st.session_state.temp_answers)
+            db.update_session_status(sid, 'draft')
+            st.session_state.step = 0
+            for k in ['current_session_id', 'temp_answers', 'resume_session_id']:
+                if k in st.session_state: del st.session_state[k]
+            st.rerun()
+    with colB:
+        if st.button("💾 Сохранить черновик", use_container_width=True):
+            db.save_answers(sid, st.session_state.temp_answers)
+            db.update_session_status(sid, 'draft')
+            st.success("✅ Черновик сохранён!")
+            time.sleep(1)
+            st.rerun()
+    with colC:
+        if st.button("📋 Предпросмотр", use_container_width=True):
+            with st.expander("📄 Предпросмотр результатов", expanded=True):
+                completed = sum(st.session_state.temp_answers.values())
+                total = len(template)
+                st.info(f"Выполнено {completed}/{total} проверок")
+                for _, r in template.iterrows():
+                    status = "✅" if st.session_state.temp_answers.get(r['id'], False) else "❌"
+                    st.markdown(f"{status} {r['description']}")
+    with colD:
+        if st.button("✅ ЗАВЕРШИТЬ ПРОВЕРКУ", type="primary", use_container_width=True):
+            completed = sum(st.session_state.temp_answers.values())
+            total = len(template)
+            if completed < total:
+                st.toast(f"⚠️ Выполнено только {completed} из {total} проверок. Заполните все.", icon="❗")
+            else:
+                db.save_answers(sid, st.session_state.temp_answers)
+                db.update_session_status(sid, 'completed')
+                st.success("🎉 Отлично! Чек-лист успешно завершён!")
+                st.balloons()
+                st.session_state.step = 0
+                for k in ['current_session_id', 'temp_answers', 'resume_session_id']:
+                    if k in st.session_state: del st.session_state[k]
+                time.sleep(2)
+                st.rerun()
