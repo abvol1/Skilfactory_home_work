@@ -10,19 +10,11 @@ import time
 # =============================================================================
 # ПЕРЕД ЗАПУСКОМ ВЫПОЛНИТЕ ВРУЧНУЮ В POSTGRESQL:
 # =============================================================================
-# 1. Добавить колонку check_name в таблицу filials (если её ещё нет):
-#    ALTER TABLE public.filials ADD COLUMN IF NOT EXISTS check_name BOOLEAN NOT NULL DEFAULT FALSE;
-#
-# 2. Создать таблицу для альтернативных фильтров:
-#    CREATE TABLE IF NOT EXISTS public.checklist_alt_templates (
-#        id SERIAL PRIMARY KEY,
-#        template_item_id INTEGER NOT NULL REFERENCES public.checklist_templates(id) ON DELETE CASCADE,
-#        filial_id INTEGER NOT NULL REFERENCES public.filials(id) ON DELETE CASCADE,
-#        alt_filter_value TEXT DEFAULT '',
-#        alt_additional_info TEXT DEFAULT '',
-#        alt_events_value TEXT DEFAULT '',
-#        UNIQUE (template_item_id, filial_id)
-#    );
+#     ALTER TABLE public.checklist_templates
+#         ADD COLUMN IF NOT EXISTS alt_filter_value TEXT DEFAULT '',
+#         ADD COLUMN IF NOT EXISTS alt_additional_info TEXT DEFAULT '',
+#         ADD COLUMN IF NOT EXISTS alt_events_value TEXT DEFAULT '';
+#     (старую таблицу checklist_alt_templates можно удалить)
 # =============================================================================
 
 st.set_page_config(page_title="Чек-лист ВСП", layout="wide",
@@ -128,15 +120,18 @@ class DatabaseManager:
             (int(filial_id),)
         )
 
-    # --- Шаблон ---
+    # --- Шаблон (теперь включает и стандартные и альтернативные поля) ---
     def get_checklist_template(self) -> pd.DataFrame:
         return self._to_df(
-            f"SELECT id, item_order, description, additional_info, filter_value, events_value "
-            f"FROM {self._table_name('checklist_templates')} ORDER BY item_order"
+            f"SELECT id, item_order, description, 
+                    additional_info, filter_value, events_value,
+                    alt_filter_value, alt_additional_info, alt_events_value
+            FROM {self._table_name('checklist_templates')} ORDER BY item_order"
         )
 
     def add_template_item(self, description: str, additional_info: str,
-                          filter_value: str = "", events_value: str = ""):
+                          filter_value: str = "", events_value: str = "",
+                          alt_filter: str = "", alt_info: str = "", alt_events: str = ""):
         row = self._execute(
             f"SELECT COALESCE(MAX(item_order), 0) + 1 AS next_order FROM {self._table_name('checklist_templates')}",
             fetch_one=True
@@ -144,54 +139,28 @@ class DatabaseManager:
         next_order = row['next_order'] if row else 1
         self._execute(
             f"INSERT INTO {self._table_name('checklist_templates')} "
-            f"(section_name, item_order, description, additional_info, filter_value, events_value) "
-            f"VALUES (%s, %s, %s, %s, %s, %s)",
-            ('Основной', next_order, description, additional_info, filter_value, events_value)
+            f"(section_name, item_order, description, additional_info, filter_value, events_value,
+              alt_filter_value, alt_additional_info, alt_events_value) "
+            f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            ('Основной', next_order, description, additional_info, filter_value, events_value,
+             alt_filter, alt_info, alt_events)
         )
 
     def update_template_item(self, item_id: int, description: str, additional_info: str,
-                             filter_value: str = "", events_value: str = ""):
+                             filter_value: str = "", events_value: str = "",
+                             alt_filter: str = "", alt_info: str = "", alt_events: str = ""):
         self._execute(
             f"UPDATE {self._table_name('checklist_templates')} "
-            f"SET description = %s, additional_info = %s, filter_value = %s, events_value = %s "
+            f"SET description = %s, additional_info = %s, filter_value = %s, events_value = %s, "
+            f"alt_filter_value = %s, alt_additional_info = %s, alt_events_value = %s "
             f"WHERE id = %s",
-            (description, additional_info, filter_value, events_value, item_id)
+            (description, additional_info, filter_value, events_value,
+             alt_filter, alt_info, alt_events, item_id)
         )
 
     def delete_template_item(self, item_id: int):
         self._execute(f"DELETE FROM {self._table_name('checklist_answers')} WHERE template_item_id = %s", (item_id,))
-        self._execute(f"DELETE FROM {self._table_name('checklist_alt_templates')} WHERE template_item_id = %s", (item_id,))
         self._execute(f"DELETE FROM {self._table_name('checklist_templates')} WHERE id = %s", (item_id,))
-
-    # --- Альтернативные настройки ---
-    def get_alt_template_for_filial(self, filial_id: int) -> pd.DataFrame:
-        return self._to_df(
-            f"SELECT template_item_id, alt_filter_value, alt_additional_info, alt_events_value "
-            f"FROM {self._table_name('checklist_alt_templates')} WHERE filial_id = %s",
-            (int(filial_id),)
-        )
-
-    def get_alt_template_item(self, filial_id: int, template_item_id: int) -> Optional[Dict]:
-        return self._execute(
-            f"SELECT alt_filter_value, alt_additional_info, alt_events_value "
-            f"FROM {self._table_name('checklist_alt_templates')} "
-            f"WHERE filial_id = %s AND template_item_id = %s",
-            (int(filial_id), int(template_item_id)),
-            fetch_one=True
-        )
-
-    def upsert_alt_template(self, filial_id: int, template_item_id: int,
-                            alt_filter: str, alt_info: str, alt_events: str):
-        self._execute(
-            f"INSERT INTO {self._table_name('checklist_alt_templates')} "
-            f"(template_item_id, filial_id, alt_filter_value, alt_additional_info, alt_events_value) "
-            f"VALUES (%s, %s, %s, %s, %s) "
-            f"ON CONFLICT (template_item_id, filial_id) DO UPDATE SET "
-            f"alt_filter_value = EXCLUDED.alt_filter_value, "
-            f"alt_additional_info = EXCLUDED.alt_additional_info, "
-            f"alt_events_value = EXCLUDED.alt_events_value",
-            (int(template_item_id), int(filial_id), alt_filter, alt_info, alt_events)
-        )
 
     # --- Сессии ---
     def create_session(self, user_full_name: str, filial_id: int, vsp_id: int,
@@ -337,7 +306,7 @@ class DatabaseManager:
                             date_from=None, date_to=None) -> pd.DataFrame:
         conds = []
         params = []
-        if filial_id is not None:          # <-- здесь проверка на None уже корректна
+        if filial_id is not None:
             conds.append("s.filial_id = %s")
             params.append(int(filial_id))
         if vsp_id is not None:
@@ -486,11 +455,15 @@ with st.sidebar:
             with st.expander("➕ Добавить проверку"):
                 new_desc = st.text_area("Наименование", height=68)
                 new_info = st.text_area("Описание", height=68)
-                new_filter = st.text_area("🔍 Фильтр")
-                new_events = st.text_area("📌 Мероприятия", height=68)
+                new_filter = st.text_area("🔍 Фильтр (стандартный)")
+                new_events = st.text_area("📌 Мероприятия (стандартные)", height=68)
+                new_alt_filter = st.text_area("🔍 Альт. фильтр (для филиалов с чекбоксом)")
+                new_alt_info = st.text_area("📝 Альт. описание (для филиалов с чекбоксом)", height=68)
+                new_alt_events = st.text_area("📌 Альт. мероприятия (для филиалов с чекбоксом)", height=68)
                 if st.button("➕ Добавить", use_container_width=True, type="primary"):
                     if new_desc:
-                        db.add_template_item(new_desc, new_info, new_filter, new_events)
+                        db.add_template_item(new_desc, new_info, new_filter, new_events,
+                                            new_alt_filter, new_alt_info, new_alt_events)
                         st.success("✅ Добавлено!")
                         st.rerun()
             with st.expander("✏️ Редактировать/Удалить"):
@@ -500,11 +473,15 @@ with st.sidebar:
                     row = tpl[tpl['id'] == sel_id].iloc[0]
                     e_desc = st.text_area("Наименование", value=row['description'])
                     e_info = st.text_area("Описание", value=row['additional_info'] or "")
-                    e_filter = st.text_area("Фильтр", value=row['filter_value'] or "")
-                    e_events = st.text_area("Мероприятия", value=row['events_value'] or "")
+                    e_filter = st.text_area("Фильтр (стандартный)", value=row['filter_value'] or "")
+                    e_events = st.text_area("Мероприятия (стандартные)", value=row['events_value'] or "")
+                    e_alt_filter = st.text_area("Альт. фильтр", value=row['alt_filter_value'] or "")
+                    e_alt_info = st.text_area("Альт. описание", value=row['alt_additional_info'] or "")
+                    e_alt_events = st.text_area("Альт. мероприятия", value=row['alt_events_value'] or "")
                     c1, c2 = st.columns(2)
                     if c1.button("💾 Обновить", use_container_width=True):
-                        db.update_template_item(sel_id, e_desc, e_info, e_filter, e_events)
+                        db.update_template_item(sel_id, e_desc, e_info, e_filter, e_events,
+                                                e_alt_filter, e_alt_info, e_alt_events)
                         st.success("Обновлено!")
                         st.rerun()
                     if c2.button("🗑️ Удалить", use_container_width=True):
@@ -537,13 +514,13 @@ with st.sidebar:
 st.title("📋 Завершение операций по ВСП")
 
 if st.session_state.admin_authenticated:
-    tab_history, tab_main, tab_analytics, tab_alt = st.tabs(
-        ["📜 История проверок", "📝 Новая проверка", "📊 Аналитика", "🏢 Альт. настройки филиалов"]
+    tab_history, tab_main, tab_analytics, tab_filial_check = st.tabs(
+        ["📜 История проверок", "📝 Новая проверка", "📊 Аналитика", "🏢 Филиалы (чекбоксы)"]
     )
 else:
     tab_history, tab_main = st.tabs(["📜 История проверок", "📝 Новая проверка"])
     tab_analytics = None
-    tab_alt = None
+    tab_filial_check = None
 
 # ===================== НОВАЯ ПРОВЕРКА =====================
 with tab_main:
@@ -732,86 +709,41 @@ if tab_analytics is not None:
         else:
             st.warning("Нет филиалов")
 
-# ===================== АЛЬТ. НАСТРОЙКИ ФИЛИАЛОВ =====================
-if tab_alt is not None:
-    with tab_alt:
-        st.markdown("## 🏢 Альтернативные настройки для филиалов")
+# ===================== ФИЛИАЛЫ (ЧЕКБОКСЫ) =====================
+if tab_filial_check is not None:
+    with tab_filial_check:
+        st.markdown("## 🏢 Настройка филиалов для альтернативных фильтров")
+        st.caption("Включите чекбокс для филиалов, которые должны использовать единые альтернативные фильтры/описания.")
+
         filials_df = db.get_filials()
         if filials_df.empty:
             st.warning("Нет филиалов")
         else:
-            selected_filial = st.selectbox("Выберите филиал", filials_df['name'].tolist(), key="alt_filial_select")
-            filial_row = filials_df[filials_df['name'] == selected_filial].iloc[0]
-            filial_id = int(filial_row['id'])
-            current_check = bool(filial_row['check_name'])
-
-            template = db.get_checklist_template()
-            if template.empty:
-                st.info("Шаблон пуст")
-                st.stop()
-
-            alt_df = db.get_alt_template_for_filial(filial_id)
-            alt_dict = {}
-            if not alt_df.empty:
-                for _, row in alt_df.iterrows():
-                    alt_dict[int(row['template_item_id'])] = {
-                        'filter': row['alt_filter_value'],
-                        'info': row['alt_additional_info'],
-                        'events': row['alt_events_value']
-                    }
-
-            with st.form("alt_full_form"):
-                new_check = st.checkbox("✅ Использовать альтернативные фильтры и описания", value=current_check)
-                st.divider()
-                st.subheader("📝 Альтернативные значения")
-                st.caption("Оставьте поле пустым – будет стандартное значение")
-                alt_data = {}
-                for _, tpl in template.iterrows():
-                    item_id = int(tpl['id'])
-                    std_filter = tpl['filter_value'] or ""
-                    std_info = tpl['additional_info'] or ""
-                    std_events = tpl['events_value'] or ""
-                    cur = alt_dict.get(item_id, {})
-                    cur_filter = cur.get('filter', std_filter)
-                    cur_info = cur.get('info', std_info)
-                    cur_events = cur.get('events', std_events)
-                    with st.expander(f"📌 {tpl['item_order']}. {tpl['description']}"):
-                        col_a, col_b = st.columns(2)
-                        with col_a:
-                            st.caption("Стандартный фильтр:")
-                            st.code(std_filter if std_filter else "—", language="text")
-                            st.caption("Стандартное описание:")
-                            st.code(std_info if std_info else "—", language="text")
-                        with col_b:
-                            st.caption("Стандартные мероприятия:")
-                            st.code(std_events if std_events else "—", language="text")
-                        st.markdown("**Альтернативные значения:**")
-                        af = st.text_area("Фильтр", value=cur_filter, key=f"af_{item_id}")
-                        ai = st.text_area("Описание", value=cur_info, key=f"ai_{item_id}")
-                        ae = st.text_area("Мероприятия", value=cur_events, key=f"ae_{item_id}")
-                        alt_data[item_id] = (af, ai, ae)
-
-                submitted = st.form_submit_button("💾 Сохранить все настройки", type="primary")
-
-            if st.button("📋 Копировать стандартные значения для всех пунктов", key="copy_std_btn"):
-                for _, tpl in template.iterrows():
-                    item_id = int(tpl['id'])
-                    std_filter = tpl['filter_value'] or ""
-                    std_info = tpl['additional_info'] or ""
-                    std_events = tpl['events_value'] or ""
-                    db.upsert_alt_template(filial_id, item_id, std_filter, std_info, std_events)
-                st.success("Стандартные значения скопированы!")
+            # Форма для сохранения чекбоксов всех филиалов
+            with st.form("filial_checks_form"):
+                st.markdown("**Отметьте нужные филиалы:**")
+                new_checks = {}
+                for _, frow in filials_df.iterrows():
+                    fid = int(frow['id'])
+                    fname = frow['name']
+                    current = bool(frow['check_name'])
+                    new_checks[fid] = st.checkbox(fname, value=current, key=f"fchk_{fid}")
+                submitted_fchecks = st.form_submit_button("💾 Сохранить чекбоксы")
+            if submitted_fchecks:
+                for fid, val in new_checks.items():
+                    db.set_filial_check(fid, val)
+                st.success("Настройки филиалов обновлены!")
                 st.rerun()
 
-            if submitted:
-                db.set_filial_check(filial_id, new_check)
-                for item_id, (af, ai, ae) in alt_data.items():
-                    db.upsert_alt_template(filial_id, item_id, af, ai, ae)
-                st.success("Все настройки сохранены!")
-                st.rerun()
+            st.divider()
+            st.markdown("**📝 Редактирование единых альтернативных значений**")
+            st.caption("Эти значения будут применяться ко всем филиалам, у которых включён чекбокс.")
+            # Кнопка для перехода к редактированию шаблона (уже есть в sidebar, но продублируем ссылку)
+            st.info("Альтернативные фильтры/описания задаются в боковой панели «⚙️ Управление чек-листом» → «✏️ Редактировать/Удалить» (или «➕ Добавить проверку»).")
+
 
 # =============================================================================
-# ШАГ 1: ЗАПОЛНЕНИЕ ЧЕК-ЛИСТА (исправленная проверка current_filial_id is not None)
+# ШАГ 1: ЗАПОЛНЕНИЕ ЧЕК-ЛИСТА (использует единые альтернативные поля)
 # =============================================================================
 if st.session_state.step == 1:
     if "current_session_id" not in st.session_state:
@@ -846,10 +778,9 @@ if st.session_state.step == 1:
     row = cur.fetchone()
     filial_name = row['filial_name'] if row else "?"
     vsp_name = row['vsp_name'] if row else "?"
-    current_filial_id = row['filial_id'] if row else None  # может быть 0!
+    current_filial_id = row['filial_id'] if row else None
     check_name_value = row['check_name'] if row else False
 
-    # ИСПРАВЛЕНИЕ: проверка не на истинность, а на is not None
     use_alt = bool(check_name_value) if check_name_value is not None else False
 
     st.subheader(f"📋 Чек-лист: {filial_name} / {vsp_name}")
@@ -875,24 +806,26 @@ if st.session_state.step == 1:
         order = tpl['item_order']
         desc = tpl['description']
 
+        # Стандартные значения из шаблона
         std_filter = tpl['filter_value'] or "Не задан"
         std_info = tpl['additional_info'] or "Описание отсутствует"
         std_events = tpl['events_value'] or "Мероприятия не заданы"
 
-        # === ГЛАВНОЕ ИСПРАВЛЕНИЕ: проверка current_filial_id is not None ===
-        if use_alt and current_filial_id is not None:
-            alt = db.get_alt_template_item(current_filial_id, item_id)
-        else:
-            alt = None
+        # Альтернативные значения (единые для всех филиалов с чекбоксом)
+        alt_filter = tpl['alt_filter_value'] or ""
+        alt_info = tpl['alt_additional_info'] or ""
+        alt_events = tpl['alt_events_value'] or ""
 
-        if alt is not None:
-            filter_text = alt['alt_filter_value'] if alt['alt_filter_value'] else std_filter
-            add_info = alt['alt_additional_info'] if alt['alt_additional_info'] else std_info
-            events_text = alt['alt_events_value'] if alt['alt_events_value'] else std_events
+        # Выбор в зависимости от флага филиала
+        if use_alt:
+            # Если альтернативное поле не пустое, берём его, иначе стандартное
+            chosen_filter = alt_filter if alt_filter else std_filter
+            chosen_info = alt_info if alt_info else std_info
+            chosen_events = alt_events if alt_events else std_events
         else:
-            filter_text = std_filter
-            add_info = std_info
-            events_text = std_events
+            chosen_filter = std_filter
+            chosen_info = std_info
+            chosen_events = std_events
 
         current = st.session_state.temp_answers.get(item_id, saved.get(item_id, False))
 
@@ -904,15 +837,15 @@ if st.session_state.step == 1:
                 t1, t2 = st.tabs(["🔍 Фильтр", "📌 Мероприятия"])
                 with t1:
                     st.markdown("**Описание процедуры:**")
-                    st.info(add_info)
-                    if filter_text != "Не задан":
-                        filter_display = filter_text
-                        if "[Дата1]" in filter_text:
+                    st.info(chosen_info)
+                    if chosen_filter != "Не задан":
+                        filter_display = chosen_filter
+                        if "[Дата1]" in chosen_filter:
                             default_date = datetime.date.today()
                             selected_date = st.date_input("📅Выберите дату", key=f"date_{item_id}",
                                                           value=default_date, format="DD.MM.YYYY")
                             date_str = selected_date.strftime("%d.%m.%y")
-                            filter_display = filter_text.replace("[Дата1]", date_str)
+                            filter_display = chosen_filter.replace("[Дата1]", date_str)
                         filter_display = filter_display.replace("[РФ]", vsp_name)
                         st.code(filter_display, language="text")
                         import streamlit.components.v1 as components
@@ -944,7 +877,7 @@ if st.session_state.step == 1:
                         st.info("Фильтр не задан")
                 with t2:
                     st.markdown("**Мероприятия:**")
-                    st.info(events_text)
+                    st.info(chosen_events)
 
         with cols[3]:
             new_val = st.checkbox(" ", value=current, key=f"chk_{item_id}", label_visibility="collapsed")
