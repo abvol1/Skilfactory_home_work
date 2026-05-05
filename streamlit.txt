@@ -1,18 +1,1 @@
-Инструкция по созданию таблицы (выполнить вручную)
-Подключитесь к вашей базе данных и выполните следующий SQL-запрос:
 
-sql
--- Таблица для учёта нерабочих дней ВСП
-CREATE TABLE public.vsp_non_working_days (
-    id SERIAL PRIMARY KEY,
-    user_name TEXT NOT NULL,                          -- кто внёс запись
-    filial_id INTEGER REFERENCES public.filials(id),  -- филиал
-    vsp_id INTEGER REFERENCES public.vsp(id),         -- конкретное ВСП
-    date DATE NOT NULL,                               -- дата нерабочего дня
-    reason TEXT NOT NULL,                             -- причина
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP    -- время создания записи
-);
-
--- Рекомендуемый индекс для быстрого поиска по ВСП и дате
-CREATE INDEX idx_vsp_non_working_days_vsp_date 
-    ON public.vsp_non_working_days (vsp_id, date);
