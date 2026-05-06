@@ -1,1 +1,1369 @@
+"""
+ЧЕК-ЛИСТ ВСП (Streamlit + PostgreSQL)
+=====================================
+Перед первым запуском необходимо:
+   * Выполнить SQL из инструкции по изменению таблицы (замена status на status_bul, удаление updated_at)
+   * Иметь таблицу нерабочих дней (создавалась ранее)
+   * Настроить PG_CONFIG под свои параметры подключения
+   * Установить библиотеки: streamlit, pandas, psycopg2-binary, openpyxl
+"""
 
+import streamlit as st
+import pandas as pd
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import datetime
+from typing import Dict, Any, Optional
+import copy
+import time
+
+# -----------------------------------------------------------------------------
+# НАСТРОЙКА СТРАНИЦЫ STREAMLIT
+# -----------------------------------------------------------------------------
+st.set_page_config(
+    page_title="Чек-лист ВСП",
+    layout="wide",
+    initial_sidebar_state="expanded",
+    page_icon="📋"
+)
+
+# -----------------------------------------------------------------------------
+# ПРОВЕРКА НАЛИЧИЯ OPENPYXL (для экспорта в Excel)
+# -----------------------------------------------------------------------------
+try:
+    from openpyxl import Workbook
+    OPENPYXL_AVAILABLE = True
+except ImportError:
+    OPENPYXL_AVAILABLE = False
+    st.warning("Для экспорта в Excel установите: pip install openpyxl")
+
+# =============================================================================
+# КОНФИГУРАЦИЯ ПОДКЛЮЧЕНИЯ К PostgreSQL – ЗАМЕНИТЕ НА СВОИ ДАННЫЕ
+# =============================================================================
+PG_CONFIG = {
+    "host": "your_host",          # например "localhost"
+    "port": 5432,
+    "database": "your_db",
+    "user": "your_user",
+    "password": "your_password",
+    "schema": "checklist_rf"      # или "public" – как у вас
+}
+
+# Пароль для входа в режим администратора
+ADMIN_PASSWORD = "admin123"
+
+# Список причин нерабочего дня (статический, можно менять)
+NON_WORKING_REASONS = [
+    "Ремонтные работы",
+    "Праздничный день",
+    "Отсутствие персонала",
+    "Технические причины",
+    "Другое"
+]
+
+# =============================================================================
+# КЛАСС ДЛЯ РАБОТЫ С БАЗОЙ ДАННЫХ
+# =============================================================================
+class DatabaseManager:
+    """
+    Управляет подключением к PostgreSQL и предоставляет методы
+    для выполнения всех необходимых запросов.
+    Используется одно постоянное соединение на всё время жизни приложения.
+    Все поля таблицы в коде учтены: status_bul (boolean), updated_at удалён.
+    """
+
+    def __init__(self):
+        self.schema = PG_CONFIG['schema']          # схема, например checklist_rf
+        self._connection = None                    # объект соединения psycopg2
+        self._cursor = None                        # курсор (RealDictCursor)
+
+    # -------------------------------------------------------------------------
+    # Управление соединением и курсором
+    # -------------------------------------------------------------------------
+    def _get_connection(self):
+        """Возвращает существующее соединение или создаёт новое (один раз)."""
+        if self._connection is None:
+            self._connection = psycopg2.connect(
+                host=PG_CONFIG['host'],
+                port=PG_CONFIG['port'],
+                dbname=PG_CONFIG['database'],
+                user=PG_CONFIG['user'],
+                password=PG_CONFIG['password']
+            )
+        return self._connection
+
+    def _get_cursor(self):
+        """Возвращает курсор, при необходимости создавая его."""
+        if self._cursor is None:
+            conn = self._get_connection()
+            self._cursor = conn.cursor(cursor_factory=RealDictCursor)
+        return self._cursor
+
+    def _reset_cursor(self):
+        """Сброс курсора при возникновении ошибки."""
+        if self._cursor:
+            self._cursor.close()
+            self._cursor = None
+
+    def _reset_connection(self):
+        """Полный сброс соединения (закрытие курсора и соединения)."""
+        self._reset_cursor()
+        if self._connection:
+            self._connection.close()
+            self._connection = None
+
+    def close(self):
+        """Закрыть все ресурсы при завершении работы приложения."""
+        self._reset_connection()
+
+    def _table_name(self, table: str) -> str:
+        """Возвращает полное имя таблицы с учётом схемы, например checklist_rf.users."""
+        return f"{self.schema}.{table}"
+
+    # -------------------------------------------------------------------------
+    # Универсальные методы выполнения запросов
+    # -------------------------------------------------------------------------
+    def _execute(self, query: str, params=None, fetch_one=False, fetch_all=False, commit=True):
+        """
+        Выполняет SQL-запрос.
+        - params: кортеж параметров для подстановки в %s (защита от SQL-инъекций).
+        - fetch_one: вернуть одну строку (словарь).
+        - fetch_all: вернуть все строки (список словарей).
+        - commit: нужно ли выполнять COMMIT (по умолчанию True).
+        """
+        try:
+            cur = self._get_cursor()
+            cur.execute(query, params or ())
+            result = None
+            if fetch_one:
+                result = cur.fetchone()
+            elif fetch_all:
+                result = cur.fetchall()
+            if commit:
+                self._get_connection().commit()
+            return result
+        except Exception as e:
+            self._reset_cursor()
+            self._reset_connection()
+            raise e
+
+    def _to_df(self, query: str, params=None) -> pd.DataFrame:
+        """
+        Выполняет SELECT и возвращает результат в виде pandas DataFrame.
+        Удобно для чтения списков филиалов, ВСП, истории и т.д.
+        """
+        try:
+            conn = self._get_connection()
+            return pd.read_sql_query(query, conn, params=params or ())
+        except Exception as e:
+            self._reset_connection()
+            raise e
+
+    # -------------------------------------------------------------------------
+    # ФИЛИАЛЫ И ВСП
+    # -------------------------------------------------------------------------
+    def get_filials(self) -> pd.DataFrame:
+        """Возвращает список всех филиалов (id, name, check_name)."""
+        return self._to_df(
+            f"SELECT id, name, check_name FROM {self._table_name('filials')} ORDER BY name"
+        )
+
+    def set_filial_check(self, filial_id: int, check_value: bool):
+        """Обновляет флаг check_name для заданного филиала."""
+        self._execute(
+            f"UPDATE {self._table_name('filials')} SET check_name = %s WHERE id = %s",
+            (check_value, int(filial_id))
+        )
+
+    def get_vsp_by_filial(self, filial_id: int) -> pd.DataFrame:
+        """Возвращает список ВСП для указанного филиала."""
+        return self._to_df(
+            f"SELECT id, name FROM {self._table_name('vsp')} WHERE filial_id = %s ORDER BY name",
+            (int(filial_id),)
+        )
+
+    def get_all_vsp(self) -> pd.DataFrame:
+        """Возвращает список всех ВСП (для админки)."""
+        return self._to_df(
+            f"SELECT id, name FROM {self._table_name('vsp')} ORDER BY name"
+        )
+
+    # -------------------------------------------------------------------------
+    # ШАБЛОН ЧЕК-ЛИСТА
+    # -------------------------------------------------------------------------
+    def get_checklist_template(self) -> pd.DataFrame:
+        """
+        Возвращает все пункты шаблона, включая стандартные и
+        альтернативные поля (единые для филиалов с чекбоксом).
+        """
+        query = (
+            f"SELECT id, item_order, description, "
+            f"additional_info, filter_value, events_value, "
+            f"alt_filter_value, alt_additional_info, alt_events_value "
+            f"FROM {self._table_name('checklist_templates')} "
+            f"ORDER BY item_order"
+        )
+        return self._to_df(query)
+
+    def add_template_item(
+        self,
+        description: str,
+        additional_info: str,
+        filter_value: str = "",
+        events_value: str = "",
+        alt_filter: str = "",
+        alt_info: str = "",
+        alt_events: str = ""
+    ):
+        """Добавляет новый пункт в шаблон (только для администратора)."""
+        row = self._execute(
+            f"SELECT COALESCE(MAX(item_order), 0) + 1 AS next_order "
+            f"FROM {self._table_name('checklist_templates')}",
+            fetch_one=True
+        )
+        next_order = row['next_order'] if row else 1
+        query = (
+            f"INSERT INTO {self._table_name('checklist_templates')} "
+            f"(section_name, item_order, description, additional_info, "
+            f"filter_value, events_value, alt_filter_value, alt_additional_info, alt_events_value) "
+            f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"
+        )
+        self._execute(
+            query,
+            (
+                'Основной', next_order, description, additional_info,
+                filter_value, events_value, alt_filter, alt_info, alt_events
+            )
+        )
+
+    def update_template_item(
+        self,
+        item_id: int,
+        description: str,
+        additional_info: str,
+        filter_value: str = "",
+        events_value: str = "",
+        alt_filter: str = "",
+        alt_info: str = "",
+        alt_events: str = ""
+    ):
+        """Обновляет существующий пункт шаблона."""
+        query = (
+            f"UPDATE {self._table_name('checklist_templates')} "
+            f"SET description = %s, additional_info = %s, filter_value = %s, events_value = %s, "
+            f"alt_filter_value = %s, alt_additional_info = %s, alt_events_value = %s "
+            f"WHERE id = %s"
+        )
+        self._execute(
+            query,
+            (
+                description, additional_info, filter_value, events_value,
+                alt_filter, alt_info, alt_events, item_id
+            )
+        )
+
+    def delete_template_item(self, item_id: int):
+        """Удаляет пункт шаблона и все связанные с ним ответы."""
+        self._execute(
+            f"DELETE FROM {self._table_name('checklist_answers')} WHERE template_item_id = %s",
+            (item_id,)
+        )
+        self._execute(
+            f"DELETE FROM {self._table_name('checklist_templates')} WHERE id = %s",
+            (item_id,)
+        )
+
+    # -------------------------------------------------------------------------
+    # СЕССИИ ПРОВЕРОК (status_bul – булевый, updated_at удалён)
+    # -------------------------------------------------------------------------
+    def create_session(
+        self,
+        user_full_name: str,
+        filial_id: int,
+        vsp_id: int,
+        op_date,
+        status_bul: bool = False   # False = черновик
+    ) -> int:
+        """Создаёт новую сессию проверки и возвращает её ID."""
+        row = self._execute(
+            f"INSERT INTO {self._table_name('checklist_sessions')} "
+            f"(user_name, filial_id, vsp_id, operation_date, status_bul) "
+            f"VALUES (%s, %s, %s, %s, %s) RETURNING id",
+            (user_full_name, filial_id, vsp_id, op_date, status_bul),
+            fetch_one=True
+        )
+        return row['id']
+
+    def check_user_by_name(self, name: str):
+        """
+        Проверяет существование пользователя по логину.
+        Возвращает (True, full_name, filial_name) или (False, None, None).
+        """
+        df = self._to_df(
+            f"""
+            SELECT us.name, us.full_name, f.name AS filial_name
+            FROM {self.schema}.users us
+            LEFT JOIN {self.schema}.filials f ON us.name_filial::numeric = f.id
+            WHERE LOWER(us.name) = LOWER(%s)
+            """,
+            (name,)
+        )
+        if not df.empty:
+            return True, df.iloc[0]['full_name'], df.iloc[0].get('filial_name')
+        return False, None, None
+
+    def update_session_status(self, session_id: int, completed: bool):
+        """Меняет статус сессии: True = завершена, False = черновик."""
+        self._execute(
+            f"UPDATE {self._table_name('checklist_sessions')} SET status_bul = %s WHERE id = %s",
+            (completed, session_id)
+        )
+
+    def get_user_draft_sessions(self, full_name: str) -> pd.DataFrame:
+        """
+        Возвращает черновики (status_bul = FALSE) пользователя.
+        Сортировка по дате создания (самые новые вверху).
+        """
+        return self._to_df(
+            f"""
+            SELECT s.id, s.operation_date, f.name AS filial_name, v.name AS vsp_name,
+                   s.created_at, COUNT(a.id) AS completed_count,
+                   (SELECT COUNT(*) FROM {self.schema}.checklist_templates) AS total_count
+            FROM {self.schema}.checklist_sessions s
+            JOIN {self.schema}.filials f ON s.filial_id = f.id
+            JOIN {self.schema}.vsp v ON s.vsp_id = v.id
+            LEFT JOIN {self.schema}.checklist_answers a ON s.id = a.session_id AND a.is_completed = true
+            WHERE s.user_name = %s AND s.status_bul = FALSE
+            GROUP BY s.id, f.name, v.name, s.operation_date, s.created_at
+            ORDER BY s.created_at DESC
+            """,
+            (full_name,)
+        )
+
+    def get_last_user_session_data(self, full_name: str) -> Optional[Dict]:
+        """Последняя завершённая сессия пользователя (для автоподстановки)."""
+        df = self._to_df(
+            f"""
+            SELECT f.id AS filial_id, f.name AS filial_name, v.id AS vsp_id, v.name AS vsp_name
+            FROM {self.schema}.checklist_sessions s
+            JOIN {self.schema}.filials f ON s.filial_id = f.id
+            JOIN {self.schema}.vsp v ON s.vsp_id = v.id
+            WHERE s.user_name = %s AND s.status_bul = TRUE
+            ORDER BY s.created_at DESC LIMIT 1
+            """,
+            (full_name,)
+        )
+        return df.iloc[0].to_dict() if not df.empty else None
+
+    def get_last_user_any_session_data(self, full_name: str) -> Optional[Dict]:
+        """Последняя любая сессия пользователя (если нет завершённых)."""
+        df = self._to_df(
+            f"""
+            SELECT f.id AS filial_id, f.name AS filial_name, v.id AS vsp_id, v.name AS vsp_name
+            FROM {self.schema}.checklist_sessions s
+            JOIN {self.schema}.filials f ON s.filial_id = f.id
+            JOIN {self.schema}.vsp v ON s.vsp_id = v.id
+            WHERE s.user_name = %s
+            ORDER BY s.created_at DESC LIMIT 1
+            """,
+            (full_name,)
+        )
+        return df.iloc[0].to_dict() if not df.empty else None
+
+    def get_session_data(self, session_id: int) -> Optional[Dict]:
+        """Возвращает полную информацию о сессии и словарь ответов."""
+        cur = self._get_cursor()
+        cur.execute(
+            f"SELECT * FROM {self._table_name('checklist_sessions')} WHERE id = %s",
+            (session_id,)
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        info = dict(row)
+        cur.execute(
+            f"SELECT template_item_id, is_completed FROM {self._table_name('checklist_answers')} "
+            f"WHERE session_id = %s",
+            (session_id,)
+        )
+        rows = cur.fetchall()
+        answers = {r['template_item_id']: r['is_completed'] for r in rows}
+        return {"info": info, "answers": answers}
+
+    def save_answers(self, session_id: int, answers: Dict[int, bool]):
+        """Сохраняет ответы (UPSERT). Обновление updated_at больше не требуется."""
+        cur = self._get_cursor()
+        for item_id, comp in answers.items():
+            cur.execute(
+                f"INSERT INTO {self._table_name('checklist_answers')} "
+                f"(session_id, template_item_id, is_completed) "
+                f"VALUES (%s, %s, %s) "
+                f"ON CONFLICT (session_id, template_item_id) "
+                f"DO UPDATE SET is_completed = EXCLUDED.is_completed",
+                (session_id, item_id, comp)
+            )
+        # Раньше здесь обновляли updated_at, теперь этого поля нет.
+        self._get_connection().commit()
+
+    # -------------------------------------------------------------------------
+    # НЕРАБОЧИЕ ДНИ ВСП
+    # -------------------------------------------------------------------------
+    def add_non_working_day(self, user_name: str, filial_id: int, vsp_id: int, day, reason: str):
+        """Добавляет запись о нерабочем дне ВСП."""
+        self._execute(
+            f"INSERT INTO {self._table_name('vsp_non_working_days')} "
+            f"(user_name, filial_id, vsp_id, date, reason) "
+            f"VALUES (%s, %s, %s, %s, %s)",
+            (user_name, filial_id, vsp_id, day, reason)
+        )
+
+    def get_non_working_days(
+        self,
+        filial_id: int = None,
+        vsp_id: int = None,
+        date_from=None,
+        date_to=None
+    ) -> pd.DataFrame:
+        """Возвращает записи нерабочих дней с фильтрацией."""
+        conds = []
+        params = []
+        if filial_id is not None:
+            conds.append("nwd.filial_id = %s")
+            params.append(filial_id)
+        if vsp_id is not None:
+            conds.append("nwd.vsp_id = %s")
+            params.append(vsp_id)
+        if date_from is not None:
+            conds.append("nwd.date >= %s")
+            params.append(date_from)
+        if date_to is not None:
+            conds.append("nwd.date <= %s")
+            params.append(date_to)
+
+        where = " AND ".join(conds) if conds else "1=1"
+        query = f"""
+            SELECT nwd.id, nwd.user_name, f.name AS filial, v.name AS vsp,
+                   nwd.date, nwd.reason, nwd.created_at
+            FROM {self._table_name('vsp_non_working_days')} nwd
+            JOIN {self._table_name('filials')} f ON nwd.filial_id = f.id
+            JOIN {self._table_name('vsp')} v ON nwd.vsp_id = v.id
+            WHERE {where}
+            ORDER BY nwd.date DESC, nwd.created_at DESC
+        """
+        return self._to_df(query, tuple(params) if params else None)
+
+    # -------------------------------------------------------------------------
+    # ЭКСПОРТ И ОТЧЁТЫ (updated_at удалён, status_bul обрабатываем)
+    # -------------------------------------------------------------------------
+    def get_export_data(self) -> pd.DataFrame:
+        """Сводные данные по всем сессиям (для экспорта в Excel)."""
+        return self._to_df(f"""
+            SELECT
+                s.id AS session_id, s.user_name AS ФИО, f.name AS Филиал, v.name AS ВСП,
+                s.operation_date AS Дата_проверки,
+                CASE s.status_bul
+                    WHEN TRUE THEN 'Завершена'
+                    ELSE 'Черновик'
+                END AS Статус,
+                s.created_at AS Дата_создания,
+                COUNT(a.id) AS Выполнено_проверок,
+                (SELECT COUNT(*) FROM {self.schema}.checklist_templates) AS Всего_проверок
+            FROM {self.schema}.checklist_sessions s
+            JOIN {self.schema}.filials f ON s.filial_id = f.id
+            JOIN {self.schema}.vsp v ON s.vsp_id = v.id
+            LEFT JOIN {self.schema}.checklist_answers a
+                ON s.id = a.session_id AND a.is_completed = true
+            GROUP BY s.id, f.name, v.name, s.user_name, s.operation_date,
+                     s.status_bul, s.created_at
+            ORDER BY s.created_at DESC
+        """)
+
+    def get_user_sessions(self, full_name: str) -> pd.DataFrame:
+        """История проверок конкретного пользователя (без updated_at)."""
+        return self._to_df(f"""
+            SELECT
+                s.id,
+                s.operation_date AS "Дата проверки",
+                f.name AS "Филиал",
+                v.name AS "ВСП",
+                CASE s.status_bul
+                    WHEN TRUE THEN 'Завершена'
+                    ELSE 'Черновик'
+                END AS "Статус",
+                s.created_at AS "Дата создания",
+                COUNT(a.id) AS "Выполнено проверок",
+                (SELECT COUNT(*) FROM {self.schema}.checklist_templates) AS "Всего проверок"
+            FROM {self.schema}.checklist_sessions s
+            JOIN {self.schema}.filials f ON s.filial_id = f.id
+            JOIN {self.schema}.vsp v ON s.vsp_id = v.id
+            LEFT JOIN {self.schema}.checklist_answers a
+                ON s.id = a.session_id AND a.is_completed = true
+            WHERE s.user_name = %s
+            GROUP BY s.id, f.name, v.name, s.operation_date,
+                     s.status_bul, s.created_at
+            ORDER BY s.created_at DESC
+        """, (full_name,))
+
+    def get_admin_analytics(
+        self,
+        filial_id: int = None,
+        vsp_id: int = None,
+        date_from: datetime.date = None,
+        date_to: datetime.date = None
+    ) -> pd.DataFrame:
+        """Детальная аналитика для администратора (без updated_at)."""
+        conds = []
+        params = []
+        if filial_id is not None:
+            conds.append("s.filial_id = %s")
+            params.append(int(filial_id))
+        if vsp_id is not None:
+            conds.append("s.vsp_id = %s")
+            params.append(int(vsp_id))
+        if date_from is not None:
+            conds.append("s.operation_date >= %s")
+            params.append(date_from)
+        if date_to is not None:
+            conds.append("s.operation_date <= %s")
+            params.append(date_to)
+        where = " AND ".join(conds) if conds else "1=1"
+
+        sessions = self._to_df(
+            f"""
+            SELECT s.id AS session_id, s.user_name AS ФИО, f.name AS Филиал, v.name AS ВСП,
+                   s.operation_date AS Дата, s.status_bul AS Статус,
+                   s.created_at AS Дата_создания
+            FROM {self.schema}.checklist_sessions s
+            JOIN {self.schema}.filials f ON s.filial_id = f.id
+            JOIN {self.schema}.vsp v ON s.vsp_id = v.id
+            WHERE {where}
+            ORDER BY s.operation_date DESC, f.name, v.name
+            """,
+            tuple(params) if params else None
+        )
+
+        if sessions.empty:
+            return sessions
+
+        template = self.get_checklist_template()
+        if template.empty:
+            return sessions
+
+        # Собираем ответы для каждой сессии
+        all_answers = []
+        for sid in sessions['session_id']:
+            data = self.get_session_data(sid)
+            answers = data['answers'] if data else {}
+            row = {'session_id': sid}
+            for _, tpl in template.iterrows():
+                row[f"check_{tpl['id']}"] = answers.get(tpl['id'], False)
+            all_answers.append(row)
+        ans_df = pd.DataFrame(all_answers)
+        return sessions.merge(ans_df, on='session_id', how='left')
+
+
+# =============================================================================
+# ИНИЦИАЛИЗАЦИЯ ПРИЛОЖЕНИЯ И ПЕРЕМЕННЫХ СОСТОЯНИЯ
+# =============================================================================
+st.markdown("""
+<style>
+    div[data-testid="stCheckbox"] label span {
+        transform: scale(1.5);
+        margin-right: 12px;
+    }
+    div[data-testid="stCheckbox"] label {
+        font-size: 16px;
+        padding: 5px 0;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+db = DatabaseManager()
+
+if "user_name" not in st.session_state:
+    st.session_state.user_name = ""
+if "user_full_name" not in st.session_state:
+    st.session_state.user_full_name = ""
+if "auth_valid" not in st.session_state:
+    st.session_state.auth_valid = False
+if "last_filial_name" not in st.session_state:
+    st.session_state.last_filial_name = None
+if "last_vsp_name" not in st.session_state:
+    st.session_state.last_vsp_name = None
+if "last_filial_id" not in st.session_state:
+    st.session_state.last_filial_id = None
+if "last_vsp_id" not in st.session_state:
+    st.session_state.last_vsp_id = None
+if "admin_authenticated" not in st.session_state:
+    st.session_state.admin_authenticated = False
+if "step" not in st.session_state:
+    st.session_state.step = 0
+if "selected_filial_id" not in st.session_state:
+    st.session_state.selected_filial_id = None
+if "selected_vsp_id" not in st.session_state:
+    st.session_state.selected_vsp_id = None
+if "resume_session_id" not in st.session_state:
+    st.session_state.resume_session_id = None
+if "data_loaded" not in st.session_state:
+    st.session_state.data_loaded = False
+if "update_counter" not in st.session_state:
+    st.session_state.update_counter = 0
+
+
+def load_last_user_data():
+    """Загружает последние использованные филиал и ВСП."""
+    if (
+        st.session_state.user_full_name
+        and not st.session_state.data_loaded
+        and st.session_state.auth_valid
+    ):
+        last_data = db.get_last_user_session_data(st.session_state.user_full_name)
+        if not last_data:
+            last_data = db.get_last_user_any_session_data(st.session_state.user_full_name)
+        if last_data:
+            if not st.session_state.last_filial_name:
+                st.session_state.last_filial_name = last_data['filial_name']
+            st.session_state.last_vsp_name = last_data['vsp_name']
+            st.session_state.last_vsp_id = last_data['vsp_id']
+            if st.session_state.selected_vsp_id is None:
+                st.session_state.selected_vsp_id = last_data['vsp_id']
+            if st.session_state.selected_filial_id is None:
+                st.session_state.selected_filial_id = last_data['filial_id']
+            if st.session_state.last_filial_id is None:
+                st.session_state.last_filial_id = last_data['filial_id']
+            st.session_state.update_counter += 1
+        st.session_state.data_loaded = True
+
+
+load_last_user_data()
+
+# =============================================================================
+# БОКОВАЯ ПАНЕЛЬ (SIDEBAR)
+# =============================================================================
+with st.sidebar:
+    if st.session_state.step != 1:
+        st.header("👤 Информация")
+        if st.session_state.auth_valid and st.session_state.user_full_name:
+            st.markdown(f"**Пользователь:** {st.session_state.user_full_name}")
+            st.caption(f"Логин: {st.session_state.user_name}")
+            if st.button("🔄 Сменить пользователя", use_container_width=True):
+                for key in [
+                    'user_name', 'user_full_name', 'auth_valid',
+                    'last_filial_name', 'last_vsp_name',
+                    'last_filial_id', 'last_vsp_id',
+                    'selected_filial_id', 'selected_vsp_id',
+                    'step', 'data_loaded', 'update_counter',
+                    'current_session_id', 'temp_answers', 'resume_session_id'
+                ]:
+                    if key in st.session_state:
+                        del st.session_state[key]
+                st.rerun()
+        else:
+            st.info("👋 Пользователь не выбран")
+
+        st.divider()
+        st.subheader("🔐 Администрирование")
+
+        admin_access = st.checkbox("Вход в режим администратора", key="admin_checkbox")
+        if admin_access:
+            if not st.session_state.admin_authenticated:
+                pwd = st.text_input("Введите пароль:", type="password", key="admin_password")
+                if st.button("Войти", type="primary", use_container_width=True):
+                    if pwd == ADMIN_PASSWORD:
+                        st.session_state.admin_authenticated = True
+                        st.success("✅ Режим администратора активирован!")
+                        time.sleep(0.5)
+                        st.rerun()
+                    else:
+                        st.error("❌ Неверный пароль!")
+            else:
+                st.success("✅ Режим администратора активен")
+                if st.button("Выйти", use_container_width=True):
+                    st.session_state.admin_authenticated = False
+                    st.rerun()
+        else:
+            if st.session_state.admin_authenticated:
+                st.session_state.admin_authenticated = False
+                st.rerun()
+
+        if st.session_state.admin_authenticated:
+            st.divider()
+            st.subheader("⚙️ Управление чек-листом")
+
+            tpl = db.get_checklist_template()
+            if not tpl.empty:
+                with st.expander("📋 Текущие проверки"):
+                    for _, r in tpl.iterrows():
+                        st.markdown(f"**{r['item_order']}.** {r['description']}")
+
+            with st.expander("➕ Добавить проверку"):
+                new_desc = st.text_area("Наименование", height=68)
+                new_info = st.text_area("Описание", height=68)
+                new_filter = st.text_area("🔍 Фильтр (стандартный)")
+                new_events = st.text_area("📌 Мероприятия (стандартные)", height=68)
+                new_alt_filter = st.text_area("🔍 Альт. фильтр (для филиалов с чекбоксом)")
+                new_alt_info = st.text_area("📝 Альт. описание (для филиалов с чекбоксом)", height=68)
+                new_alt_events = st.text_area("📌 Альт. мероприятия (для филиалов с чекбоксом)", height=68)
+                if st.button("➕ Добавить", use_container_width=True, type="primary"):
+                    if new_desc:
+                        db.add_template_item(
+                            new_desc, new_info, new_filter, new_events,
+                            new_alt_filter, new_alt_info, new_alt_events
+                        )
+                        st.success("✅ Добавлено!")
+                        st.rerun()
+
+            with st.expander("✏️ Редактировать/Удалить"):
+                if not tpl.empty:
+                    sel_id = st.selectbox(
+                        "Выберите проверку",
+                        tpl['id'].tolist(),
+                        format_func=lambda x: f"ID {x} - {tpl[tpl['id']==x]['description'].iloc[0][:50]}"
+                    )
+                    row = tpl[tpl['id'] == sel_id].iloc[0]
+                    e_desc = st.text_area("Наименование", value=row['description'])
+                    e_info = st.text_area("Описание", value=row['additional_info'] or "")
+                    e_filter = st.text_area("Фильтр (стандартный)", value=row['filter_value'] or "")
+                    e_events = st.text_area("Мероприятия (стандартные)", value=row['events_value'] or "")
+                    e_alt_filter = st.text_area("Альт. фильтр", value=row['alt_filter_value'] or "")
+                    e_alt_info = st.text_area("Альт. описание", value=row['alt_additional_info'] or "")
+                    e_alt_events = st.text_area("Альт. мероприятия", value=row['alt_events_value'] or "")
+                    c1, c2 = st.columns(2)
+                    if c1.button("💾 Обновить", use_container_width=True):
+                        db.update_template_item(
+                            sel_id, e_desc, e_info, e_filter, e_events,
+                            e_alt_filter, e_alt_info, e_alt_events
+                        )
+                        st.success("Обновлено!")
+                        st.rerun()
+                    if c2.button("🗑️ Удалить", use_container_width=True):
+                        db.delete_template_item(sel_id)
+                        st.success("Удалено!")
+                        st.rerun()
+
+            st.divider()
+            st.subheader("📊 Экспорт данных")
+            exp_df = db.get_export_data()
+            if not exp_df.empty:
+                if st.button("📊 Экспорт в Excel", use_container_width=True):
+                    if OPENPYXL_AVAILABLE:
+                        path = "/tmp/export.xlsx"
+                        with pd.ExcelWriter(path, engine='openpyxl') as writer:
+                            exp_df.to_excel(writer, sheet_name='Отчет', index=False)
+                        with open(path, 'rb') as f:
+                            st.download_button(
+                                "💾 Скачать", f.read(),
+                                f"checklist_{datetime.date.today()}.xlsx",
+                                use_container_width=True
+                            )
+                    else:
+                        st.error("Установите openpyxl")
+            else:
+                st.warning("Нет данных для экспорта")
+    else:
+        st.info("Идет заполнение чек-листа...")
+
+# =============================================================================
+# ОСНОВНОЙ ИНТЕРФЕЙС – ДИНАМИЧЕСКИЕ ВКЛАДКИ
+# =============================================================================
+st.title("📋 Завершение операций по ВСП")
+st.caption("")
+
+tab_titles = ["📜 История проверок", "📝 Новая проверка"]
+if st.session_state.auth_valid:
+    tab_titles.append("📅 Нерабочие дни ВСП")
+if st.session_state.admin_authenticated:
+    tab_titles.append("📊 Аналитика")
+    tab_titles.append("🏢 Филиалы (чекбоксы)")
+    tab_titles.append("📅 Нерабочие дни (отчет)")
+
+tabs = st.tabs(tab_titles)
+
+idx = 0
+tab_history = tabs[idx]; idx += 1
+tab_main = tabs[idx]; idx += 1
+
+if st.session_state.auth_valid:
+    tab_non_working = tabs[idx]; idx += 1
+else:
+    tab_non_working = None
+
+if st.session_state.admin_authenticated:
+    tab_analytics = tabs[idx]; idx += 1
+    tab_filial_check = tabs[idx]; idx += 1
+    tab_admin_non_working = tabs[idx]; idx += 1
+else:
+    tab_analytics = tab_filial_check = tab_admin_non_working = None
+
+# ===================== ВКЛАДКА "НОВАЯ ПРОВЕРКА" =====================
+with tab_main:
+    if st.session_state.step == 0:
+        if st.session_state.auth_valid and st.session_state.user_full_name:
+            drafts = db.get_user_draft_sessions(st.session_state.user_full_name)
+            if not drafts.empty:
+                drafts = drafts[drafts['operation_date'] == datetime.date.today()]
+        else:
+            drafts = pd.DataFrame()
+
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if not drafts.empty:
+                st.info(f"📌 У вас есть {len(drafts)} сохраненных черновиков")
+                for _, d in drafts.iterrows():
+                    a, b, c = st.columns([3, 2, 1])
+                    a.markdown(f"**{d['filial_name']} / {d['vsp_name']}**")
+                    a.caption(f"📅 {d['operation_date']}")
+                    b.caption(f"✅ {d['completed_count']}/{d['total_count']}")
+                    if c.button("📂 Продолжить", key=f"resume_{d['id']}", use_container_width=True):
+                        st.session_state.current_session_id = d['id']
+                        st.session_state.step = 1
+                        st.rerun()
+                    st.divider()
+
+            filials_df = db.get_filials()
+            if not filials_df.empty:
+                filial_names = filials_df['name'].tolist()
+                filial_map = dict(zip(filials_df['name'], filials_df['id']))
+
+                login = st.text_input(
+                    "👤 Учетная запись сотрудника",
+                    value=st.session_state.user_name if not st.session_state.auth_valid else "",
+                    placeholder="rf_ivanov_av (либо go_ivanov_av)",
+                    disabled=st.session_state.auth_valid,
+                    key=f"login_{st.session_state.update_counter}"
+                )
+                login_norm = login.lower().strip() if login else ""
+
+                if (
+                    login_norm
+                    and login_norm != st.session_state.user_name
+                    and not st.session_state.auth_valid
+                ):
+                    exists, full, fil = db.check_user_by_name(login_norm)
+                    if exists:
+                        st.session_state.user_name = login_norm
+                        st.session_state.user_full_name = full
+                        st.session_state.auth_valid = True
+                        if fil and fil in filial_names:
+                            st.session_state.last_filial_name = fil
+                            st.session_state.selected_filial_id = filial_map[fil]
+                            st.session_state.last_filial_id = filial_map[fil]
+                            st.session_state.update_counter += 1
+                        st.success(f"✅ Добро пожаловать, {full}!")
+                        last = db.get_last_user_session_data(full)
+                        if last:
+                            if not st.session_state.last_vsp_name:
+                                st.session_state.last_vsp_name = last['vsp_name']
+                            st.session_state.last_vsp_id = last['vsp_id']
+                            if st.session_state.selected_vsp_id is None:
+                                st.session_state.selected_vsp_id = last['vsp_id']
+                            if st.session_state.selected_filial_id is None:
+                                st.session_state.selected_filial_id = last['filial_id']
+                            st.session_state.update_counter += 1
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Пользователь '{login_norm}' не найден!")
+
+                if st.session_state.auth_valid:
+                    st.info(f"👤 **Авторизован:** {st.session_state.user_full_name}")
+                    st.caption(f"Логин: {st.session_state.user_name}")
+                    if st.button("🔄 Сменить пользователя", key="change_btn", use_container_width=True):
+                        for k in [
+                            'user_name', 'user_full_name', 'auth_valid',
+                            'last_filial_name', 'last_vsp_name',
+                            'last_filial_id', 'last_vsp_id',
+                            'selected_filial_id', 'selected_vsp_id',
+                            'step', 'data_loaded', 'update_counter',
+                            'current_session_id', 'temp_answers', 'resume_session_id'
+                        ]:
+                            if k in st.session_state:
+                                del st.session_state[k]
+                        st.rerun()
+                    st.divider()
+
+                    sel_filial_id = st.session_state.last_filial_id
+                    if sel_filial_id is None:
+                        st.error("Филиал не определен. Обратитесь к администратору")
+                        st.stop()
+                    st.markdown(f"**Филиал:** {st.session_state.last_filial_name}")
+
+                    vsp_df = db.get_vsp_by_filial(sel_filial_id)
+                    if not vsp_df.empty:
+                        vsp_names = vsp_df['name'].tolist()
+                        vsp_map = dict(zip(vsp_df['name'], vsp_df['id']))
+                        vsp_idx = 0
+                        if (
+                            st.session_state.last_vsp_name
+                            and st.session_state.last_vsp_name in vsp_names
+                        ):
+                            vsp_idx = vsp_names.index(st.session_state.last_vsp_name)
+                        elif st.session_state.last_vsp_id is not None:
+                            for i, (name, vid) in enumerate(vsp_map.items()):
+                                if vid == st.session_state.last_vsp_id:
+                                    vsp_idx = i
+                                    st.session_state.last_vsp_name = name
+                                    break
+                        sel_vsp = st.selectbox(
+                            "🏪 ВСП", vsp_names, index=vsp_idx,
+                            key=f"vsp_{st.session_state.update_counter}"
+                        )
+                        sel_vsp_id = vsp_map[sel_vsp]
+                        st.session_state.last_vsp_name = sel_vsp
+                        st.session_state.last_vsp_id = sel_vsp_id
+                        st.session_state.selected_vsp_id = sel_vsp_id
+                    else:
+                        sel_vsp_id = None
+                        st.warning("Нет ВСП в выбранном филиале")
+
+                    with st.form("new_session_form"):
+                        op_date = st.date_input(
+                            "📅 Дата", value=datetime.date.today(),
+                            format="DD.MM.YYYY", disabled=True
+                        )
+                        submitted = st.form_submit_button(
+                            "▶️ НАЧАТЬ ЗАПОЛНЕНИЕ", type="primary", use_container_width=True
+                        )
+                        if submitted and sel_vsp_id is not None:
+                            sid = db.create_session(
+                                st.session_state.user_full_name,
+                                sel_filial_id, sel_vsp_id, op_date, False
+                            )
+                            st.session_state.current_session_id = sid
+                            st.session_state.step = 1
+                            st.rerun()
+                        elif submitted:
+                            st.error("Выберите ВСП!")
+            else:
+                st.error("Нет филиалов в базе данных")
+
+# ===================== ВКЛАДКА "ИСТОРИЯ ПРОВЕРОК" =====================
+with tab_history:
+    st.markdown("### 📜 История ваших проверок")
+    if st.session_state.auth_valid and st.session_state.user_full_name:
+        hist = db.get_user_sessions(st.session_state.user_full_name)
+        if not hist.empty:
+            st.dataframe(hist, use_container_width=True, height=400)
+            sel_sess = st.selectbox(
+                "Выберите сессию",
+                hist['id'].tolist(),
+                format_func=lambda x: (
+                    f"Сессия #{x} - {hist[hist['id']==x]['Дата проверки'].iloc[0]}"
+                )
+            )
+            if st.button("📋 Показать результаты"):
+                data = db.get_session_data(sel_sess)
+                if data:
+                    with st.expander(f"Результаты проверки #{sel_sess}", expanded=True):
+                        st.markdown(f"**Дата:** {data['info']['operation_date']}")
+                        status_text = "✔️ Завершена" if data['info']['status_bul'] else "📄 Черновик"
+                        st.markdown(f"**Статус:** {status_text}")
+                        tpl = db.get_checklist_template()
+                        ans = data['answers']
+                        for _, r in tpl.iterrows():
+                            st.markdown(
+                                f"{'✔️' if ans.get(r['id'], False) else '❌'} {r['description']}"
+                            )
+                else:
+                    st.error("Не удалось загрузить данные")
+        else:
+            st.info("У вас пока нет завершённых проверок.")
+    else:
+        st.warning("Введите учётную запись, чтобы увидеть историю.")
+
+# ===================== ВКЛАДКА "НЕРАБОЧИЕ ДНИ ВСП" =====================
+if tab_non_working is not None:
+    with tab_non_working:
+        st.markdown("## 📅 Внесение нерабочих дней ВСП")
+        st.caption("Укажите дату и причину, когда ВСП не работало.")
+
+        if st.session_state.get("last_filial_id") is None:
+            exists, full, fil = db.check_user_by_name(st.session_state.user_name)
+            if exists and fil:
+                filials_df = db.get_filials()
+                if not filials_df.empty:
+                    fid_row = filials_df[filials_df['name'] == fil]
+                    if not fid_row.empty:
+                        st.session_state.last_filial_id = int(fid_row['id'].iloc[0])
+                        st.session_state.last_filial_name = fil
+            if st.session_state.get("last_filial_id") is None:
+                st.error("Не удалось определить ваш филиал. Обратитесь к администратору.")
+                st.stop()
+
+        current_filial_id = st.session_state.last_filial_id
+        current_filial_name = st.session_state.last_filial_name
+        st.markdown(f"**Филиал:** {current_filial_name}")
+
+        vsp_df = db.get_vsp_by_filial(current_filial_id)
+        if vsp_df.empty:
+            st.warning("В этом филиале нет ВСП.")
+        else:
+            vsp_names = vsp_df['name'].tolist()
+            vsp_map = dict(zip(vsp_df['name'], vsp_df['id']))
+
+            default_vsp = st.session_state.last_vsp_name if st.session_state.last_vsp_name in vsp_names else vsp_names[0]
+            default_vsp_idx = vsp_names.index(default_vsp)
+
+            sel_vsp_nw = st.selectbox("🏪 ВСП", vsp_names, index=default_vsp_idx, key="nw_vsp")
+            sel_vsp_id_nw = vsp_map[sel_vsp_nw]
+
+            nw_date = st.date_input("📅 Дата нерабочего дня", value=datetime.date.today(), key="nw_date")
+            nw_reason = st.selectbox("📌 Причина", NON_WORKING_REASONS, key="nw_reason")
+
+            if st.button("💾 Добавить нерабочий день", type="primary", use_container_width=True):
+                db.add_non_working_day(
+                    user_name=st.session_state.user_full_name,
+                    filial_id=current_filial_id,
+                    vsp_id=sel_vsp_id_nw,
+                    day=nw_date,
+                    reason=nw_reason
+                )
+                st.success(f"✅ Нерабочий день {nw_date} для ВСП «{sel_vsp_nw}» сохранён!")
+                time.sleep(1)
+                st.rerun()
+
+            st.divider()
+            st.markdown("### 📋 Ранее добавленные нерабочие дни")
+            show_all = st.checkbox("Показать все ВСП филиала", value=False, key="nw_show_all")
+            filter_vsp = None if show_all else sel_vsp_id_nw
+            nw_df = db.get_non_working_days(filial_id=current_filial_id, vsp_id=filter_vsp)
+            if nw_df.empty:
+                st.info("Нет записей о нерабочих днях.")
+            else:
+                st.dataframe(
+                    nw_df[['vsp', 'date', 'reason']],
+                    use_container_width=True,
+                    height=300
+                )
+
+# ===================== ВКЛАДКА "АНАЛИТИКА" =====================
+if tab_analytics is not None:
+    with tab_analytics:
+        st.markdown("## 📊 Детальная аналитика по проверкам")
+        st.caption("Просмотр всех сессий с фильтрацией и визуализацией статусов проверок (✔️/❌)")
+
+        filials_df = db.get_filials()
+        if not filials_df.empty:
+            col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+            with col_f1:
+                filial_opts = ["Все"] + filials_df['name'].tolist()
+                sel_filial_name = st.selectbox("Филиал", filial_opts, key="adm_filial")
+                filial_id = (
+                    None if sel_filial_name == "Все"
+                    else int(filials_df[filials_df['name'] == sel_filial_name]['id'].iloc[0])
+                )
+            with col_f2:
+                if filial_id is not None:
+                    vsp_df = db.get_vsp_by_filial(filial_id)
+                else:
+                    vsp_df = db.get_all_vsp()
+                vsp_opts = ["Все"] + vsp_df['name'].tolist() if not vsp_df.empty else ["Все"]
+                sel_vsp_name = st.selectbox("ВСП", vsp_opts, key="adm_vsp")
+                vsp_id = (
+                    None if sel_vsp_name == "Все"
+                    else int(vsp_df[vsp_df['name'] == sel_vsp_name]['id'].iloc[0])
+                )
+            with col_f3:
+                date_from = st.date_input("Дата от", value=None, key="adm_date_from")
+            with col_f4:
+                date_to = st.date_input("Дата до", value=None, key="adm_date_to")
+
+            if st.button("🔍 Показать данные", use_container_width=True):
+                with st.spinner("Загрузка..."):
+                    analytics = db.get_admin_analytics(filial_id, vsp_id, date_from, date_to)
+                if analytics.empty:
+                    st.info("Нет данных по выбранным фильтрам")
+                else:
+                    st.success(f"Найдено {len(analytics)} сессий")
+                    template = db.get_checklist_template()
+                    for _, tpl in template.iterrows():
+                        col_name = f"check_{tpl['id']}"
+                        if col_name in analytics.columns:
+                            analytics[col_name] = analytics[col_name].apply(
+                                lambda x: "✔️" if x else "❌"
+                            )
+                    rename = {
+                        f"check_{tpl['id']}": f"{tpl['item_order']}. {tpl['description'][:50]}"
+                        for _, tpl in template.iterrows()
+                    }
+                    analytics.rename(columns=rename, inplace=True)
+                    # Заменяем булевый статус на текст для отображения
+                    analytics['Статус'] = analytics['Статус'].apply(
+                        lambda x: 'Завершена' if x else 'Черновик'
+                    )
+                    base_cols = ['ФИО', 'Филиал', 'ВСП', 'Дата', 'Статус']
+                    display_cols = base_cols + [
+                        v for v in rename.values() if v in analytics.columns
+                    ]
+                    final_df = analytics[display_cols]
+                    st.dataframe(final_df, use_container_width=True, height=500)
+        else:
+            st.warning("Нет филиалов в базе данных")
+
+# ===================== ВКЛАДКА "ФИЛИАЛЫ (ЧЕКБОКСЫ)" =====================
+if tab_filial_check is not None:
+    with tab_filial_check:
+        st.markdown("## 🏢 Настройка филиалов для альтернативных фильтров")
+        st.caption("Включите чекбокс для филиалов, которые должны использовать единые альтернативные фильтры/описания")
+
+        filials_df = db.get_filials()
+        if filials_df.empty:
+            st.warning("Нет филиалов")
+        else:
+            with st.form("filial_checks_form"):
+                st.markdown("**Отметьте нужные филиалы:**")
+                new_checks = {}
+                for _, frow in filials_df.iterrows():
+                    fid = int(frow['id'])
+                    fname = frow['name']
+                    current = bool(frow['check_name'])
+                    new_checks[fid] = st.checkbox(fname, value=current, key=f"fchk_{fid}")
+                submitted_fchecks = st.form_submit_button("💾 Сохранить чекбоксы")
+            if submitted_fchecks:
+                for fid, val in new_checks.items():
+                    db.set_filial_check(fid, val)
+                st.success("Настройки филиалов обновлены!")
+                st.rerun()
+            st.divider()
+            st.markdown("📝 Редактирование альтернативных значений выполняется в боковой панели «Управление чек-листом».")
+
+# ===================== ВКЛАДКА "НЕРАБОЧИЕ ДНИ (ОТЧЕТ)" =====================
+if tab_admin_non_working is not None:
+    with tab_admin_non_working:
+        st.markdown("## 📅 Отчет по нерабочим дням ВСП")
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            filials_df = db.get_filials()
+            if not filials_df.empty:
+                filial_opts = ["Все"] + filials_df['name'].tolist()
+                sel_fil = st.selectbox("Филиал", filial_opts, key="adm_nw_filial")
+                filial_id_filter = (
+                    None if sel_fil == "Все"
+                    else int(filials_df[filials_df['name'] == sel_fil]['id'].iloc[0])
+                )
+            else:
+                filial_id_filter = None
+        with col2:
+            if filial_id_filter is not None:
+                vsp_df = db.get_vsp_by_filial(filial_id_filter)
+            else:
+                vsp_df = db.get_all_vsp()
+            if not vsp_df.empty:
+                vsp_opts = ["Все"] + vsp_df['name'].tolist()
+                sel_vsp = st.selectbox("ВСП", vsp_opts, key="adm_nw_vsp")
+                vsp_id_filter = (
+                    None if sel_vsp == "Все"
+                    else int(vsp_df[vsp_df['name'] == sel_vsp]['id'].iloc[0])
+                )
+            else:
+                vsp_id_filter = None
+        with col3:
+            date_from_nw = st.date_input("Дата от", value=None, key="adm_nw_date_from")
+        with col4:
+            date_to_nw = st.date_input("Дата до", value=None, key="adm_nw_date_to")
+
+        if st.button("🔍 Показать", key="adm_nw_show"):
+            nw_data = db.get_non_working_days(
+                filial_id=filial_id_filter,
+                vsp_id=vsp_id_filter,
+                date_from=date_from_nw,
+                date_to=date_to_nw
+            )
+            if nw_data.empty:
+                st.info("Нет данных по выбранным фильтрам.")
+            else:
+                st.success(f"Найдено записей: {len(nw_data)}")
+                st.dataframe(nw_data, use_container_width=True, height=500)
+
+# =============================================================================
+# ШАГ 1: ЗАПОЛНЕНИЕ ЧЕК-ЛИСТА
+# =============================================================================
+if st.session_state.step == 1:
+    if "current_session_id" not in st.session_state:
+        st.error("Сессия не найдена")
+        st.session_state.step = 0
+        st.rerun()
+
+    sid = st.session_state.current_session_id
+    sess = db.get_session_data(sid)
+    if not sess:
+        st.error("Данные сессии отсутствуют")
+        st.stop()
+
+    template = db.get_checklist_template()
+    if template.empty:
+        st.warning("Шаблон пуст")
+        st.stop()
+
+    saved = sess['answers']
+    if "temp_answers" not in st.session_state:
+        st.session_state.temp_answers = copy.deepcopy(saved)
+
+    cur = db._get_cursor()
+    cur.execute(f"""
+        SELECT f.name AS filial_name, v.name AS vsp_name, s.filial_id, f.check_name
+        FROM {db.schema}.checklist_sessions s
+        JOIN {db.schema}.filials f ON s.filial_id = f.id
+        JOIN {db.schema}.vsp v ON s.vsp_id = v.id
+        WHERE s.id = %s
+    """, (sid,))
+    row = cur.fetchone()
+    filial_name = row['filial_name'] if row else "?"
+    vsp_name = row['vsp_name'] if row else "?"
+    check_name_value = row['check_name'] if row else False
+    use_alt = bool(check_name_value) if check_name_value is not None else False
+
+    st.subheader(f"📋 Чек-лист: {filial_name} / {vsp_name}")
+    status_text = "Завершена" if sess['info']['status_bul'] else "Черновик"
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.markdown(f"**👤 Сотрудник:** {sess['info']['user_name']}")
+    c2.markdown(f"**🏢 Филиал:** {filial_name}")
+    c3.markdown(f"**🏪 ВСП:** {vsp_name}")
+    c4.markdown(f"**📅 Дата:** {sess['info']['operation_date']}")
+    c5.markdown(f"**📌 Статус:** {status_text}")
+    st.divider()
+    st.markdown("### ✔️ Список проверок")
+
+    header = st.columns([1, 5, 2, 1])
+    header[0].markdown("**№**")
+    header[1].markdown("**Наименование проверки**")
+    header[2].markdown('<div style="text-align: center; font-weight:900;">Доп. информация</div>', unsafe_allow_html=True)
+    header[3].markdown("**Статус**")
+    st.markdown("<hr style='margin:8px 0;border:1.5px solid #000000;'>", unsafe_allow_html=True)
+
+    for _, tpl in template.iterrows():
+        item_id = tpl['id']
+        order = tpl['item_order']
+        desc = tpl['description']
+
+        std_filter = tpl['filter_value'] or "Не задан"
+        std_info = tpl['additional_info'] or "Описание отсутствует"
+        std_events = tpl['events_value'] or "Мероприятия не заданы"
+
+        alt_filter = tpl['alt_filter_value'] or ""
+        alt_info = tpl['alt_additional_info'] or ""
+        alt_events = tpl['alt_events_value'] or ""
+
+        if use_alt:
+            chosen_filter = alt_filter if alt_filter else std_filter
+            chosen_info = alt_info if alt_info else std_info
+            chosen_events = alt_events if alt_events else std_events
+        else:
+            chosen_filter = std_filter
+            chosen_info = std_info
+            chosen_events = std_events
+
+        current = st.session_state.temp_answers.get(item_id, saved.get(item_id, False))
+
+        cols = st.columns([1, 5, 2, 1])
+        cols[0].write(f"**{order}**")
+        cols[1].markdown(desc)
+
+        with cols[2]:
+            with st.popover(f"ℹ️ Подробнее о проверке №{order}", use_container_width=True):
+                t1, t2 = st.tabs(["🔍 Фильтр", "📌 Мероприятия"])
+                with t1:
+                    st.markdown("**Описание процедуры:**")
+                    st.info(chosen_info)
+                    if chosen_filter != "Не задан":
+                        filter_display = chosen_filter
+                        if "[Дата1]" in chosen_filter:
+                            selected_date = st.date_input(
+                                "📅Выберите дату", key=f"date_{item_id}",
+                                value=datetime.date.today(), format="DD.MM.YYYY"
+                            )
+                            date_str = selected_date.strftime("%d.%m.%y")
+                            filter_display = chosen_filter.replace("[Дата1]", date_str)
+                        filter_display = filter_display.replace("[РФ]", vsp_name)
+                        st.code(filter_display, language="text")
+                        import streamlit.components.v1 as components
+                        js_code = f"""
+                        <div style="margin-top:8px">
+                            <button id="copy_{item_id}"
+                                style="background:#4CAF50;color:white;padding:8px;
+                                       border:none;border-radius:5px;width:100%">
+                                📋 КОПИРОВАТЬ ФИЛЬТР
+                            </button>
+                            <div id="status_{item_id}"
+                                style="margin-top:5px;font-size:12px;text-align:center">
+                            </div>
+                        </div>
+                        <script>
+                        (function(){{
+                            var btn=document.getElementById("copy_{item_id}");
+                            var statusDiv=document.getElementById("status_{item_id}");
+                            var textToCopy={repr(filter_display)};
+                            btn.addEventListener("click",function(){{
+                                navigator.clipboard.writeText(textToCopy).then(
+                                    function(){{
+                                        statusDiv.innerHTML="✅ Скопировано!";
+                                        statusDiv.style.color="green";
+                                        setTimeout(function(){{statusDiv.innerHTML="";}},2000);
+                                    }},
+                                    function(){{
+                                        statusDiv.innerHTML="❌ Ошибка";
+                                        statusDiv.style.color="red";
+                                    }}
+                                );
+                            }});
+                        }})();
+                        </script>
+                        """
+                        components.html(js_code, height=100)
+                    else:
+                        st.info("Фильтр не задан")
+                with t2:
+                    st.markdown("**Мероприятия:**")
+                    st.info(chosen_events)
+
+        with cols[3]:
+            new_val = st.checkbox(
+                " ", value=current, key=f"chk_{item_id}", label_visibility="collapsed"
+            )
+            if new_val != current:
+                st.session_state.temp_answers[item_id] = new_val
+
+        st.markdown("<hr style='margin:8px 0;border:1.5px solid #000000;'>", unsafe_allow_html=True)
+
+    colA, colB, colC, colD = st.columns([1, 1, 1, 2])
+    with colA:
+        if st.button("🔙 Назад", use_container_width=True):
+            db.save_answers(sid, st.session_state.temp_answers)
+            db.update_session_status(sid, False)
+            st.session_state.step = 0
+            for k in ['current_session_id', 'temp_answers', 'resume_session_id']:
+                if k in st.session_state:
+                    del st.session_state[k]
+            st.rerun()
+    with colB:
+        if st.button("💾 Сохранить черновик", use_container_width=True):
+            db.save_answers(sid, st.session_state.temp_answers)
+            db.update_session_status(sid, False)
+            st.success("✅ Черновик сохранён!")
+            time.sleep(1)
+            st.rerun()
+    with colC:
+        if st.button("📋 Предпросмотр", use_container_width=True):
+            with st.expander("📄 Предпросмотр результатов", expanded=True):
+                completed = sum(st.session_state.temp_answers.values())
+                total = len(template)
+                st.info(f"Выполнено {completed}/{total} проверок")
+                for _, r in template.iterrows():
+                    status = "✅" if st.session_state.temp_answers.get(r['id'], False) else "❌"
+                    st.markdown(f"{status} {r['description']}")
+    with colD:
+        if st.button("✅ ЗАВЕРШИТЬ ПРОВЕРКУ", type="primary", use_container_width=True):
+            completed = sum(st.session_state.temp_answers.values())
+            total = len(template)
+            if completed < total:
+                st.toast(f"⚠️ Выполнено только {completed} из {total} проверок. Заполните все.", icon="❗")
+            else:
+                db.save_answers(sid, st.session_state.temp_answers)
+                db.update_session_status(sid, True)
+                st.success("🎉 Отлично! Чек-лист успешно завершён!")
+                st.balloons()
+                st.session_state.step = 0
+                for k in ['current_session_id', 'temp_answers', 'resume_session_id']:
+                    if k in st.session_state:
+                        del st.session_state[k]
+                time.sleep(2)
+                st.rerun()
