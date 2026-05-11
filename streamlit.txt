@@ -1,3 +1,95 @@
+Ниже приведены точные фрагменты кода, которые нужно добавить. Вы сможете скопировать их в свой текущий файл, не переписывая всё приложение.
+
+1. Новый метод в DatabaseManager
+Добавьте этот метод в класс DatabaseManager (например, после метода get_non_working_days):
+
+python
+    def get_vsp_status_for_date(self, filial_id: int, target_date):
+        """
+        Возвращает DataFrame со списком всех ВСП филиала и их статусом на указанную дату.
+        Статусы:
+          - 'Выходной'   – если для ВСП есть запись в vsp_non_working_days на эту дату;
+          - 'Заполнен'   – если есть завершённая сессия (status_bul = TRUE) на эту дату;
+          - 'Не заполнен' – если ни того, ни другого.
+        """
+        # Все ВСП филиала
+        vsp_list = self.get_vsp_by_filial(filial_id)
+        if vsp_list.empty:
+            return pd.DataFrame(columns=["ВСП", "Статус"])
+
+        # Получаем список ВСП, у которых эта дата – нерабочая
+        non_working_df = self._to_df(
+            f"SELECT vsp_id FROM {self._table_name('vsp_non_working_days')} "
+            f"WHERE date = %s AND filial_id = %s",
+            (target_date, filial_id)
+        )
+        non_working_ids = set(non_working_df['vsp_id'].tolist()) if not non_working_df.empty else set()
+
+        # Получаем список ВСП, по которым есть завершённая сессия на эту дату
+        completed_df = self._to_df(
+            f"SELECT vsp_id FROM {self._table_name('checklist_sessions')} "
+            f"WHERE operation_date = %s AND filial_id = %s AND status_bul = TRUE",
+            (target_date, filial_id)
+        )
+        completed_ids = set(completed_df['vsp_id'].tolist()) if not completed_df.empty else set()
+
+        # Формируем результат
+        result = []
+        for _, vsp_row in vsp_list.iterrows():
+            vid = vsp_row['id']
+            vname = vsp_row['name']
+            if vid in non_working_ids:
+                status = "Выходной"
+            elif vid in completed_ids:
+                status = "Заполнен"
+            else:
+                status = "Не заполнен"
+            result.append({"ВСП": vname, "Статус": status})
+
+        return pd.DataFrame(result)
+2. Добавление вкладки в список в главном интерфейсе
+Найдите в коде строку, где формируется tab_titles (внутри блока основного интерфейса):
+
+python
+tab_titles = ["📜 История проверок", "📝 Новая проверка"]
+if st.session_state.auth_valid:
+    tab_titles.append("📅 Нерабочие дни ВСП")
+if st.session_state.admin_authenticated:
+    tab_titles.append("📊 Аналитика")
+    tab_titles.append("🏢 Филиалы (чекбоксы)")
+    tab_titles.append("📅 Нерабочие дни (отчет)")
+Замените последнюю строку (где добавляются админские вкладки) на:
+
+python
+if st.session_state.admin_authenticated:
+    tab_titles.append("📊 Аналитика")
+    tab_titles.append("🏢 Филиалы (чекбоксы)")
+    tab_titles.append("📅 Нерабочие дни (отчет)")
+    tab_titles.append("📊 Визуализация")   # новая вкладка
+3. Присвоение переменной для новой вкладки
+Чуть ниже идёт блок с индексами:
+
+python
+if st.session_state.admin_authenticated:
+    tab_analytics = tabs[idx]; idx += 1
+    tab_filial_check = tabs[idx]; idx += 1
+    tab_admin_non_working = tabs[idx]; idx += 1
+else:
+    tab_analytics = tab_filial_check = tab_admin_non_working = None
+Дополните его:
+
+python
+if st.session_state.admin_authenticated:
+    tab_analytics = tabs[idx]; idx += 1
+    tab_filial_check = tabs[idx]; idx += 1
+    tab_admin_non_working = tabs[idx]; idx += 1
+    tab_visualization = tabs[idx]; idx += 1   # новая переменная
+else:
+    tab_analytics = tab_filial_check = tab_admin_non_working = tab_visualization = None
+4. Код самой вкладки «Визуализация»
+Добавьте этот блок после кода вкладки «Нерабочие дни (отчет)» (перед # ===================== ШАГ 1: ЗАПОЛНЕНИЕ ЧЕК-ЛИСТА =====================).
+
+python
 # ===================== ВКЛАДКА "ВИЗУАЛИЗАЦИЯ" (только для админа) =====================
 if tab_visualization is not None:
     with tab_visualization:
@@ -54,3 +146,20 @@ if tab_visualization is not None:
 
                 styled_df = status_df.style.apply(highlight_status, axis=1)
                 st.dataframe(styled_df, use_container_width=True, height=400)
+5. Пояснение работы
+На вкладке администратор выбирает филиал и дату.
+
+При нажатии кнопки «Показать статус» для каждого ВСП филиала определяется статус:
+
+Выходной – в таблице нерабочих дней есть запись на эту дату.
+
+Заполнен – есть завершённая сессия (status_bul = TRUE) с operation_date = выбранная дата.
+
+Не заполнен – нет ни того, ни другого.
+
+Выводится столбчатая диаграмма с количеством ВСП по статусам и цветная таблица (зелёный/жёлтый/красный).
+
+Таблица показывает только ВСП выбранного филиала.
+
+Эти изменения можно аккуратно вставить в уже работающий код, не затрагивая остальную функциональность. Если хотите, чтобы такая визуализация была доступна и обычным пользователям (только по их филиалу), дайте знать – адаптируем.
+
