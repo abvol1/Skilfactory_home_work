@@ -1,102 +1,166 @@
-# ===================== ВКЛАДКА "ВИЗУАЛИЗАЦИЯ" (только для админа) =====================
-if tab_visualization is not None:
-    with tab_visualization:
-        st.markdown("## 📊 Статус заполнения чек-листов по ВСП")
-        st.caption(
-            "Выберите филиал и дату. "
-            "🟢 Зелёный — чек-лист заполнен, 🔴 Красный — не заполнен "
-            "(ВСП с нерабочим днём в статистике не участвуют)."
-        )
+1. Новый метод в DatabaseManager
+Добавьте этот метод в класс DatabaseManager (например, после get_vsp_status_for_date):
 
-        col1, col2 = st.columns(2)
-        with col1:
-            # Выбор филиала (только существующие)
-            filials_df = db.get_filials()
-            if filials_df.empty:
-                st.error("Нет филиалов в базе")
-                st.stop()
-            filial_names = filials_df['name'].tolist()
-            sel_filial_name = st.selectbox("🏢 Филиал", filial_names, key="vis_filial")
-            filial_id_vis = int(
-                filials_df[filials_df['name'] == sel_filial_name]['id'].iloc[0]
+python
+    def get_filial_status_for_date(self, target_date):
+        """
+        Возвращает DataFrame со статусом каждого филиала на указанную дату.
+        Статусы:
+          - 'Заполнен'      – все ВСП филиала, кроме нерабочих, заполнили чек-лист.
+          - 'Частично'      – хотя бы одно ВСП заполнило, но не все.
+          - 'Не заполнен'   – ни одно активное ВСП не заполнило.
+          - 'Все выходные'  – у всех ВСП филиала нерабочий день.
+        """
+        filials = self.get_filials()
+        if filials.empty:
+            return pd.DataFrame(columns=["Филиал", "Статус", "Всего ВСП", "Заполнено ВСП"])
+
+        result = []
+        for _, f in filials.iterrows():
+            fid = int(f['id'])
+            fname = f['name']
+
+            # Все ВСП филиала
+            vsp_list = self.get_vsp_by_filial(fid)
+
+            # ВСП с нерабочим днём
+            non_working_df = self._to_df(
+                f"SELECT vsp_id FROM {self._table_name('vsp_non_working_days')} "
+                f"WHERE date = %s AND filial_id = %s",
+                (target_date, fid)
             )
-        with col2:
-            # Выбор даты (по умолчанию сегодня)
-            vis_date = st.date_input("📅 Дата", value=datetime.date.today(), key="vis_date")
+            non_working_ids = set(non_working_df['vsp_id'].tolist()) if not non_working_df.empty else set()
 
-        if st.button("🔍 Показать статус", use_container_width=True):
-            with st.spinner("Собираем данные..."):
-                status_df = db.get_vsp_status_for_date(filial_id_vis, vis_date)
+            # ВСП с завершённой сессией
+            completed_df = self._to_df(
+                f"SELECT vsp_id FROM {self._table_name('checklist_sessions')} "
+                f"WHERE operation_date = %s AND filial_id = %s AND status_bul = TRUE",
+                (target_date, fid)
+            )
+            completed_ids = set(completed_df['vsp_id'].tolist()) if not completed_df.empty else set()
 
-            if status_df.empty:
-                st.info("Нет ВСП в выбранном филиале.")
+            total_vsp = len(vsp_list)
+            active_vsp = total_vsp - len([v for v in vsp_list['id'] if v in non_working_ids])
+            completed_vsp = len([v for v in vsp_list['id'] if v in completed_ids])
+
+            # Определяем статус филиала
+            if active_vsp == 0:
+                status = "Все выходные"
+            elif completed_vsp == active_vsp:
+                status = "Заполнен"
+            elif completed_vsp > 0:
+                status = "Частично"
             else:
-                # -------------------- КРУГОВАЯ ДИАГРАММА --------------------
-                # Исключаем ВСП с нерабочим днём, оставляем только «Заполнен» / «Не заполнен»
-                filtered_df = status_df[status_df['Статус'] != 'Выходной']
-                total_active = len(filtered_df)
+                status = "Не заполнен"
 
-                if total_active == 0:
-                    st.info("На выбранную дату все ВСП филиала — нерабочие.")
+            result.append({
+                "Филиал": fname,
+                "Статус": status,
+                "Всего ВСП": total_vsp,
+                "Активных ВСП": active_vsp,
+                "Заполнено ВСП": completed_vsp
+            })
+
+        return pd.DataFrame(result)
+2. Дополнение вкладки «Визуализация»
+Найдите во вкладке tab_visualization строку, где заканчивается таблица детализации (после st.dataframe(styled_df, ...)) и перед закрытием блока if tab_visualization is not None: добавьте следующий код:
+
+python
+                # -------------------- БУБЛИК ПО ФИЛИАЛАМ --------------------
+                st.divider()
+                st.subheader("🏢 Сводка по всем филиалам")
+                st.caption(
+                    "Учитываются только активные ВСП (без нерабочих). "
+                    "🟢 Заполнен — 🔴 Не заполнен — 🟠 Частично"
+                )
+
+                # Получаем статистику по всем филиалам
+                filial_status_df = db.get_filial_status_for_date(vis_date)
+
+                if not filial_status_df.empty:
+                    # Группируем по статусам
+                    status_counts = filial_status_df['Статус'].value_counts()
+
+                    # Цвета для статусов
+                    status_colors = {
+                        "Заполнен": "#28a745",      # зелёный
+                        "Частично": "#fd7e14",       # оранжевый
+                        "Не заполнен": "#dc3545",    # красный
+                        "Все выходные": "#6c757d"    # серый
+                    }
+
+                    # Оставляем только те статусы, которые есть в данных
+                    labels = []
+                    values = []
+                    colors = []
+                    for s, c in status_colors.items():
+                        if s in status_counts:
+                            labels.append(s)
+                            values.append(status_counts[s])
+                            colors.append(c)
+
+                    if labels:
+                        import plotly.graph_objects as go
+
+                        fig_filial = go.Figure(
+                            data=[
+                                go.Pie(
+                                    labels=labels,
+                                    values=values,
+                                    marker=dict(colors=colors),
+                                    textinfo='label+percent',
+                                    textfont=dict(size=16),
+                                    hole=0.4,
+                                )
+                            ]
+                        )
+                        fig_filial.update_layout(
+                            showlegend=True,
+                            legend=dict(font=dict(size=14)),
+                            margin=dict(t=20, b=20, l=20, r=20),
+                            height=400,
+                        )
+                        st.plotly_chart(fig_filial, use_container_width=True)
+
+                        # Сводные метрики
+                        total_filials = len(filial_status_df)
+                        filled_filials = int((filial_status_df['Статус'] == 'Заполнен').sum())
+                        partial_filials = int((filial_status_df['Статус'] == 'Частично').sum())
+                        empty_filials = int((filial_status_df['Статус'] == 'Не заполнен').sum())
+
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("🟢 Заполнено", filled_filials,
+                                      f"{filled_filials / total_filials * 100:.0f} %" if total_filials else "")
+                        with col2:
+                            st.metric("🟠 Частично", partial_filials,
+                                      f"{partial_filials / total_filials * 100:.0f} %" if total_filials else "")
+                        with col3:
+                            st.metric("🔴 Не заполнено", empty_filials,
+                                      f"{empty_filials / total_filials * 100:.0f} %" if total_filials else "",
+                                      delta_color="inverse")
+
+                    # Таблица по филиалам
+                    with st.expander("📋 Таблица по филиалам"):
+                        def highlight_filial(row):
+                            if row['Статус'] == 'Заполнен':
+                                return ['background-color: #d4edda'] * len(row)
+                            elif row['Статус'] == 'Частично':
+                                return ['background-color: #ffe5cc'] * len(row)
+                            elif row['Статус'] == 'Не заполнен':
+                                return ['background-color: #f8d7da'] * len(row)
+                            else:
+                                return ['background-color: #e2e3e5'] * len(row)
+
+                        # Сортируем: сначала не заполненные, потом частично, потом заполненные
+                        sort_order = {"Не заполнен": 0, "Частично": 1, "Заполнен": 2, "Все выходные": 3}
+                        filial_status_df['_sort'] = filial_status_df['Статус'].map(sort_order)
+                        filial_status_df = filial_status_df.sort_values('_sort').drop(columns=['_sort'])
+
+                        st.dataframe(
+                            filial_status_df.style.apply(highlight_filial, axis=1),
+                            use_container_width=True,
+                            height=400
+                        )
                 else:
-                    # Считаем количество заполненных и не заполненных
-                    filled = int((filtered_df['Статус'] == 'Заполнен').sum())
-                    not_filled = total_active - filled
-
-                    st.subheader("🍩 Соотношение заполненных и незаполненных ВСП")
-
-                    # Строим круговую диаграмму через Plotly (более настраиваемая)
-                    import plotly.express as px
-                    import plotly.graph_objects as go
-
-                    fig = go.Figure(
-                        data=[
-                            go.Pie(
-                                labels=["Заполнено", "Не заполнено"],
-                                values=[filled, not_filled],
-                                marker=dict(
-                                    colors=["#28a745", "#dc3545"]  # зелёный и красный
-                                ),
-                                textinfo='label+percent',
-                                textfont=dict(size=16),
-                                hole=0.4,  # делаем «пончик» — красивее
-                            )
-                        ]
-                    )
-                    fig.update_layout(
-                        showlegend=True,
-                        legend=dict(font=dict(size=16)),
-                        margin=dict(t=20, b=20, l=20, r=20),
-                        height=400,
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-
-                    # Дополнительная текстовая информация
-                    col_a, col_b = st.columns(2)
-                    with col_a:
-                        st.metric("✅ Заполнено", f"{filled} из {total_active}",
-                                  delta=f"{filled / total_active * 100:.0f} %")
-                    with col_b:
-                        st.metric("❌ Не заполнено", f"{not_filled} из {total_active}",
-                                  delta=f"{not_filled / total_active * 100:.0f} %",
-                                  delta_color="inverse")
-
-                # -------------------- ТАБЛИЦА С ДЕТАЛИЗАЦИЕЙ --------------------
-                st.subheader("📋 Детализация по всем ВСП")
-                st.caption("Зелёный — заполнен, красный — не заполнен, жёлтый — выходной")
-
-                def highlight_status(row):
-                    if row['Статус'] == 'Заполнен':
-                        return ['background-color: #d4edda; color: #155724'] * len(row)
-                    elif row['Статус'] == 'Выходной':
-                        return ['background-color: #fff3cd; color: #856404'] * len(row)
-                    else:
-                        return ['background-color: #f8d7da; color: #721c24'] * len(row)
-
-                # Сортируем, чтобы сначала шли незаполненные, потом заполненные, потом выходные
-                status_order = {"Не заполнен": 0, "Заполнен": 1, "Выходной": 2}
-                status_df['_sort'] = status_df['Статус'].map(status_order)
-                status_df = status_df.sort_values('_sort').drop(columns=['_sort'])
-
-                styled_df = status_df.style.apply(highlight_status, axis=1)
-                st.dataframe(styled_df, use_container_width=True, height=400)
+                    st.info("Нет данных по филиалам.")
