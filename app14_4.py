@@ -959,17 +959,28 @@ if tab_analytics is not None:
                     display_cols = base_cols + [v for v in rename.values() if v in analytics.columns]
                     st.dataframe(analytics[display_cols], use_container_width=True, height=500)
 
-                    # --- Массовое удаление черновиков ---
-                    st.divider()
-                    st.subheader("🗑️ Удаление черновиков")
-                    confirm_mass_delete = st.checkbox("Я подтверждаю удаление ВСЕХ черновиков (нельзя отменить)", key="confirm_mass_delete")
-                    if st.button("🗑️ Удалить все черновики", type="primary", disabled=(not confirm_mass_delete), key="mass_delete_drafts"):
-                        db.delete_all_drafts()
-                        st.success("Все черновики успешно удалены!")
-                        st.rerun()
+            # --- Блок удаления черновиков (ВЫНЕСЕН НАРУЖУ) ---
+            st.divider()
+            st.subheader("🗑️ Удаление черновиков")
+
+            # Подсчитаем количество черновиков для информации
+            draft_count = db._execute(
+                f"SELECT COUNT(*) AS cnt FROM {db._table_name('checklist_sessions')} WHERE status_bul = FALSE",
+                fetch_one=True
+            )['cnt']
+            st.info(f"Сейчас в базе **{draft_count}** черновиков.")
+
+            confirm_mass_delete = st.checkbox(
+                "Я подтверждаю удаление ВСЕХ черновиков (нельзя отменить)",
+                key="confirm_mass_delete"
+            )
+            if st.button("🗑️ Удалить все черновики", type="primary", disabled=(not confirm_mass_delete), key="mass_delete_drafts"):
+                db.delete_all_drafts()
+                st.success("Все черновики успешно удалены!")
+                time.sleep(1)
+                st.rerun()
         else:
             st.warning("Нет филиалов в базе данных")
-
 # --- ФИЛИАЛЫ (ЧЕКБОКСЫ) ---
 if tab_filial_check is not None:
     with tab_filial_check:
