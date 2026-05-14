@@ -1,3 +1,57 @@
+1. Новый метод в DatabaseManager
+Добавьте в класс DatabaseManager (после метода get_today_draft_session_id):
+
+python
+    def get_today_draft_for_vsp(self, vsp_id: int, filial_id: int) -> Optional[int]:
+        """
+        Возвращает ID ЛЮБОГО незавершённого черновика (status_bul=FALSE)
+        за сегодня для указанного ВСП и филиала, независимо от пользователя.
+        Если никто ещё не начинал – возвращает None.
+        """
+        today = datetime.date.today()
+        row = self._execute(
+            f"SELECT id FROM {self._table_name('checklist_sessions')} "
+            f"WHERE vsp_id = %s AND filial_id = %s AND operation_date = %s AND status_bul = FALSE "
+            f"LIMIT 1",
+            (vsp_id, filial_id, today),
+            fetch_one=True
+        )
+        return row['id'] if row else None
+
+
+
+    def get_today_any_session_for_vsp(self, vsp_id: int, filial_id: int) -> Optional[int]:
+        """
+        Возвращает ID ЛЮБОЙ сессии (и черновика, и завершённой)
+        за сегодня для указанного ВСП и филиала.
+        Если никто ещё не начинал – возвращает None.
+        """
+        today = datetime.date.today()
+        row = self._execute(
+            f"SELECT id FROM {self._table_name('checklist_sessions')} "
+            f"WHERE vsp_id = %s AND filial_id = %s AND operation_date = %s "
+            f"LIMIT 1",
+            (vsp_id, filial_id, today),
+            fetch_one=True
+        )
+        return row['id'] if row else None
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 1. Убираем проверку из текущего места
 Найдите в коде блок, который начинается с:
 
