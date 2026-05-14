@@ -1,56 +1,62 @@
-Для этого нужно проверять любые сессии (не только незавершённые) для данного ВСП за сегодня.
-
-1. Новый метод в DatabaseManager
-Добавьте в класс DatabaseManager (после метода get_today_draft_for_vsp):
-
-python
-    def get_today_any_session_for_vsp(self, vsp_id: int, filial_id: int) -> Optional[int]:
-        """
-        Возвращает ID ЛЮБОЙ сессии (и черновика, и завершённой)
-        за сегодня для указанного ВСП и филиала.
-        Если никто ещё не начинал – возвращает None.
-        """
-        today = datetime.date.today()
-        row = self._execute(
-            f"SELECT id FROM {self._table_name('checklist_sessions')} "
-            f"WHERE vsp_id = %s AND filial_id = %s AND operation_date = %s "
-            f"LIMIT 1",
-            (vsp_id, filial_id, today),
-            fetch_one=True
-        )
-        return row['id'] if row else None
-2. Изменение логики на вкладке «Новая проверка»
-Замените текущий блок проверки (тот, что мы обсуждали выше) на новый, более жёсткий:
+1. Убираем проверку из текущего места
+Найдите в коде блок, который начинается с:
 
 python
                     # Проверка 1: есть ли черновик за сегодня у этого же пользователя?
-                    my_draft_id = db.get_today_draft_session_id(st.session_state.user_full_name)
+                    my_draft_id = db.get_today_draft_session_id(...)
+и удалите его полностью (вместе с new_session_allowed).
 
-                    # Проверка 2: есть ли ЛЮБАЯ сессия (черновик или завершённая) для этого ВСП сегодня?
-                    any_session_id = db.get_today_any_session_for_vsp(sel_vsp_id, sel_filial_id) if sel_vsp_id is not None else None
+2. Добавляем проверку в форму
+Теперь перенесём проверку внутрь формы (st.form), прямо перед созданием сессии.
 
-                    if any_session_id is not None:
-                        # Кто-то уже взаимодействовал с этим ВСП сегодня
-                        if any_session_id == my_draft_id:
-                            # Это черновик текущего пользователя – можно продолжать только его
-                            st.warning(
-                                "⚠️ У вас уже есть незавершённый черновик за сегодня для этого ВСП. "
-                                "Завершите или удалите его, прежде чем начинать новый."
-                            )
-                        else:
-                            # Чужая сессия (черновик другого или уже завершённый чек-лист)
-                            st.error(
-                                "🚫 Чек‑лист для этого ВСП сегодня уже заполняется или был завершён другим сотрудником! "
-                                "Невозможно создать новый."
-                            )
-                        new_session_allowed = False
-                    elif my_draft_id is not None:
-                        # Черновик текущего пользователя существует для другого ВСП? (редкий случай)
-                        # Всё равно блокируем, т.к. у него уже есть незавершённый черновик за сегодня
-                        st.warning(
-                            "⚠️ У вас уже есть незавершённый черновик за сегодня для другого ВСП. "
-                            "Завершите или удалите его, прежде чем начинать новый."
+Найдите блок with st.form("new_session_form"): и замените его содержимое на следующее:
+
+python
+                    with st.form("new_session_form"):
+                        op_date = st.date_input(
+                            "📅 Дата", value=datetime.date.today(),
+                            format="DD.MM.YYYY", disabled=True
                         )
-                        new_session_allowed = False
-                    else:
-                        new_session_allowed = True
+                        submitted = st.form_submit_button(
+                            "▶️ НАЧАТЬ ЗАПОЛНЕНИЕ",
+                            type="primary",
+                            use_container_width=True
+                        )
+                        if submitted and sel_vsp_id is not None:
+                            # ---- ЖЁСТКАЯ ПРОВЕРКА ПРЯМО ПЕРЕД СОЗДАНИЕМ ----
+                            # 1) Есть ли черновик у этого же пользователя за сегодня?
+                            my_draft_id = db.get_today_draft_session_id(
+                                st.session_state.user_full_name
+                            )
+                            # 2) Есть ли ЛЮБАЯ сессия (черновик или завершённая) для этого ВСП сегодня?
+                            any_session_id = db.get_today_any_session_for_vsp(
+                                sel_vsp_id, sel_filial_id
+                            )
+
+                            if any_session_id is not None:
+                                if any_session_id == my_draft_id:
+                                    st.error(
+                                        "⚠️ У вас уже есть незавершённый черновик за сегодня для этого ВСП. "
+                                        "Завершите или удалите его, прежде чем начинать новый."
+                                    )
+                                else:
+                                    st.error(
+                                        "🚫 Чек‑лист для этого ВСП сегодня уже заполняется или был завершён "
+                                        "другим сотрудником! Невозможно создать новый."
+                                    )
+                            elif my_draft_id is not None:
+                                st.error(
+                                    "⚠️ У вас уже есть незавершённый черновик за сегодня (для другого ВСП). "
+                                    "Завершите или удалите его, прежде чем начинать новый."
+                                )
+                            else:
+                                # Всё чисто – создаём сессию
+                                sid = db.create_session(
+                                    st.session_state.user_full_name,
+                                    sel_filial_id, sel_vsp_id, op_date, False
+                                )
+                                st.session_state.current_session_id = sid
+                                st.session_state.step = 1
+                                st.rerun()
+                        elif submitted:
+                            st.error("Выберите ВСП!")
