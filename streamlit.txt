@@ -1,59 +1,56 @@
-Добавим проверку: если любой сотрудник уже начал заполнять чек‑лист за сегодня для выбранного ВСП, то другому пользователю будет показано предупреждение, и кнопка «Начать заполнение» заблокируется.
-
-Нужно внести два изменения.
+Для этого нужно проверять любые сессии (не только незавершённые) для данного ВСП за сегодня.
 
 1. Новый метод в DatabaseManager
-Добавьте в класс DatabaseManager (после метода get_today_draft_session_id):
+Добавьте в класс DatabaseManager (после метода get_today_draft_for_vsp):
 
 python
-    def get_today_draft_for_vsp(self, vsp_id: int, filial_id: int) -> Optional[int]:
+    def get_today_any_session_for_vsp(self, vsp_id: int, filial_id: int) -> Optional[int]:
         """
-        Возвращает ID ЛЮБОГО незавершённого черновика (status_bul=FALSE)
-        за сегодня для указанного ВСП и филиала, независимо от пользователя.
+        Возвращает ID ЛЮБОЙ сессии (и черновика, и завершённой)
+        за сегодня для указанного ВСП и филиала.
         Если никто ещё не начинал – возвращает None.
         """
         today = datetime.date.today()
         row = self._execute(
             f"SELECT id FROM {self._table_name('checklist_sessions')} "
-            f"WHERE vsp_id = %s AND filial_id = %s AND operation_date = %s AND status_bul = FALSE "
+            f"WHERE vsp_id = %s AND filial_id = %s AND operation_date = %s "
             f"LIMIT 1",
             (vsp_id, filial_id, today),
             fetch_one=True
         )
         return row['id'] if row else None
-2. Изменение вкладки «Новая проверка»
-Найдите в коде вкладки tab_main строку, где определяется existing_draft_id и new_session_allowed.
-Сейчас там:
-
-python
-existing_draft_id = db.get_today_draft_session_id(st.session_state.user_full_name)
-new_session_allowed = existing_draft_id is None
-if not new_session_allowed:
-    st.warning("⚠️ У вас уже есть незавершённый черновик за сегодня. "
-               "Завершите или удалите его, прежде чем начинать новый.")
-Замените этот блок на:
+2. Изменение логики на вкладке «Новая проверка»
+Замените текущий блок проверки (тот, что мы обсуждали выше) на новый, более жёсткий:
 
 python
                     # Проверка 1: есть ли черновик за сегодня у этого же пользователя?
                     my_draft_id = db.get_today_draft_session_id(st.session_state.user_full_name)
 
-                    # Проверка 2: есть ли уже любой черновик за сегодня для выбранного ВСП?
-                    vsp_draft_id = db.get_today_draft_for_vsp(sel_vsp_id, sel_filial_id) if sel_vsp_id is not None else None
+                    # Проверка 2: есть ли ЛЮБАЯ сессия (черновик или завершённая) для этого ВСП сегодня?
+                    any_session_id = db.get_today_any_session_for_vsp(sel_vsp_id, sel_filial_id) if sel_vsp_id is not None else None
 
-                    # Если кто-то уже начал (возможно, сам текущий пользователь)
-                    if vsp_draft_id is not None:
-                        if vsp_draft_id == my_draft_id:
+                    if any_session_id is not None:
+                        # Кто-то уже взаимодействовал с этим ВСП сегодня
+                        if any_session_id == my_draft_id:
                             # Это черновик текущего пользователя – можно продолжать только его
                             st.warning(
                                 "⚠️ У вас уже есть незавершённый черновик за сегодня для этого ВСП. "
                                 "Завершите или удалите его, прежде чем начинать новый."
                             )
                         else:
-                            # Чужой черновик – жёсткий запрет
+                            # Чужая сессия (черновик другого или уже завершённый чек-лист)
                             st.error(
-                                "🚫 Другой сотрудник уже начал заполнять чек‑лист для этого ВСП сегодня! "
-                                "Дождитесь завершения или удаления его черновика."
+                                "🚫 Чек‑лист для этого ВСП сегодня уже заполняется или был завершён другим сотрудником! "
+                                "Невозможно создать новый."
                             )
+                        new_session_allowed = False
+                    elif my_draft_id is not None:
+                        # Черновик текущего пользователя существует для другого ВСП? (редкий случай)
+                        # Всё равно блокируем, т.к. у него уже есть незавершённый черновик за сегодня
+                        st.warning(
+                            "⚠️ У вас уже есть незавершённый черновик за сегодня для другого ВСП. "
+                            "Завершите или удалите его, прежде чем начинать новый."
+                        )
                         new_session_allowed = False
                     else:
                         new_session_allowed = True
