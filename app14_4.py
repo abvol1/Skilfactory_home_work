@@ -1,3 +1,70 @@
+
+def non_working_day_exists(self, vsp_id, date):
+    """Проверяет, есть ли уже запись о нерабочем дне для данного ВСП на дату."""
+    row = self._execute(
+        f"SELECT 1 FROM {self._table_name('vsp_non_working_days')} WHERE vsp_id=%s AND date=%s",
+        (vsp_id, date),
+        fetch_one=True
+    )
+    return row is not None
+
+
+
+with tab_admin_non_working:
+    # ... (существующий код фильтров и отображения)
+
+    st.divider()
+    with st.expander("⚙️ Массовое добавление выходного дня для филиала", expanded=False):
+        st.markdown("Добавить нерабочий день сразу для **всех ВСП** выбранного филиала.")
+        filials_df_mass = db.get_filials()
+        if not filials_df_mass.empty:
+            mass_filial_name = st.selectbox(
+                "🏢 Филиал",
+                filials_df_mass['name'].tolist(),
+                key="mass_nw_filial"
+            )
+            mass_filial_id = int(
+                filials_df_mass[filials_df_mass['name'] == mass_filial_name]['id'].iloc[0]
+            )
+            mass_date = st.date_input("📅 Дата выходного", key="mass_nw_date")
+            mass_reason = st.selectbox("📌 Причина", NON_WORKING_REASONS, key="mass_nw_reason")
+
+            if st.button("✅ Добавить выходной для всех ВСП филиала", type="primary"):
+                vsp_list = db.get_vsp_by_filial(mass_filial_id)
+                if vsp_list.empty:
+                    st.warning("В филиале нет ВСП.")
+                else:
+                    added = 0
+                    skipped = 0
+                    for _, v in vsp_list.iterrows():
+                        vid = int(v['id'])
+                        if db.non_working_day_exists(vid, mass_date):
+                            skipped += 1
+                        else:
+                            db.add_non_working_day(
+                                "admin", mass_filial_id, vid, mass_date, mass_reason
+                            )
+                            added += 1
+                    msg = f"✅ Добавлено: {added} ВСП"
+                    if skipped:
+                        msg += f" | ⚠️ Пропущено (уже есть запись): {skipped} ВСП"
+                    st.success(msg)
+        else:
+            st.warning("Нет филиалов в базе.")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 """
 ЧЕК-ЛИСТ ВСП (Streamlit + PostgreSQL)
 =====================================
