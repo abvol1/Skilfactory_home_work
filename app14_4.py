@@ -1,4 +1,44 @@
 
+def admin_delete_non_working_day(self, record_id):
+    """Удаление нерабочего дня по id (без ограничений по ВСП/филиалу)."""
+    self._execute(
+        f"DELETE FROM {self._table_name('vsp_non_working_days')} WHERE id=%s",
+        (record_id,)
+    )
+
+
+
+if st.button("🔍 Показать", key="adm_nw_show"):
+    nw_data = db.get_non_working_days(
+        filial_id=filial_id_filter,
+        vsp_id=vsp_id_filter,
+        date_from=date_from_nw,
+        date_to=date_to_nw
+    )
+    if nw_data.empty:
+        st.info("Нет данных по выбранным фильтрам.")
+    else:
+        st.success(f"Найдено записей: {len(nw_data)}")
+        # Построчный вывод с кнопками удаления
+        st.markdown("---")
+        for _, row in nw_data.iterrows():
+            c1, c2, c3, c4, c5 = st.columns([2, 2, 2, 3, 1])
+            c1.write(f"🏢 {row['filial']}")
+            c2.write(f"🏪 {row['vsp']}")
+            c3.write(f"📅 {row['date']}")
+            c4.write(f"📌 {row['reason']}")
+            if c5.button("🗑️", key=f"del_admin_nw_{row['id']}"):
+                db.admin_delete_non_working_day(int(row['id']))
+                st.success("Запись успешно удалена")
+                time.sleep(0.5)
+                st.rerun()
+        st.markdown("---")
+
+
+
+
+
+
 def non_working_day_exists(self, vsp_id, date):
     """Проверяет, есть ли уже запись о нерабочем дне для данного ВСП на дату."""
     row = self._execute(
