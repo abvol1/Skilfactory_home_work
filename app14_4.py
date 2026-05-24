@@ -1,3 +1,101 @@
+
+if tab_user_analytics is not None:
+    with tab_user_analytics:
+        st.markdown("## 📊 Аналитика проверок вашего филиала")
+        if st.session_state.get("last_filial_id") is None:
+            exists, full, fil = db.check_user_by_name(st.session_state.user_name)
+            if exists and fil:
+                filials_df = db.get_filials()
+                if not filials_df.empty:
+                    fid_row = filials_df[filials_df['name'] == fil]
+                    if not fid_row.empty:
+                        st.session_state.last_filial_id = int(fid_row['id'].iloc[0])
+                        st.session_state.last_filial_name = fil
+            if st.session_state.get("last_filial_id") is None:
+                st.error("Не удалось определить ваш филиал."); st.stop()
+
+        current_filial_id = st.session_state.last_filial_id
+        current_filial_name = st.session_state.last_filial_name
+        st.info(f"🏢 Филиал: **{current_filial_name}**")
+
+        sessions = db.get_filial_sessions(current_filial_id)
+        if sessions.empty:
+            st.info("В вашем филиале пока нет проверок.")
+        else:
+            # Принудительно преобразуем id в int (для всей колонки)
+            sessions['id'] = sessions['id'].astype(int)
+            # Получаем общее количество проверок как нативный int
+            total_checks = int(sessions["Всего проверок"].iloc[0])
+
+            st.dataframe(
+                sessions,
+                use_container_width=True,
+                height=500,
+                column_config={
+                    "id": "ID сессии",
+                    "Сотрудник": "Сотрудник",
+                    "Дата проверки": st.column_config.DateColumn("Дата"),
+                    "ВСП": "ВСП",
+                    "Статус": "Статус",
+                    "Выполнено проверок": st.column_config.ProgressColumn(
+                        "Выполнено",
+                        min_value=0,
+                        max_value=total_checks,  # явный int
+                        format="%d/%d"
+                    ),
+                    "Дата и время начала": st.column_config.DatetimeColumn("Начало"),
+                    "Дата и время завершения": st.column_config.DatetimeColumn("Завершение"),
+                    "Всего проверок": None  # скрываем
+                },
+                hide_index=True
+            )
+
+            st.divider()
+            st.subheader("🔍 Детальный просмотр")
+
+            # Строим словарь описаний заранее, избегая numpy в format_func
+            session_descriptions = {}
+            for _, row in sessions.iterrows():
+                sid = int(row['id'])
+                emp = str(row['Сотрудник'])
+                date_val = row['Дата проверки']
+                if hasattr(date_val, 'strftime'):
+                    date_str = date_val.strftime('%Y-%m-%d')
+                else:
+                    date_str = str(date_val)
+                session_descriptions[sid] = f"Сессия #{sid} ({emp}, {date_str})"
+
+            session_ids = list(session_descriptions.keys())
+            selected_sid = st.selectbox(
+                "Выберите ID сессии",
+                session_ids,
+                format_func=lambda x: session_descriptions[x]
+            )
+
+            if st.button("📋 Показать результаты", key="user_analytics_view"):
+                data = db.get_session_data(selected_sid)
+                if data:
+                    info = data['info']
+                    with st.expander(f"Результаты проверки #{selected_sid}", expanded=True):
+                        st.markdown(f"**Дата:** {info['operation_date']}")
+                        st.markdown(f"**Статус:** {'✔️ Завершена' if info['status_bul'] else '📄 Черновик'}")
+                        if info['status_bul'] and info.get('completed_at'):
+                            st.markdown(f"**Время завершения:** {info['completed_at']}")
+                        tpl = db.get_checklist_template()
+                        ans = data['answers']
+                        for _, r in tpl.iterrows():
+                            st.markdown(f"{'✔️' if ans.get(r['id'], False) else '❌'} {r['description']}")
+                else:
+                    st.error("Не удалось загрузить данные")
+
+
+
+
+
+
+
+
+
 if tab_user_analytics is not None:
     with tab_user_analytics:
         st.markdown("## 📊 Аналитика проверок вашего филиала")
