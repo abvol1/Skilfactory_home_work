@@ -1,4 +1,52 @@
 
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<VBox xmlns="http://javafx.com/javafx/8.0.171" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.example.checklist.controllers.MainController"
+      spacing="10" alignment="TOP_CENTER" prefWidth="800" prefHeight="600">
+
+    <!-- Панель логина -->
+    <VBox fx:id="loginPanel" spacing="10" alignment="CENTER" VBox.vgrow="ALWAYS">
+        <Label text="Авторизация" style="-fx-font-size: 20px; -fx-font-weight: bold;" />
+        <HBox spacing="10" alignment="CENTER">
+            <Label text="Логин:" />
+            <TextField fx:id="loginField" promptText="rf_ivanov_av" />
+            <Button text="Войти" onAction="#handleLogin" style="-fx-background-color: #4CAF50; -fx-text-fill: white;" />
+        </HBox>
+        <Label fx:id="loginErrorLabel" textFill="red" />
+    </VBox>
+
+    <!-- Основная панель -->
+    <VBox fx:id="mainPanel" spacing="10" alignment="TOP_CENTER" visible="false" managed="false">
+        <Label fx:id="userInfoLabel" style="-fx-font-size: 14px;" />
+        <!-- Оборачиваем строку выбора в HBox с центрированием и даём ей максимальную ширину, чтобы не растягивалась -->
+        <HBox spacing="20" alignment="CENTER">
+            <Label text="ВСП:" />
+            <ComboBox fx:id="vspCombo" prefWidth="300" />
+            <Label text="Дата:" />
+            <DatePicker fx:id="datePicker" />
+            <Button text="Показать чек-лист" onAction="#handleShowChecklist"
+                    style="-fx-background-color: #2196F3; -fx-text-fill: white; -fx-font-weight: bold;" />
+        </HBox>
+        <!-- ScrollPane тоже должен центрировать содержимое? Обычно чек-лист лучше растягивать, но заголовок мы центрируем в коде -->
+        <ScrollPane fx:id="checklistScroll" fitToWidth="true" VBox.vgrow="ALWAYS">
+            <VBox fx:id="checklistContainer" spacing="5" alignment="TOP_CENTER">
+                <padding>
+                    <Insets top="10" right="10" bottom="10" left="10"/>
+                </padding>
+            </VBox>
+        </ScrollPane>
+    </VBox>
+</VBox>
+
+
+
+
+
 Конечно! Вот подробная инструкция по запуску вашего Tkinter-приложения в Linux, включая создание аналога .bat — скрипта для быстрого запуска одним кликом.
 
 1. Подготовка системы
