@@ -1,1 +1,713 @@
 
+Конечно! Я предоставлю полный проект в виде набора файлов и подробную инструкцию по сборке и запуску на Java 8. Вы сможете скопировать содержимое каждого файла в соответствующую директорию вашего проекта.
+
+---
+
+🗂️ Структура проекта (скопируйте в свою папку)
+
+```
+checklist-desktop-java8/
+├── pom.xml
+├── src/
+│   └── main/
+│       ├── java/com/example/checklist/
+│       │   ├── App.java
+│       │   ├── controllers/
+│       │   │   └── MainController.java
+│       │   ├── database/
+│       │   │   └── DatabaseManager.java
+│       │   ├── models/
+│       │   │   ├── ChecklistTemplateItem.java
+│       │   │   ├── Filial.java
+│       │   │   ├── User.java
+│       │   │   └── Vsp.java
+│       │   └── utils/
+│       │       └── ClipboardHelper.java
+│       └── resources/
+│           ├── application.properties
+│           └── com/example/checklist/views/
+│               └── main.fxml
+└── (дополнительно style.css – необязательно)
+```
+
+Ниже приведено полное содержимое каждого файла. Копируйте их по очереди.
+
+---
+
+1. pom.xml
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>checklist-desktop</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <properties>
+        <maven.compiler.source>1.8</maven.compiler.source>
+        <maven.compiler.target>1.8</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+        <!-- PostgreSQL JDBC -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>42.6.0</version>
+        </dependency>
+
+        <!-- ControlsFX для JavaFX 8 -->
+        <dependency>
+            <groupId>org.controlsfx</groupId>
+            <artifactId>controlsfx</artifactId>
+            <version>8.40.14</version>
+        </dependency>
+
+        <!-- Зависимости JavaFX (раскомментируйте, если используете OpenJDK 8 без встроенного JavaFX) -->
+        <!--
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-controls</artifactId>
+            <version>8.0.202</version>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-fxml</artifactId>
+            <version>8.0.202</version>
+        </dependency>
+        -->
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.8.1</version>
+                <configuration>
+                    <source>1.8</source>
+                    <target>1.8</target>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>com.zenjava</groupId>
+                <artifactId>javafx-maven-plugin</artifactId>
+                <version>8.8.3</version>
+                <configuration>
+                    <mainClass>com.example.checklist.App</mainClass>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+```
+
+---
+
+2. App.java
+
+```java
+package com.example.checklist;
+
+import javafx.application.Application;
+import javafx.fxml.FXMLLoader;
+import javafx.scene.Parent;
+import javafx.scene.Scene;
+import javafx.stage.Stage;
+
+public class App extends Application {
+    @Override
+    public void start(Stage primaryStage) throws Exception {
+        Parent root = FXMLLoader.load(getClass().getResource("/com/example/checklist/views/main.fxml"));
+        primaryStage.setTitle("Чек-лист ВСП/РФ");
+        primaryStage.setScene(new Scene(root, 900, 700));
+        primaryStage.show();
+    }
+
+    public static void main(String[] args) {
+        launch(args);
+    }
+}
+```
+
+---
+
+3. Модели
+
+User.java
+
+```java
+package com.example.checklist.models;
+
+public class User {
+    private String login;
+    private String fullName;
+    private int filialId;
+    private String filialName;
+
+    public User(String login, String fullName, int filialId, String filialName) {
+        this.login = login;
+        this.fullName = fullName;
+        this.filialId = filialId;
+        this.filialName = filialName;
+    }
+
+    public String getLogin() { return login; }
+    public String getFullName() { return fullName; }
+    public int getFilialId() { return filialId; }
+    public String getFilialName() { return filialName; }
+}
+```
+
+Filial.java
+
+```java
+package com.example.checklist.models;
+
+public class Filial {
+    private int id;
+    private String name;
+    private boolean checkName;
+
+    public int getId() { return id; }
+    public void setId(int id) { this.id = id; }
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+    public boolean isCheckName() { return checkName; }
+    public void setCheckName(boolean checkName) { this.checkName = checkName; }
+}
+```
+
+Vsp.java
+
+```java
+package com.example.checklist.models;
+
+public class Vsp {
+    private int id;
+    private String name;
+
+    public Vsp(int id, String name) {
+        this.id = id;
+        this.name = name;
+    }
+
+    public int getId() { return id; }
+    public String getName() { return name; }
+}
+```
+
+ChecklistTemplateItem.java
+
+```java
+package com.example.checklist.models;
+
+public class ChecklistTemplateItem {
+    private int id;
+    private int order;
+    private String description;
+    private String additionalInfo;
+    private String filterValue;
+    private String eventsValue;
+    private String altFilterValue;
+    private String altAdditionalInfo;
+    private String altEventsValue;
+
+    public int getId() { return id; }
+    public void setId(int id) { this.id = id; }
+    public int getOrder() { return order; }
+    public void setOrder(int order) { this.order = order; }
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
+    public String getAdditionalInfo() { return additionalInfo; }
+    public void setAdditionalInfo(String additionalInfo) { this.additionalInfo = additionalInfo; }
+    public String getFilterValue() { return filterValue; }
+    public void setFilterValue(String filterValue) { this.filterValue = filterValue; }
+    public String getEventsValue() { return eventsValue; }
+    public void setEventsValue(String eventsValue) { this.eventsValue = eventsValue; }
+    public String getAltFilterValue() { return altFilterValue; }
+    public void setAltFilterValue(String altFilterValue) { this.altFilterValue = altFilterValue; }
+    public String getAltAdditionalInfo() { return altAdditionalInfo; }
+    public void setAltAdditionalInfo(String altAdditionalInfo) { this.altAdditionalInfo = altAdditionalInfo; }
+    public String getAltEventsValue() { return altEventsValue; }
+    public void setAltEventsValue(String altEventsValue) { this.altEventsValue = altEventsValue; }
+}
+```
+
+---
+
+4. DatabaseManager.java
+
+```java
+package com.example.checklist.database;
+
+import com.example.checklist.models.*;
+import java.io.InputStream;
+import java.io.IOException;
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Properties;
+
+public class DatabaseManager {
+    private static String URL;
+    private static String USER;
+    private static String PASSWORD;
+    private static String SCHEMA;
+
+    static {
+        try (InputStream input = DatabaseManager.class.getClassLoader()
+                .getResourceAsStream("application.properties")) {
+            Properties prop = new Properties();
+            if (input != null) {
+                prop.load(input);
+            }
+            String host = prop.getProperty("db.host", "localhost");
+            String port = prop.getProperty("db.port", "5432");
+            String dbName = prop.getProperty("db.name", "postgres");
+            URL = "jdbc:postgresql://" + host + ":" + port + "/" + dbName;
+            USER = prop.getProperty("db.user", "postgres");
+            PASSWORD = prop.getProperty("db.password", "");
+            SCHEMA = prop.getProperty("db.schema", "public");
+        } catch (IOException ex) {
+            ex.printStackTrace();
+            // Значения по умолчанию на случай ошибки
+            URL = "jdbc:postgresql://localhost:5432/postgres";
+            USER = "postgres";
+            PASSWORD = "";
+            SCHEMA = "public";
+        }
+    }
+
+    private Connection getConnection() throws SQLException {
+        return DriverManager.getConnection(URL, USER, PASSWORD);
+    }
+
+    public List<Filial> getFilials() {
+        String query = "SELECT id, name, check_name FROM " + SCHEMA + ".filials ORDER BY name";
+        List<Filial> filials = new ArrayList<>();
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(query)) {
+            while (rs.next()) {
+                Filial f = new Filial();
+                f.setId(rs.getInt("id"));
+                f.setName(rs.getString("name"));
+                f.setCheckName(rs.getBoolean("check_name"));
+                filials.add(f);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return filials;
+    }
+
+    public List<Vsp> getVspByFilial(int filialId) {
+        String query = "SELECT id, name FROM " + SCHEMA + ".vsp WHERE filial_id = ? ORDER BY name";
+        List<Vsp> vspList = new ArrayList<>();
+        try (Connection conn = getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(query)) {
+            pstmt.setInt(1, filialId);
+            ResultSet rs = pstmt.executeQuery();
+            while (rs.next()) {
+                vspList.add(new Vsp(rs.getInt("id"), rs.getString("name")));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return vspList;
+    }
+
+    public User checkUserByLogin(String login) {
+        String query = "SELECT us.full_name, f.name AS filial_name, f.id AS filial_id " +
+                       "FROM " + SCHEMA + ".users us " +
+                       "LEFT JOIN " + SCHEMA + ".filials f ON us.name_filial::numeric = f.id " +
+                       "WHERE LOWER(us.name) = LOWER(?)";
+        try (Connection conn = getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(query)) {
+            pstmt.setString(1, login.trim());
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                String fullName = rs.getString("full_name");
+                String filialName = rs.getString("filial_name");
+                int filialId = rs.getInt("filial_id");
+                if (rs.wasNull()) filialId = -1;
+                return new User(login, fullName, filialId, filialName);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    public List<ChecklistTemplateItem> getChecklistTemplate() {
+        String query = "SELECT id, item_order, description, additional_info, filter_value, " +
+                       "events_value, alt_filter_value, alt_additional_info, alt_events_value " +
+                       "FROM " + SCHEMA + ".checklist_templates ORDER BY item_order";
+        List<ChecklistTemplateItem> items = new ArrayList<>();
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(query)) {
+            while (rs.next()) {
+                ChecklistTemplateItem item = new ChecklistTemplateItem();
+                item.setId(rs.getInt("id"));
+                item.setOrder(rs.getInt("item_order"));
+                item.setDescription(rs.getString("description"));
+                item.setAdditionalInfo(rs.getString("additional_info"));
+                item.setFilterValue(rs.getString("filter_value"));
+                item.setEventsValue(rs.getString("events_value"));
+                item.setAltFilterValue(rs.getString("alt_filter_value"));
+                item.setAltAdditionalInfo(rs.getString("alt_additional_info"));
+                item.setAltEventsValue(rs.getString("alt_events_value"));
+                items.add(item);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return items;
+    }
+
+    public boolean getFilialCheckName(int filialId) {
+        String query = "SELECT check_name FROM " + SCHEMA + ".filials WHERE id = ?";
+        try (Connection conn = getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(query)) {
+            pstmt.setInt(1, filialId);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return rs.getBoolean("check_name");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+}
+```
+
+---
+
+5. MainController.java
+
+```java
+package com.example.checklist.controllers;
+
+import com.example.checklist.database.DatabaseManager;
+import com.example.checklist.models.*;
+import com.example.checklist.utils.ClipboardHelper;
+import javafx.application.Platform;
+import javafx.fxml.FXML;
+import javafx.fxml.Initializable;
+import javafx.geometry.Insets;
+import javafx.scene.control.*;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.VBox;
+import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
+import org.controlsfx.control.PopOver;
+
+import java.net.URL;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.ResourceBundle;
+
+public class MainController implements Initializable {
+    @FXML private VBox loginPanel;
+    @FXML private TextField loginField;
+    @FXML private Label loginErrorLabel;
+    @FXML private VBox mainPanel;
+    @FXML private Label userInfoLabel;
+    @FXML private ComboBox<String> vspCombo;
+    @FXML private DatePicker datePicker;
+    @FXML private ScrollPane checklistScroll;
+    @FXML private VBox checklistContainer;
+
+    private DatabaseManager db = new DatabaseManager();
+    private User currentUser;
+    private List<Vsp> vspList;
+
+    @Override
+    public void initialize(URL location, ResourceBundle resources) {
+        loginPanel.setVisible(true);
+        mainPanel.setVisible(false);
+    }
+
+    @FXML
+    private void handleLogin() {
+        String login = loginField.getText().trim();
+        if (login.isEmpty()) {
+            loginErrorLabel.setText("Введите логин");
+            return;
+        }
+        User user = db.checkUserByLogin(login);
+        if (user == null || user.getFilialId() <= 0) {
+            loginErrorLabel.setText("Пользователь не найден или отсутствует филиал");
+        } else {
+            currentUser = user;
+            loginPanel.setVisible(false);
+            mainPanel.setVisible(true);
+            userInfoLabel.setText("Пользователь: " + user.getFullName() +
+                    "  |  Филиал: " + user.getFilialName());
+            loadVspList();
+        }
+    }
+
+    private void loadVspList() {
+        vspList = db.getVspByFilial(currentUser.getFilialId());
+        vspCombo.getItems().clear();
+        for (Vsp v : vspList) {
+            vspCombo.getItems().add(v.getName());
+        }
+        if (!vspList.isEmpty()) {
+            vspCombo.getSelectionModel().selectFirst();
+        }
+    }
+
+    @FXML
+    private void handleShowChecklist() {
+        if (currentUser == null) return;
+        String selectedVspName = vspCombo.getValue();
+        if (selectedVspName == null) {
+            showAlert("Выберите ВСП");
+            return;
+        }
+        Vsp selectedVsp = null;
+        for (Vsp v : vspList) {
+            if (v.getName().equals(selectedVspName)) {
+                selectedVsp = v;
+                break;
+            }
+        }
+        if (selectedVsp == null) return;
+
+        LocalDate selectedDate = datePicker.getValue();
+        if (selectedDate == null) {
+            showAlert("Выберите дату");
+            return;
+        }
+
+        boolean useAlt = db.getFilialCheckName(currentUser.getFilialId());
+        List<ChecklistTemplateItem> template = db.getChecklistTemplate();
+
+        checklistContainer.getChildren().clear();
+
+        Label header = new Label("Чек-лист для ВСП «" + selectedVsp.getName() +
+                "» на " + selectedDate.format(DateTimeFormatter.ofPattern("dd.MM.yyyy")));
+        header.setFont(Font.font("System", FontWeight.BOLD, 16));
+        checklistContainer.getChildren().add(header);
+        checklistContainer.getChildren().add(new Separator());
+
+        for (ChecklistTemplateItem item : template) {
+            HBox row = new HBox(10);
+            row.setPadding(new Insets(8, 0, 8, 0));
+
+            Label numLabel = new Label(String.valueOf(item.getOrder()));
+            numLabel.setPrefWidth(30);
+            Label descLabel = new Label(item.getDescription());
+            descLabel.setWrapText(true);
+            descLabel.setPrefWidth(400);
+            Button detailsBtn = new Button("Подробнее");
+            detailsBtn.setOnAction(e -> showItemDetails(item, useAlt, selectedVsp.getName(), detailsBtn));
+
+            row.getChildren().addAll(numLabel, descLabel, detailsBtn);
+            checklistContainer.getChildren().add(row);
+            checklistContainer.getChildren().add(new Separator());
+        }
+    }
+
+    private void showItemDetails(ChecklistTemplateItem item, boolean useAlt, String vspName, Button ownerButton) {
+        String filterText = (useAlt && item.getAltFilterValue() != null && !item.getAltFilterValue().isEmpty())
+                ? item.getAltFilterValue() : item.getFilterValue();
+        String infoText = (useAlt && item.getAltAdditionalInfo() != null && !item.getAltAdditionalInfo().isEmpty())
+                ? item.getAltAdditionalInfo() : item.getAdditionalInfo();
+        String eventsText = (useAlt && item.getAltEventsValue() != null && !item.getAltEventsValue().isEmpty())
+                ? item.getAltEventsValue() : item.getEventsValue();
+
+        if (filterText != null) {
+            filterText = filterText.replace("[Дата1]", LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yy")));
+            filterText = filterText.replace("[РФ]", vspName);
+        }
+
+        PopOver popOver = new PopOver();
+        TabPane tabPane = new TabPane();
+
+        Tab filterTab = new Tab("Фильтр");
+        VBox filterBox = new VBox(10);
+        filterBox.setPadding(new Insets(10));
+
+        Label infoLabel = new Label("Описание процедуры:");
+        infoLabel.setFont(Font.font("System", FontWeight.BOLD, 12));
+        Label infoTextLabel = new Label(infoText != null && !infoText.isEmpty() ? infoText : "Описание отсутствует");
+        infoTextLabel.setWrapText(true);
+
+        TextArea filterArea = new TextArea(filterText != null ? filterText : "Не задан");
+        filterArea.setEditable(false);
+        filterArea.setPrefRowCount(8);
+
+        Button copyBtn = new Button("📋 Копировать фильтр");
+        copyBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white;");
+        final String finalFilter = filterText != null ? filterText : "";
+        copyBtn.setOnAction(e -> {
+            ClipboardHelper.copyToClipboard(finalFilter);
+            copyBtn.setText("✅ Скопировано!");
+            new Thread(() -> {
+                try { Thread.sleep(2000); } catch (InterruptedException ignored) {}
+                Platform.runLater(() -> copyBtn.setText("📋 Копировать фильтр"));
+            }).start();
+        });
+
+        filterBox.getChildren().addAll(infoLabel, infoTextLabel, new Label("Фильтр:"), filterArea, copyBtn);
+        filterTab.setContent(filterBox);
+
+        Tab eventsTab = new Tab("Мероприятия");
+        TextArea eventsArea = new TextArea(eventsText != null ? eventsText : "Мероприятия не заданы");
+        eventsArea.setEditable(false);
+        eventsArea.setPrefRowCount(8);
+        VBox eventsBox = new VBox(10, new Label("Мероприятия:"), eventsArea);
+        eventsBox.setPadding(new Insets(10));
+        eventsTab.setContent(eventsBox);
+
+        tabPane.getTabs().addAll(filterTab, eventsTab);
+        popOver.setContentNode(tabPane);
+        popOver.setArrowLocation(PopOver.ArrowLocation.TOP_CENTER);
+        popOver.show(ownerButton);
+    }
+
+    private void showAlert(String message) {
+        Alert alert = new Alert(Alert.AlertType.WARNING, message, ButtonType.OK);
+        alert.showAndWait();
+    }
+}
+```
+
+---
+
+6. ClipboardHelper.java
+
+```java
+package com.example.checklist.utils;
+
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
+
+public class ClipboardHelper {
+    public static void copyToClipboard(String text) {
+        ClipboardContent content = new ClipboardContent();
+        content.putString(text);
+        Clipboard.getSystemClipboard().setContent(content);
+    }
+}
+```
+
+---
+
+7. main.fxml
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.text.*?>
+<?import javafx.geometry.Insets?>
+
+<VBox xmlns="http://javafx.com/javafx/8.0.171" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.example.checklist.controllers.MainController"
+      spacing="10" alignment="TOP_CENTER" prefWidth="800" prefHeight="600">
+
+    <!-- Панель логина -->
+    <VBox fx:id="loginPanel" spacing="10" alignment="CENTER" VBox.vgrow="ALWAYS">
+        <Label text="Авторизация" style="-fx-font-size: 20px; -fx-font-weight: bold;" />
+        <HBox spacing="10" alignment="CENTER">
+            <Label text="Логин:" />
+            <TextField fx:id="loginField" promptText="rf_ivanov_av" />
+            <Button text="Войти" onAction="#handleLogin" style="-fx-background-color: #4CAF50; -fx-text-fill: white;" />
+        </HBox>
+        <Label fx:id="loginErrorLabel" textFill="red" />
+    </VBox>
+
+    <!-- Основная панель -->
+    <VBox fx:id="mainPanel" spacing="10" alignment="TOP_CENTER" visible="false" managed="false">
+        <Label fx:id="userInfoLabel" style="-fx-font-size: 14px;" />
+        <HBox spacing="20" alignment="CENTER">
+            <Label text="ВСП:" />
+            <ComboBox fx:id="vspCombo" prefWidth="300" />
+            <Label text="Дата:" />
+            <DatePicker fx:id="datePicker" />
+            <Button text="Показать чек-лист" onAction="#handleShowChecklist"
+                    style="-fx-background-color: #2196F3; -fx-text-fill: white; -fx-font-weight: bold;" />
+        </HBox>
+        <ScrollPane fx:id="checklistScroll" fitToWidth="true" VBox.vgrow="ALWAYS">
+            <VBox fx:id="checklistContainer" spacing="5" padding="10" />
+        </ScrollPane>
+    </VBox>
+</VBox>
+```
+
+---
+
+8. application.properties
+
+```properties
+db.host=localhost
+db.port=5432
+db.name=your_database
+db.user=your_user
+db.password=your_password
+db.schema=checklist_rf
+```
+
+Не забудьте заменить на свои реальные параметры!
+
+---
+
+9. style.css (опционально)
+
+Создайте файл src/main/resources/styles/style.css:
+
+```css
+.root {
+    -fx-font-family: "Segoe UI", Arial, sans-serif;
+}
+.button {
+    -fx-cursor: hand;
+}
+```
+
+---
+
+🚀 Инструкция по сборке и запуску
+
+1. Убедитесь, что установлены:
+   · JDK 8 (Oracle JDK 8 включает JavaFX, иначе см. примечание).
+   · Maven 3.5+.
+2. Создайте папку проекта, например checklist-desktop, и внутри неё создайте структуру директорий как указано выше. Скопируйте все файлы.
+3. Измените параметры БД в application.properties.
+4. Откройте терминал в корневой папке проекта (где лежит pom.xml) и выполните:
+   ```bash
+   mvn clean compile
+   mvn javafx:run
+   ```
+   Если возникнут ошибки с JavaFX (например, при использовании OpenJDK 8), раскомментируйте зависимости OpenJFX в pom.xml.
+
+---
+
+⚠️ Примечание для OpenJDK 8 без JavaFX
+
+Если используется OpenJDK 8, в котором нет встроенного JavaFX, нужно:
+
+1. Раскомментировать зависимости javafx-controls и javafx-fxml в pom.xml.
+2. Возможно, указать дополнительный репозиторий или скачать OpenJFX SDK отдельно. Для Maven обычно хватает зависимостей с версией 8.0.202.
+
+После этого проект должен собраться и запуститься.
+
+---
+
+Теперь у вас есть полный готовый проект, который можно скопировать, настроить подключение к БД и запустить командой mvn javafx:run. Приложение будет работать как облегчённая версия чек-листа: только просмотр шаблона без сохранения изменений.
