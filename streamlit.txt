@@ -1,1 +1,117 @@
 
+Понял, давайте без diff — я покажу точные строки, которые нужно добавить в ваш код, и объясню, куда именно их вставить.
+
+Что нужно сделать
+
+На вкладке «Аналитика по филиалу» (для обычного сотрудника) добавить два поля выбора даты: «Дата от» и «Дата до».
+После загрузки таблицы sessions отфильтровать её по этим датам.
+
+Где менять
+
+В вашем файле найдите раздел, который начинается со слов:
+
+```python
+# --- АНАЛИТИКА ПО ФИЛИАЛУ (пользователь) ---
+if tab_user_analytics is not None:
+    with tab_user_analytics:
+        st.markdown("## 📊 Аналитика проверок вашего филиала")
+        ... 
+```
+
+Внутри этого блока есть строки:
+
+```python
+        sessions = db.get_filial_sessions(current_filial_id)
+        if sessions.empty:
+            st.info("В вашем филиале пока нет проверок.")
+        else:
+            # Принудительно преобразуем id в int (для всей колонки)
+            sessions['id'] = sessions['id'].astype(int)
+            total_checks = int(sessions["Всего проверок"].iloc[0])
+
+            st.dataframe(...)
+```
+
+Нужно между st.info(...) и строчкой sessions['id'] = ... вставить:
+
+1. Виджеты для выбора даты (сразу после st.info(f"🏢 Филиал: ...")).
+2. Фильтрацию DataFrame по этим датам.
+
+Точный код, который нужно вставить (скопируйте и замените соответствующий фрагмент)
+
+Вместо текущего фрагмента с sessions = db.get_filial_sessions... и до st.dataframe(...) сделайте так:
+
+```python
+        sessions = db.get_filial_sessions(current_filial_id)
+        if sessions.empty:
+            st.info("В вашем филиале пока нет проверок.")
+        else:
+            # ---------- ДОБАВЛЯЕМ ФИЛЬТР ПО ДАТЕ ----------
+            st.markdown("### 📅 Фильтр по дате проверки")
+            col1, col2, col3 = st.columns([2,2,1])
+            with col1:
+                date_from = st.date_input("Дата от", value=None, key="user_analytics_date_from")
+            with col2:
+                date_to = st.date_input("Дата до", value=None, key="user_analytics_date_to")
+            with col3:
+                if st.button("Сбросить фильтр", use_container_width=True):
+                    # Сбрасываем даты через rerun (удобнее всего)
+                    date_from = date_to = None
+                    # Очищаем значения в st.session_state
+                    st.session_state.user_analytics_date_from = None
+                    st.session_state.user_analytics_date_to = None
+                    st.rerun()
+
+            # Применяем фильтр
+            sessions_filtered = sessions.copy()
+            if date_from is not None:
+                sessions_filtered = sessions_filtered[sessions_filtered["Дата проверки"] >= date_from]
+            if date_to is not None:
+                sessions_filtered = sessions_filtered[sessions_filtered["Дата проверки"] <= date_to]
+
+            if sessions_filtered.empty:
+                st.warning("Нет данных за выбранный период.")
+            else:
+                # Принудительно преобразуем id в int (для всей колонки)
+                sessions_filtered['id'] = sessions_filtered['id'].astype(int)
+                total_checks = int(sessions_filtered["Всего проверок"].iloc[0])
+
+                st.dataframe(
+                    sessions_filtered,
+                    use_container_width=True,
+                    height=500,
+                    column_config={
+                        "id": "ID сессии",
+                        "Сотрудник": "Сотрудник",
+                        "Дата проверки": st.column_config.DateColumn("Дата"),
+                        "ВСП": "ВСП",
+                        "Статус": "Статус",
+                        "Выполнено проверок": st.column_config.ProgressColumn(
+                            "Выполнено",
+                            min_value=0,
+                            max_value=total_checks,
+                            format="%d/%d"
+                        ),
+                        "Дата и время начала": st.column_config.DatetimeColumn("Начало"),
+                        "Дата и время завершения": st.column_config.DatetimeColumn("Завершение"),
+                        "Всего проверок": None
+                    },
+                    hide_index=True
+                )
+```
+
+Пояснение для чего это
+
+· st.date_input – позволяет выбрать дату начала и конца.
+· Кнопка «Сбросить фильтр» – очищает выбор и перезагружает страницу, показывая все данные.
+· sessions_filtered – копия исходного DataFrame, отфильтрованная по датам (столбец "Дата проверки").
+· Если после фильтрации данных нет – выводится предупреждение.
+
+Что не нужно менять
+
+· Остальной код (вкладка «Нерабочие дни», «Админка», «Визуализация») остаётся без изменений.
+· Функция db.get_filial_sessions не меняется — фильтрация происходит прямо в Streamlit.
+
+Если вы скопируете этот блок поверх старого (начиная со строки sessions = db.get_filial_sessions... и до st.dataframe(...), включая её), всё заработает.
+
+Если останутся вопросы — напишите, я пришлю полный файл с уже внесёнными правками.
