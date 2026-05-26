@@ -1,4 +1,48 @@
 
+public class DatabaseManager {
+    private static String URL;
+    private static String USER;
+    private static String PASSWORD;
+    private static String SCHEMA;
+
+    static {
+        // 1. Явно загружаем драйвер PostgreSQL
+        try {
+            Class.forName("org.postgresql.Driver");
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException("PostgreSQL Driver not found. Add dependency to pom.xml", e);
+        }
+
+        // 2. Читаем настройки подключения
+        try (InputStream input = DatabaseManager.class.getClassLoader()
+                .getResourceAsStream("application.properties")) {
+            Properties prop = new Properties();
+            if (input != null) {
+                prop.load(input);
+            }
+            String host = prop.getProperty("db.host", "localhost");
+            String port = prop.getProperty("db.port", "5432");
+            String dbName = prop.getProperty("db.name", "postgres");
+            URL = "jdbc:postgresql://" + host + ":" + port + "/" + dbName;
+            USER = prop.getProperty("db.user", "postgres");
+            PASSWORD = prop.getProperty("db.password", "");
+            SCHEMA = prop.getProperty("db.schema", "public");
+        } catch (IOException ex) {
+            ex.printStackTrace();
+            URL = "jdbc:postgresql://localhost:5432/postgres";
+            USER = "postgres";
+            PASSWORD = "";
+            SCHEMA = "public";
+        }
+    }
+    // ... остальные методы без изменений
+}
+
+
+
+
+
+
 <?xml version="1.0" encoding="UTF-8"?>
 
 <?import javafx.scene.control.*?>
