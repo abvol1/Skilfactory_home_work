@@ -1,4 +1,39 @@
 
+@Override
+public void initialize(URL location, ResourceBundle resources) {
+    loginPanel.setVisible(true);
+    loginPanel.setManaged(true);
+    mainPanel.setVisible(false);
+    mainPanel.setManaged(false);
+}
+
+@FXML
+private void handleLogin() {
+    String login = loginField.getText().trim();
+    if (login.isEmpty()) {
+        loginErrorLabel.setText("Введите логин");
+        return;
+    }
+    User user = db.checkUserByLogin(login);
+    if (user == null || user.getFilialId() <= 0) {
+        // ... ваша обработка ошибок
+        return;
+    } else {
+        currentUser = user;
+        loginPanel.setVisible(false);
+        loginPanel.setManaged(false);
+        mainPanel.setManaged(true);
+        mainPanel.setVisible(true);
+        userInfoLabel.setText(...);
+        loadVspList();
+    }
+}
+
+
+
+
+
+
 <?xml version="1.0" encoding="UTF-8"?>
 
 <?import javafx.scene.control.*?>
