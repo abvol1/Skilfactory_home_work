@@ -75,71 +75,19 @@ INSERT INTO users (name, email) VALUES
 
 Примерный код (уже знакомый вам):
 
-```python
-import tkinter as tk
-from tkinter import messagebox
-import psycopg2
 
-DB_CONFIG = {
-    'host': 'localhost',
-    'port': 5432,
-    'database': 'testdb',
-    'user': 'postgres',
-    'password': 'your_password'  # замените на свой
-}
 
-def get_user_from_db(user_id=1):
-    try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        cur = conn.cursor()
-        cur.execute("SELECT name, email FROM users WHERE id = %s", (user_id,))
-        row = cur.fetchone()
-        cur.close()
-        conn.close()
-        return row
-    except Exception as e:
-        messagebox.showerror("Ошибка БД", str(e))
-        return None
 
-def load_data():
-    user_id = entry_id.get()
-    if not user_id.isdigit():
-        messagebox.showwarning("Ошибка", "Введите число")
-        return
-    data = get_user_from_db(int(user_id))
-    if data is None:
-        entry_name.delete(0, tk.END)
-        entry_email.delete(0, tk.END)
-        messagebox.showinfo("Не найдено", f"Пользователь с ID {user_id} не найден")
-    else:
-        name, email = data
-        entry_name.delete(0, tk.END)
-        entry_name.insert(0, name)
-        entry_email.delete(0, tk.END)
-        entry_email.insert(0, email)
 
-root = tk.Tk()
-root.title("Форма из PostgreSQL")
-root.geometry("400x200")
 
-tk.Label(root, text="ID:").grid(row=0, column=0, padx=10, pady=10)
-entry_id = tk.Entry(root, width=10)
-entry_id.grid(row=0, column=1, padx=10, pady=10)
-entry_id.insert(0, "1")
 
-btn_load = tk.Button(root, text="Загрузить", command=load_data)
-btn_load.grid(row=0, column=2, padx=10, pady=10)
 
-tk.Label(root, text="Имя:").grid(row=1, column=0, padx=10, pady=10)
-entry_name = tk.Entry(root, width=30)
-entry_name.grid(row=1, column=1, columnspan=2, padx=10, pady=10)
 
-tk.Label(root, text="Email:").grid(row=2, column=0, padx=10, pady=10)
-entry_email = tk.Entry(root, width=30)
-entry_email.grid(row=2, column=1, columnspan=2, padx=10, pady=10)
 
-root.mainloop()
-```
+
+
+
+
 
 4. Запуск из терминала (проверка)
 
