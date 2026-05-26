@@ -1,4 +1,211 @@
 
+
+package com.example.checklist.controllers;
+
+import com.example.checklist.database.DatabaseManager;
+import com.example.checklist.models.*;
+import com.example.checklist.utils.ClipboardHelper;
+import javafx.application.Platform;
+import javafx.fxml.FXML;
+import javafx.fxml.Initializable;
+import javafx.geometry.Insets;
+import javafx.scene.Scene;
+import javafx.scene.control.*;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.VBox;
+import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
+import javafx.stage.Modality;
+import javafx.stage.Stage;
+
+import java.net.URL;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.ResourceBundle;
+
+public class MainController implements Initializable {
+    @FXML private VBox loginPanel;
+    @FXML private TextField loginField;
+    @FXML private Label loginErrorLabel;
+    @FXML private VBox mainPanel;
+    @FXML private Label userInfoLabel;
+    @FXML private ComboBox<String> vspCombo;
+    @FXML private DatePicker datePicker;
+    @FXML private ScrollPane checklistScroll;
+    @FXML private VBox checklistContainer;
+
+    private DatabaseManager db = new DatabaseManager();
+    private User currentUser;
+    private List<Vsp> vspList;
+
+    @Override
+    public void initialize(URL location, ResourceBundle resources) {
+        loginPanel.setVisible(true);
+        mainPanel.setVisible(false);
+    }
+
+    @FXML
+    private void handleLogin() {
+        String login = loginField.getText().trim();
+        if (login.isEmpty()) {
+            loginErrorLabel.setText("Введите логин");
+            return;
+        }
+        User user = db.checkUserByLogin(login);
+        if (user == null || user.getFilialId() <= 0) {
+            loginErrorLabel.setText("Пользователь не найден или отсутствует филиал");
+        } else {
+            currentUser = user;
+            loginPanel.setVisible(false);
+            mainPanel.setVisible(true);
+            userInfoLabel.setText("Пользователь: " + user.getFullName() +
+                    "  |  Филиал: " + user.getFilialName());
+            loadVspList();
+        }
+    }
+
+    private void loadVspList() {
+        vspList = db.getVspByFilial(currentUser.getFilialId());
+        vspCombo.getItems().clear();
+        for (Vsp v : vspList) {
+            vspCombo.getItems().add(v.getName());
+        }
+        if (!vspList.isEmpty()) {
+            vspCombo.getSelectionModel().selectFirst();
+        }
+    }
+
+    @FXML
+    private void handleShowChecklist() {
+        if (currentUser == null) return;
+        String selectedVspName = vspCombo.getValue();
+        if (selectedVspName == null) {
+            showAlert("Выберите ВСП");
+            return;
+        }
+        Vsp selectedVsp = null;
+        for (Vsp v : vspList) {
+            if (v.getName().equals(selectedVspName)) {
+                selectedVsp = v;
+                break;
+            }
+        }
+        if (selectedVsp == null) return;
+
+        LocalDate selectedDate = datePicker.getValue();
+        if (selectedDate == null) {
+            showAlert("Выберите дату");
+            return;
+        }
+
+        boolean useAlt = db.getFilialCheckName(currentUser.getFilialId());
+        List<ChecklistTemplateItem> template = db.getChecklistTemplate();
+
+        checklistContainer.getChildren().clear();
+
+        Label header = new Label("Чек-лист для ВСП «" + selectedVsp.getName() +
+                "» на " + selectedDate.format(DateTimeFormatter.ofPattern("dd.MM.yyyy")));
+        header.setFont(Font.font("System", FontWeight.BOLD, 16));
+        checklistContainer.getChildren().add(header);
+        checklistContainer.getChildren().add(new Separator());
+
+        for (ChecklistTemplateItem item : template) {
+            HBox row = new HBox(10);
+            row.setPadding(new Insets(8, 0, 8, 0));
+
+            Label numLabel = new Label(String.valueOf(item.getOrder()));
+            numLabel.setPrefWidth(30);
+            Label descLabel = new Label(item.getDescription());
+            descLabel.setWrapText(true);
+            descLabel.setPrefWidth(400);
+            Button detailsBtn = new Button("Подробнее");
+            detailsBtn.setOnAction(e -> showItemDetails(item, useAlt, selectedVsp.getName()));
+
+            row.getChildren().addAll(numLabel, descLabel, detailsBtn);
+            checklistContainer.getChildren().add(row);
+            checklistContainer.getChildren().add(new Separator());
+        }
+    }
+
+    private void showItemDetails(ChecklistTemplateItem item, boolean useAlt, String vspName) {
+        String filterText = (useAlt && item.getAltFilterValue() != null && !item.getAltFilterValue().isEmpty())
+                ? item.getAltFilterValue() : item.getFilterValue();
+        String infoText = (useAlt && item.getAltAdditionalInfo() != null && !item.getAltAdditionalInfo().isEmpty())
+                ? item.getAltAdditionalInfo() : item.getAdditionalInfo();
+        String eventsText = (useAlt && item.getAltEventsValue() != null && !item.getAltEventsValue().isEmpty())
+                ? item.getAltEventsValue() : item.getEventsValue();
+
+        if (filterText != null) {
+            filterText = filterText.replace("[Дата1]", LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yy")));
+            filterText = filterText.replace("[РФ]", vspName);
+        }
+
+        // Создаём новое окно
+        Stage detailStage = new Stage();
+        detailStage.setTitle("Проверка №" + item.getOrder());
+        detailStage.initModality(Modality.NONE);  // немодальное, чтобы не блокировать основное окно
+
+        TabPane tabPane = new TabPane();
+
+        Tab filterTab = new Tab("Фильтр");
+        VBox filterBox = new VBox(10);
+        filterBox.setPadding(new Insets(10));
+
+        Label infoLabel = new Label("Описание процедуры:");
+        infoLabel.setFont(Font.font("System", FontWeight.BOLD, 12));
+        Label infoTextLabel = new Label(infoText != null && !infoText.isEmpty() ? infoText : "Описание отсутствует");
+        infoTextLabel.setWrapText(true);
+
+        TextArea filterArea = new TextArea(filterText != null ? filterText : "Не задан");
+        filterArea.setEditable(false);
+        filterArea.setPrefRowCount(10);
+
+        Button copyBtn = new Button("📋 Копировать фильтр");
+        copyBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white;");
+        final String finalFilter = filterText != null ? filterText : "";
+        copyBtn.setOnAction(e -> {
+            ClipboardHelper.copyToClipboard(finalFilter);
+            copyBtn.setText("✅ Скопировано!");
+            new Thread(() -> {
+                try { Thread.sleep(2000); } catch (InterruptedException ignored) {}
+                Platform.runLater(() -> copyBtn.setText("📋 Копировать фильтр"));
+            }).start();
+        });
+
+        filterBox.getChildren().addAll(infoLabel, infoTextLabel, new Label("Фильтр:"), filterArea, copyBtn);
+        filterTab.setContent(filterBox);
+
+        Tab eventsTab = new Tab("Мероприятия");
+        TextArea eventsArea = new TextArea(eventsText != null ? eventsText : "Мероприятия не заданы");
+        eventsArea.setEditable(false);
+        eventsArea.setPrefRowCount(10);
+        VBox eventsBox = new VBox(10, new Label("Мероприятия:"), eventsArea);
+        eventsBox.setPadding(new Insets(10));
+        eventsTab.setContent(eventsBox);
+
+        tabPane.getTabs().addAll(filterTab, eventsTab);
+
+        Scene scene = new Scene(tabPane, 600, 400);
+        detailStage.setScene(scene);
+        detailStage.show();
+    }
+
+    private void showAlert(String message) {
+        Alert alert = new Alert(Alert.AlertType.WARNING, message, ButtonType.OK);
+        alert.showAndWait();
+    }
+}
+
+
+
+
+
+
+
+
+
+
 package com.example.checklist.controllers;
 
 import com.example.checklist.database.DatabaseManager;
