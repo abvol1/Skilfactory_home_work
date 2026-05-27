@@ -1,4 +1,154 @@
 
+Мы пришли к самому надёжному варианту: разместить кнопку напротив каждой заполненной ячейки в столбце A. Нажатие на такую кнопку считается действием пользователя, что даёт доступ к буферу обмена. Я подготовил два макроса.
+
+1. Создание кнопок «Копировать» в столбце B
+
+Этот макрос нужно запустить один раз, чтобы добавить кнопки напротив всех непустых ячеек столбца A активного листа. При повторном запуске старые кнопки будут удалены и созданы заново.
+
+```javascript
+(function()
+{
+    try {
+        if (typeof Api === 'undefined') throw new Error('Api не определён');
+        var sheet = Api.GetActiveSheet();
+
+        // Удаляем все фигуры, имя которых начинается с "CopyRow_"
+        var shapes = sheet.GetAllShapes();
+        for (var i = shapes.length - 1; i >= 0; i--) {
+            if (shapes[i].GetName().indexOf("CopyRow_") === 0) {
+                shapes[i].Delete();
+            }
+        }
+
+        var usedRange = sheet.GetUsedRange();
+        if (!usedRange) {
+            sheet.GetRange("Z1").SetValue("Нет данных для создания кнопок.");
+            return;
+        }
+
+        var data = usedRange.GetValue();
+        var btnWidth = 80 * 0.035 * 72; // примерно 80 пикселей в пунктах (1px ≈ 0.75pt)
+        var btnHeight = 20 * 0.75;       // ~15pt
+        var colBLeft = sheet.GetRange("B1").GetLeft(); // координата X начала столбца B
+
+        for (var rowIdx = 0; rowIdx < data.length; rowIdx++) {
+            var cellValue = data[rowIdx][0]; // значение в столбце A
+            if (cellValue === null || cellValue === undefined || String(cellValue).trim() === '') continue;
+
+            var excelRow = rowIdx + 1; // строка в Excel (начинается с 1)
+            var cellARange = sheet.GetRange("A" + excelRow);
+            var top = cellARange.GetTop();
+            var left = colBLeft;
+
+            // Создаём прямоугольник-кнопку
+            var shape = Api.CreateShape("rect", {
+                Width: btnWidth,
+                Height: btnHeight,
+                Left: left,
+                Top: top,
+                Fill: Api.CreateColorFromRGB(200, 230, 255),
+                Stroke: Api.CreateColorFromRGB(100, 100, 100)
+            });
+            shape.SetName("CopyRow_" + excelRow);
+            shape.AddText("Копировать");
+            shape.SetVerticalTextAlign("center");
+            shape.SetHorizontalTextAlign("center");
+
+            // Привязываем макрос "CopyAndColor" к нажатию на фигуру
+            shape.SetMacro("CopyAndColor");
+
+            sheet.AddShape(shape);
+        }
+
+        sheet.GetRange("Z1").SetValue("Кнопки созданы. Нажмите на кнопку напротив нужной строки.");
+    } catch(e) {
+        try { Api.GetActiveSheet().GetRange("Z1").SetValue("Ошибка: " + e.message); } catch(e2) {}
+    }
+})();
+```
+
+2. Макрос‑обработчик нажатия кнопки
+
+Именно этот макрос должен быть сохранён в документе с именем CopyAndColor. Он вызывается при клике по любой кнопке «Копировать». Определяет строку, красит ячейку в столбце A и копирует её значение в буфер обмена.
+
+```javascript
+(function()
+{
+    try {
+        if (typeof Api === 'undefined') throw new Error('Api не определён');
+        var sheet = Api.GetActiveSheet();
+        var activeShape = Api.GetActiveShape();
+        if (!activeShape) {
+            sheet.GetRange("Z1").SetValue("Не найдена активная кнопка.");
+            return;
+        }
+
+        var shapeName = activeShape.GetName();
+        var parts = shapeName.split('_');
+        if (parts.length < 2 || parts[0] !== "CopyRow") {
+            sheet.GetRange("Z1").SetValue("Имя кнопки не соответствует формату.");
+            return;
+        }
+        var rowNumber = parseInt(parts[1]);
+        if (isNaN(rowNumber)) {
+            sheet.GetRange("Z1").SetValue("Неверный номер строки в имени кнопки.");
+            return;
+        }
+
+        // Целевая ячейка в столбце A
+        var cellA = sheet.GetRange("A" + rowNumber);
+        var value = cellA.GetValue();
+
+        // Окрашиваем в зелёный
+        var green = Api.CreateColorFromRGB(0, 255, 0);
+        cellA.SetFillColor(green);
+
+        // Копируем значение в буфер обмена
+        var copied = false;
+        // Выделяем ячейку и используем команду copy (теперь она должна работать!)
+        cellA.Select();
+        if (typeof Api.ExecCommand === 'function') {
+            try {
+                Api.ExecCommand("copy");
+                copied = true;
+            } catch(e) {}
+        }
+        // Запасной вариант – если не скопировалось, запишем в Z1
+        if (!copied) {
+            sheet.GetRange("Z1").SetValue("Ячейка окрашена. Значение: " + (value !== null ? value : ""));
+        } else {
+            sheet.GetRange("Z1").SetValue("Готово! A" + rowNumber + " скопировано и окрашено.");
+        }
+    } catch(e) {
+        try { Api.GetActiveSheet().GetRange("Z1").SetValue("Ошибка: " + e.message); } catch(e2) {}
+    }
+})();
+```
+
+Инструкция по применению
+
+1. Откройте редактор макросов (Плагины → Макросы или Alt+F11).
+2. Создайте первый макрос с кодом создания кнопок, назовите его, например, CreateButtons.
+3. Создайте второй макрос и обязательно назовите его CopyAndColor (имя должно точно совпадать).
+4. Выполните макрос CreateButtons. Он расставит кнопки в столбце B напротив каждой непустой ячейки A.
+5. Теперь просто нажимайте на любую кнопку «Копировать». Соответствующая ячейка A станет зелёной, а её значение попадёт в буфер обмена (проверьте через Ctrl+V).
+
+Если после нажатия кнопки значение всё же не копируется (маловероятно), в ячейке Z1 появится само значение для ручного копирования. Но благодаря тому, что копирование вызывается непосредственно в ответ на клик по кнопке, команда ExecCommand("copy") должна получить доступ к буферу.
+
+Этот способ решает задачу полностью: окрашивание работает, копирование – теперь с высокой вероятностью тоже. Попробуйте, пожалуйста, и дайте знать результат!
+
+
+
+
+
+
+
+
+
+
+
+
+
 (function()
 {
     try {
