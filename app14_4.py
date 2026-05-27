@@ -2,6 +2,47 @@
 (function()
 {
     if (typeof Api === 'undefined') {
+        try { Api.GetActiveSheet().GetRange("Z1").SetValue("Ошибка: Api не определён."); } catch(e) {}
+        return;
+    }
+
+    var sheet = Api.GetActiveSheet();
+    var errorCell = sheet.GetRange("Z1");
+
+    // Функция-обработчик изменения выделения
+    function onSelectionChange(selection) {
+        var cell = selection.ActiveCell;
+        if (!cell) return;
+
+        // Проверяем: одна ячейка в столбце A (индекс 0)
+        if (selection.Count === 1 && cell.GetColIndex() === 0) {
+            // Закрашиваем в зелёный
+            var greenColor = Api.CreateColorFromRGB(0, 255, 0);
+            cell.SetFillColor(greenColor);
+
+            // Копируем содержимое ячейки в буфер обмена
+            cell.Copy();
+        }
+    }
+
+    // Назначаем обработчик на лист
+    sheet.OnSelectionChange = onSelectionChange;
+
+    // Подтверждение активации
+    errorCell.SetValue("Обработчик клика по столбцу A активирован.");
+})();
+
+
+
+
+
+
+
+
+
+(function()
+{
+    if (typeof Api === 'undefined') {
         try {
             Api.GetActiveSheet().GetRange("Z1").SetValue("Ошибка: Api не определён.");
         } catch(e) {}
