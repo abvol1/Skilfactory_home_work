@@ -7,6 +7,60 @@
     }
 
     var sheet = Api.GetActiveSheet();
+    var cell = null;
+
+    // Способ 1: получить активную ячейку через лист
+    try {
+        cell = sheet.GetActiveCell();
+    } catch(e) {}
+
+    // Способ 2: если не получилось, пробуем через выделение (первая ячейка)
+    if (!cell) {
+        var selection = sheet.GetSelection();
+        if (selection && selection.Count === 1) {
+            try {
+                cell = selection.Get(0); // первая ячейка выделения
+            } catch(e) {}
+        }
+    }
+
+    // Если всё равно не нашли — ошибка
+    if (!cell) {
+        sheet.GetRange("Z1").SetValue("Не удалось получить активную ячейку. Выделите ровно одну ячейку и попробуйте снова.");
+        return;
+    }
+
+    // Проверяем столбец A (индекс 0)
+    if (cell.GetColIndex() !== 0) {
+        sheet.GetRange("Z1").SetValue("Выделите ячейку в столбце A.");
+        return;
+    }
+
+    // Закрашиваем зелёным
+    var greenColor = Api.CreateColorFromRGB(0, 255, 0);
+    cell.SetFillColor(greenColor);
+
+    // Копируем значение в буфер обмена
+    cell.Copy();
+
+    // Успех
+    sheet.GetRange("Z1").SetValue("Ячейка A" + (cell.GetRowIndex() + 1) + " окрашена и скопирована.");
+})();
+
+
+
+
+
+
+
+(function()
+{
+    if (typeof Api === 'undefined') {
+        try { Api.GetActiveSheet().GetRange("Z1").SetValue("Ошибка: Api не определён."); } catch(e) {}
+        return;
+    }
+
+    var sheet = Api.GetActiveSheet();
     var selection = sheet.GetSelection();
     if (!selection || selection.Count === 0) {
         sheet.GetRange("Z1").SetValue("Нет выделения.");
