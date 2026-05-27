@@ -1,4 +1,59 @@
 
+
+(function()
+{
+    if (typeof Api === 'undefined') {
+        try { Api.GetActiveSheet().GetRange("Z1").SetValue("Ошибка: Api не определён."); } catch(e) {}
+        return;
+    }
+
+    var sheet = Api.GetActiveSheet();
+    var errorCell = sheet.GetRange("Z1");
+
+    // Обработчик изменения выделения
+    function onSelectionChange() {
+        // Вместо переданного аргумента сами получаем выделение
+        var selection = sheet.GetSelection();
+        if (!selection) {
+            errorCell.SetValue("Обработчик: selection == null");
+            return;
+        }
+
+        var cell = selection.ActiveCell;
+        if (!cell) {
+            errorCell.SetValue("Обработчик: ActiveCell == null, Count=" + selection.Count);
+            return;
+        }
+
+        // Диагностика: выводим параметры в Z1
+        var colIndex = cell.GetColIndex();
+        errorCell.SetValue("Клик: столбец=" + colIndex + ", Count=" + selection.Count + ", значение=" + cell.GetValue());
+
+        // Проверяем, что выделена одна ячейка и столбец A (индекс 0)
+        if (selection.Count === 1 && colIndex === 0) {
+            // Закрашиваем в зелёный
+            var greenColor = Api.CreateColorFromRGB(0, 255, 0);
+            cell.SetFillColor(greenColor);
+
+            // Копируем содержимое ячейки в буфер обмена
+            cell.Copy();
+        }
+    }
+
+    // Назначаем обработчик
+    sheet.OnSelectionChange = onSelectionChange;
+
+    // Первичная активация
+    errorCell.SetValue("Обработчик активирован. Кликните в столбце A.");
+})();
+
+
+
+
+
+
+
+
 (function()
 {
     if (typeof Api === 'undefined') {
