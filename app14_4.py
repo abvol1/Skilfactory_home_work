@@ -1,4 +1,67 @@
 
+(function()
+{
+    try {
+        if (typeof Api === 'undefined') {
+            throw new Error('Api не определён');
+        }
+
+        var sheet = Api.GetActiveSheet();
+        var selection = sheet.GetSelection();
+        if (!selection || selection.Count !== 1) {
+            sheet.GetRange("Z1").SetValue("Выделите ровно одну ячейку в столбце A.");
+            return;
+        }
+
+        var address = selection.GetAddress();
+        var cleanAddress = address.replace(/\$/g, '');
+        var columnLetter = cleanAddress.match(/^[A-Za-z]+/)[0];
+        if (columnLetter.toUpperCase() !== 'A') {
+            sheet.GetRange("Z1").SetValue("Ячейка не в столбце A, а в столбце " + columnLetter);
+            return;
+        }
+
+        // Получаем объект ячейки (любым доступным способом)
+        var cell = null;
+        try { cell = selection.ActiveCell; } catch(e) {}
+        if (!cell) {
+            try { cell = selection.Get(0); } catch(e) {}
+        }
+        if (!cell) {
+            cell = sheet.GetRange(address);
+        }
+
+        // Закрашиваем зелёным (уже работает)
+        var greenColor = Api.CreateColorFromRGB(0, 255, 0);
+        cell.SetFillColor(greenColor);
+
+        // Копируем значение в буфер обмена через textarea
+        var cellValue = cell.GetValue();
+        if (cellValue !== null && cellValue !== undefined) {
+            var textArea = document.createElement("textarea");
+            textArea.value = String(cellValue);
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+        }
+
+        sheet.GetRange("Z1").SetValue("Готово! Ячейка " + address + " окрашена и скопирована в буфер.");
+
+    } catch(e) {
+        try {
+            Api.GetActiveSheet().GetRange("Z1").SetValue("Ошибка: " + e.message);
+        } catch(e2) {}
+    }
+})();
+
+
+
+
+
+
+
+
 
 (function()
 {
