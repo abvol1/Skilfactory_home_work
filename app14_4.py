@@ -1,4 +1,67 @@
 
+
+(function()
+{
+    try {
+        if (typeof Api === 'undefined') {
+            throw new Error('Api не определён');
+        }
+
+        var sheet = Api.GetActiveSheet();
+        var selection = sheet.GetSelection();
+        if (!selection || selection.Count !== 1) {
+            sheet.GetRange("Z1").SetValue("Выделите ровно одну ячейку в столбце A.");
+            return;
+        }
+
+        // Получаем адрес выделенной ячейки (например, "$A$1" или "A1")
+        var address = selection.GetAddress();
+        sheet.GetRange("Z1").SetValue("Адрес выделения: " + address);
+
+        // Проверяем, что адрес начинается с 'A' (столбец A)
+        // Убираем знаки '$' и берём первую букву
+        var cleanAddress = address.replace(/\$/g, '');
+        var columnLetter = cleanAddress.match(/^[A-Za-z]+/)[0];
+        if (columnLetter.toUpperCase() !== 'A') {
+            sheet.GetRange("Z1").SetValue("Ячейка не в столбце A, а в столбце " + columnLetter);
+            return;
+        }
+
+        // Пытаемся получить объект ячейки для окрашивания (может быть ActiveCell или первый элемент выделения)
+        var cell = null;
+        try { cell = selection.ActiveCell; } catch(e) {}
+        if (!cell) {
+            try { cell = selection.Get(0); } catch(e) {}
+        }
+        if (!cell) {
+            // Если вообще не получили объект, красим через GetRange по адресу
+            cell = sheet.GetRange(address);
+        }
+
+        // Закрашиваем зелёным
+        var greenColor = Api.CreateColorFromRGB(0, 255, 0);
+        cell.SetFillColor(greenColor);
+
+        // Копируем выделение в буфер обмена (работает, даже если cell.Copy нет)
+        selection.Copy();
+
+        sheet.GetRange("Z1").SetValue("Готово! Ячейка " + address + " окрашена и скопирована.");
+
+    } catch(e) {
+        try {
+            Api.GetActiveSheet().GetRange("Z1").SetValue("Ошибка: " + e.message);
+        } catch(e2) {}
+    }
+})();
+
+
+
+
+
+
+
+
+
 (function()
 {
     try {
