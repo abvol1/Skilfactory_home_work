@@ -1,2 +1,55 @@
 
 streamlit.errors.StreamlitAPIException: st.session_state.user_analytics_date_from cannot be modified after the widget with key user_analytics_date_from is instantiated.
+
+
+
+sessions = db.get_filial_sessions(current_filial_id)
+if sessions.empty:
+    st.info("В вашем филиале пока нет проверок.")
+else:
+    # Фильтр по дате (без кнопки сброса)
+    st.markdown("### 📅 Фильтр по дате проверки")
+    col1, col2 = st.columns(2)
+    with col1:
+        date_from = st.date_input("Дата от", value=None, key="user_analytics_date_from")
+    with col2:
+        date_to = st.date_input("Дата до", value=None, key="user_analytics_date_to")
+
+    # Применяем фильтр
+    sessions_filtered = sessions.copy()
+    if date_from is not None:
+        sessions_filtered = sessions_filtered[sessions_filtered["Дата проверки"] >= date_from]
+    if date_to is not None:
+        sessions_filtered = sessions_filtered[sessions_filtered["Дата проверки"] <= date_to]
+
+    if sessions_filtered.empty:
+        st.warning("Нет данных за выбранный период.")
+    else:
+        # Принудительно преобразуем id в int
+        sessions_filtered['id'] = sessions_filtered['id'].astype(int)
+        total_checks = int(sessions_filtered["Всего проверок"].iloc[0])
+
+        st.dataframe(
+            sessions_filtered,
+            use_container_width=True,
+            height=500,
+            column_config={
+                "id": "ID сессии",
+                "Сотрудник": "Сотрудник",
+                "Дата проверки": st.column_config.DateColumn("Дата"),
+                "ВСП": "ВСП",
+                "Статус": "Статус",
+                "Выполнено проверок": st.column_config.ProgressColumn(
+                    "Выполнено",
+                    min_value=0,
+                    max_value=total_checks,
+                    format="%d/%d"
+                ),
+                "Дата и время начала": st.column_config.DatetimeColumn("Начало"),
+                "Дата и время завершения": st.column_config.DatetimeColumn("Завершение"),
+                "Всего проверок": None
+            },
+            hide_index=True
+        )
+
+
