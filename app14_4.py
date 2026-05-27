@@ -1,29 +1,3 @@
-
-(function()
-{
-    // Получаем листы
-    let sheetTemplate = Api.GetSheetByName("Shablon");
-    let sheetWork = Api.GetSheetByName("Chek_list");
-    
-    // 1. Очищаем весь целевой лист
-    sheetWork.GetCells().Clear();
-    
-    // 2. Копируем данные (убедитесь, что диапазон правильный)
-    // Вариант А: Копировать весь используемый диапазон
-    let usedRangeTemplate = sheetTemplate.GetUsedRange();
-    // Вариант Б: Копировать конкретный диапазон (раскомментируйте и укажите свой)
-    // let usedRangeTemplate = sheetTemplate.GetRange("A1:C10");
-    
-    let targetAddress = usedRangeTemplate.GetAddress();
-    let targetRange = sheetWork.GetRange(targetAddress);
-    usedRangeTemplate.Copy(targetRange);
-    
-})();
-
-
-
-
-
 (function()
 {
     if (typeof(Api) === 'undefined') {
@@ -32,7 +6,7 @@
     }
 
     // 1. Получаем лист-шаблон и рабочий лист
-    let sheetTemplate = Api.GetSheetByName("Шаблон");
+    let sheetTemplate = Api.GetSheet("Шаблон");
     let sheetWork = Api.GetActiveSheet();
 
     if (!sheetTemplate) {
@@ -70,14 +44,14 @@
     }
 
     let logMessage = "";
-    if (replacementVSP && replacementVSP !== "ВСП") {
-        usedRangeWork.Replace("ВСП", replacementVSP, "xlPart", "xlByRows", "xlNext", false, true);
-        logMessage += `'ВСП' → '${replacementVSP}'; `;
+    if (replacementVSP && replacementVSP !== "[РФ]") {
+        usedRangeWork.Replace("[РФ]", replacementVSP, "xlPart", "xlByRows", "xlNext", false, true);
+        logMessage += `'[РФ]' → '${replacementVSP}'; `;
     } else {
         logMessage += `'ВСП' не заменён (A1 пусто или равно 'ВСП'); `;
     }
-    usedRangeWork.Replace("ДАТА1", currentDate, "xlPart", "xlByRows", "xlNext", false, true);
-    logMessage += `'ДАТА1' → '${currentDate}'`;
+    usedRangeWork.Replace("[ДАТА1]", currentDate, "xlPart", "xlByRows", "xlNext", false, true);
+    logMessage += `'[ДАТА1]' → '${currentDate}'`;
 
     // 6. Записываем результат отладки в ячейку Z1
     sheetWork.GetRange("Z1").SetValue("✅ Готово: " + logMessage);
