@@ -1,4 +1,68 @@
 
+
+
+
+(function()
+{
+    // Если Api не определён, пытаемся вывести ошибку на лист (если возможно)
+    if (typeof Api === 'undefined') {
+        try {
+            var actSheet = Api.GetActiveSheet();
+            if (actSheet) actSheet.GetRange("Z1").SetValue("Ошибка: Api не определён.");
+        } catch(e) {}
+        return;
+    }
+
+    var sheet = Api.GetActiveSheet();
+
+    // Функция копирования текста в буфер обмена
+    function copyToClipboard(text) {
+        var textArea = document.createElement("textarea");
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+            document.execCommand('copy');
+        } catch (err) {
+            // Ошибка копирования выводится на лист
+            sheet.GetRange("Z1").SetValue("Ошибка копирования в буфер: " + err.message);
+        }
+        document.body.removeChild(textArea);
+    }
+
+    // Обработчик изменения выделения
+    function onSelectionChange(selection) {
+        var cell = selection.ActiveCell;
+        if (!cell) return;
+
+        // Проверяем: одна ячейка и столбец A (индекс 0)
+        if (selection.Count === 1 && cell.GetColIndex() === 0) {
+            // Зелёная заливка
+            var greenColor = Api.CreateColorFromRGB(0, 255, 0);
+            cell.SetFillColor(greenColor);
+
+            // Копируем значение в буфер
+            var value = cell.GetValue();
+            if (value !== null && value !== undefined) {
+                copyToClipboard(String(value));
+            }
+        }
+    }
+
+    // Назначаем обработчик на текущий лист
+    sheet.OnSelectionChange = onSelectionChange;
+})();
+
+
+
+
+
+
+
+
+
+
+
 (function()
 {
     if (typeof(Api) === 'undefined') {
