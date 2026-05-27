@@ -1,4 +1,70 @@
 
+(function()
+{
+    if (typeof Api === 'undefined') {
+        try {
+            Api.GetActiveSheet().GetRange("Z1").SetValue("Ошибка: Api не определён.");
+        } catch(e) {}
+        return;
+    }
+
+    var sheet = Api.GetActiveSheet();
+    var errorCell = sheet.GetRange("Z1");
+
+    // Удаляем предыдущий обработчик, если он был (чтобы не дублировался)
+    if (this.selectionHandler) {
+        Api.detachEvent("onSelectionChange", this.selectionHandler);
+    }
+
+    // Функция копирования текста в буфер обмена
+    function copyToClipboard(text) {
+        var textArea = document.createElement("textarea");
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+            document.execCommand('copy');
+        } catch (err) {
+            errorCell.SetValue("Ошибка копирования: " + err.message);
+        }
+        document.body.removeChild(textArea);
+    }
+
+    // Основной обработчик изменения выделения
+    var selectionHandler = function(selection) {
+        var cell = selection.ActiveCell;
+        if (!cell) return;
+
+        // Проверяем: выделена ровно одна ячейка и это столбец A (индекс 0)
+        if (selection.Count === 1 && cell.GetColIndex() === 0) {
+            // Закрашиваем в зелёный
+            var greenColor = Api.CreateColorFromRGB(0, 255, 0);
+            cell.SetFillColor(greenColor);
+
+            // Копируем значение ячейки в буфер
+            var value = cell.GetValue();
+            if (value !== null && value !== undefined) {
+                copyToClipboard(String(value));
+            }
+        }
+    };
+
+    // Сохраняем обработчик для возможности удаления в будущем
+    this.selectionHandler = selectionHandler;
+
+    // Регистрируем событие
+    Api.attachEvent("onSelectionChange", selectionHandler);
+
+    // Сообщение об успешном запуске
+    errorCell.SetValue("Обработчик клика по столбцу A активирован.");
+})();
+
+
+
+
+
+
+
 
 
 
