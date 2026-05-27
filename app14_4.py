@@ -21,6 +21,92 @@
             return;
         }
 
+        // Получаем объект ячейки (Range)
+        var cell = null;
+        try { cell = selection.ActiveCell; } catch(e) {}
+        if (!cell) {
+            try { cell = selection.Get(0); } catch(e) {}
+        }
+        if (!cell) {
+            cell = sheet.GetRange(address);
+        }
+
+        // 1. Закрашиваем зелёным (это работает)
+        var greenColor = Api.CreateColorFromRGB(0, 255, 0);
+        cell.SetFillColor(greenColor);
+
+        // 2. Копирование в буфер – пробуем разные методы
+        var copied = false;
+        var cellValue = cell.GetValue();
+
+        // Способ A: стандартный Range.Copy() (часто работает в Р7)
+        try {
+            cell.Copy();
+            copied = true;
+        } catch(e) {}
+
+        // Способ B: через Api.Clipboard (если доступен)
+        if (!copied && Api.GetClipboard) {
+            try {
+                var clipboard = Api.GetClipboard();
+                if (clipboard && clipboard.SetText) {
+                    clipboard.SetText(String(cellValue));
+                    copied = true;
+                }
+            } catch(e) {}
+        }
+
+        // Способ C: если и это не помогло, пытаемся через тот же Range, но с явным адресом
+        if (!copied) {
+            try {
+                sheet.GetRange(address).Copy();
+                copied = true;
+            } catch(e) {}
+        }
+
+        // Итоговое сообщение
+        if (copied) {
+            sheet.GetRange("Z1").SetValue("Готово! Ячейка " + address + " окрашена и скопирована в буфер.");
+        } else {
+            sheet.GetRange("Z1").SetValue("Ячейка окрашена, но скопировать не удалось. Скопируйте значение вручную: " + cellValue);
+        }
+
+    } catch(e) {
+        try {
+            Api.GetActiveSheet().GetRange("Z1").SetValue("Ошибка: " + e.message);
+        } catch(e2) {}
+    }
+})();
+
+
+
+
+
+
+
+
+(function()
+{
+    try {
+        if (typeof Api === 'undefined') {
+            throw new Error('Api не определён');
+        }
+
+        var sheet = Api.GetActiveSheet();
+        var selection = sheet.GetSelection();
+        if (!selection || selection.Count !== 1) {
+            sheet.GetRange("Z1").SetValue("Выделите ровно одну ячейку в столбце A.");
+            return;
+        }
+
+        var address = selection.GetAddress();
+        var cleanAddress = address.replace(/\$/g, '');
+        var columnLetter = cleanAddress.match(/^[A-Za-z]+/)[0];
+        if (columnLetter.toUpperCase() !== 'A') {
+            sheet.GetRange("Z1").SetValue("Ячейка не в столбце A, а в столбце " + columnLetter);
+            return;
+        }
+
         // Получаем объект ячейки (любым доступным способом)
         var cell = null;
         try { cell = selection.ActiveCell; } catch(e) {}
