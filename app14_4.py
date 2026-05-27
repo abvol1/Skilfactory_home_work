@@ -1,4 +1,48 @@
 
+(function()
+{
+    if (typeof Api === 'undefined') {
+        try { Api.GetActiveSheet().GetRange("Z1").SetValue("Ошибка: Api не определён."); } catch(e) {}
+        return;
+    }
+
+    var sheet = Api.GetActiveSheet();
+    var selection = sheet.GetSelection();
+    if (!selection || selection.Count === 0) {
+        sheet.GetRange("Z1").SetValue("Нет выделения.");
+        return;
+    }
+
+    // Берём активную ячейку
+    var cell = selection.ActiveCell;
+    if (!cell) {
+        sheet.GetRange("Z1").SetValue("Ошибка: не удалось получить активную ячейку.");
+        return;
+    }
+
+    // Проверяем, что выделена ровно одна ячейка и она в столбце A (индекс 0)
+    if (selection.Count !== 1 || cell.GetColIndex() !== 0) {
+        sheet.GetRange("Z1").SetValue("Выделите ровно одну ячейку в столбце A.");
+        return;
+    }
+
+    // Закрашиваем в зелёный
+    var greenColor = Api.CreateColorFromRGB(0, 255, 0);
+    cell.SetFillColor(greenColor);
+
+    // Копируем содержимое в буфер обмена
+    cell.Copy();
+
+    // Сообщение об успехе
+    sheet.GetRange("Z1").SetValue("Готово: ячейка A" + (cell.GetRowIndex()+1) + " окрашена и скопирована.");
+})();
+
+
+
+
+
+
+
 
 (function()
 {
