@@ -1,6 +1,70 @@
 
 (function()
 {
+    try {
+        if (typeof Api === 'undefined') {
+            throw new Error('Api не определён');
+        }
+
+        var sheet = Api.GetActiveSheet();
+        sheet.GetRange("Z1").SetValue("Шаг1: лист получен");
+
+        var cell = null;
+        var selection = sheet.GetSelection();
+        sheet.GetRange("Z1").SetValue("Шаг2: выделение получено, Count=" + (selection ? selection.Count : 'нет'));
+
+        // Способ 1: ActiveCell у выделения
+        if (selection && selection.ActiveCell) {
+            cell = selection.ActiveCell;
+            sheet.GetRange("Z1").SetValue("Шаг3: ActiveCell найден");
+        }
+        // Способ 2: GetActiveCell листа
+        else if (sheet.GetActiveCell) {
+            try {
+                cell = sheet.GetActiveCell();
+                sheet.GetRange("Z1").SetValue("Шаг3: GetActiveCell() вернул");
+            } catch(e) {
+                sheet.GetRange("Z1").SetValue("Ошибка GetActiveCell(): " + e.message);
+            }
+        }
+
+        if (!cell) {
+            sheet.GetRange("Z1").SetValue("Активная ячейка не найдена. Выделите ровно одну ячейку.");
+            return;
+        }
+
+        var col = cell.GetColIndex();
+        sheet.GetRange("Z1").SetValue("Шаг4: столбец=" + col + ", значение=" + cell.GetValue());
+
+        if (col !== 0) {
+            sheet.GetRange("Z1").SetValue("Ячейка не в столбце A (столбец " + col + ")");
+            return;
+        }
+
+        // Закрашиваем
+        var green = Api.CreateColorFromRGB(0, 255, 0);
+        cell.SetFillColor(green);
+        sheet.GetRange("Z1").SetValue("Шаг5: закрашено");
+
+        // Копируем
+        cell.Copy();
+        sheet.GetRange("Z1").SetValue("Готово! Ячейка A" + (cell.GetRowIndex()+1) + " скопирована и окрашена.");
+
+    } catch(e) {
+        try {
+            Api.GetActiveSheet().GetRange("Z1").SetValue("Критическая ошибка: " + e.message);
+        } catch(e2) {}
+    }
+})();
+
+
+
+
+
+
+
+(function()
+{
     if (typeof Api === 'undefined') {
         try { Api.GetActiveSheet().GetRange("Z1").SetValue("Ошибка: Api не определён."); } catch(e) {}
         return;
