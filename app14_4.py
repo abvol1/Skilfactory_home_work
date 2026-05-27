@@ -21,6 +21,78 @@
             return;
         }
 
+        // Получаем объект ячейки для окрашивания
+        var cell = null;
+        try { cell = selection.ActiveCell; } catch(e) {}
+        if (!cell) {
+            try { cell = selection.Get(0); } catch(e) {}
+        }
+        if (!cell) {
+            cell = sheet.GetRange(address);
+        }
+
+        // Закрашиваем зелёным (работает)
+        var greenColor = Api.CreateColorFromRGB(0, 255, 0);
+        cell.SetFillColor(greenColor);
+
+        // Копируем через встроенную команду редактора
+        var copied = false;
+        if (typeof Api.ExecCommand === 'function') {
+            try {
+                Api.ExecCommand("copy");
+                copied = true;
+            } catch(e) {}
+        }
+        if (!copied && typeof Api.Copy === 'function') {
+            try {
+                Api.Copy();
+                copied = true;
+            } catch(e) {}
+        }
+        // Если и это не вышло – сохраняем значение в Z1 для ручного копирования
+        if (!copied) {
+            var val = cell.GetValue();
+            sheet.GetRange("Z1").SetValue("Ячейка окрашена. Скопируйте значение вручную: " + (val !== null ? val : ""));
+        } else {
+            sheet.GetRange("Z1").SetValue("Готово! Ячейка " + address + " окрашена и скопирована в буфер.");
+        }
+
+    } catch(e) {
+        try {
+            Api.GetActiveSheet().GetRange("Z1").SetValue("Ошибка: " + e.message);
+        } catch(e2) {}
+    }
+})();
+
+
+
+
+
+
+
+
+(function()
+{
+    try {
+        if (typeof Api === 'undefined') {
+            throw new Error('Api не определён');
+        }
+
+        var sheet = Api.GetActiveSheet();
+        var selection = sheet.GetSelection();
+        if (!selection || selection.Count !== 1) {
+            sheet.GetRange("Z1").SetValue("Выделите ровно одну ячейку в столбце A.");
+            return;
+        }
+
+        var address = selection.GetAddress();
+        var cleanAddress = address.replace(/\$/g, '');
+        var columnLetter = cleanAddress.match(/^[A-Za-z]+/)[0];
+        if (columnLetter.toUpperCase() !== 'A') {
+            sheet.GetRange("Z1").SetValue("Ячейка не в столбце A, а в столбце " + columnLetter);
+            return;
+        }
+
         // Получаем объект ячейки (Range)
         var cell = null;
         try { cell = selection.ActiveCell; } catch(e) {}
