@@ -1,6 +1,31 @@
 
 (function()
 {
+    // Получаем листы
+    let sheetTemplate = Api.GetSheetByName("Shablon");
+    let sheetWork = Api.GetSheetByName("Chek_list");
+    
+    // 1. Очищаем весь целевой лист
+    sheetWork.GetCells().Clear();
+    
+    // 2. Копируем данные (убедитесь, что диапазон правильный)
+    // Вариант А: Копировать весь используемый диапазон
+    let usedRangeTemplate = sheetTemplate.GetUsedRange();
+    // Вариант Б: Копировать конкретный диапазон (раскомментируйте и укажите свой)
+    // let usedRangeTemplate = sheetTemplate.GetRange("A1:C10");
+    
+    let targetAddress = usedRangeTemplate.GetAddress();
+    let targetRange = sheetWork.GetRange(targetAddress);
+    usedRangeTemplate.Copy(targetRange);
+    
+})();
+
+
+
+
+
+(function()
+{
     if (typeof(Api) === 'undefined') {
         Api.GetActiveSheet().GetRange("Z1").SetValue("Ошибка: Api не определён.");
         return;
