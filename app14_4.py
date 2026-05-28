@@ -5,6 +5,86 @@
         if (typeof Api === 'undefined') throw new Error('Api не определён');
         var sheet = Api.GetActiveSheet();
 
+        // Удаляем старые кнопки (безопасный способ)
+        try {
+            var shapes = sheet.GetAllShapes();
+            if (shapes && typeof shapes.length === 'number') {
+                for (var i = shapes.length - 1; i >= 0; i--) {
+                    var sh = shapes[i];
+                    var name = null;
+                    // пробуем получить имя через свойство Name или метод GetName
+                    if (typeof sh.GetName === 'function') {
+                        name = sh.GetName();
+                    } else if (sh.Name !== undefined) {
+                        name = sh.Name;
+                    }
+                    if (name && name.indexOf("CopyRow_") === 0) {
+                        try { sh.Delete(); } catch(e) {}
+                    }
+                }
+            }
+        } catch(e) {
+            sheet.GetRange("Z1").SetValue("Не удалось удалить старые кнопки: " + e.message);
+        }
+
+        var usedRange = sheet.GetUsedRange();
+        if (!usedRange) {
+            sheet.GetRange("Z1").SetValue("Нет данных для создания кнопок.");
+            return;
+        }
+
+        var data = usedRange.GetValue();
+        var btnWidth = 80 * 0.035 * 72; // примерно 80px
+        var btnHeight = 20 * 0.75;       // ~15pt
+        var colBLeft = sheet.GetRange("B1").GetLeft();
+
+        for (var rowIdx = 0; rowIdx < data.length; rowIdx++) {
+            var cellValue = data[rowIdx][0];
+            if (cellValue === null || cellValue === undefined || String(cellValue).trim() === '') continue;
+
+            var excelRow = rowIdx + 1;
+            var cellARange = sheet.GetRange("A" + excelRow);
+            var top = cellARange.GetTop();
+            var left = colBLeft;
+
+            var shape = Api.CreateShape("rect", {
+                Width: btnWidth,
+                Height: btnHeight,
+                Left: left,
+                Top: top,
+                Fill: Api.CreateColorFromRGB(200, 230, 255),
+                Stroke: Api.CreateColorFromRGB(100, 100, 100)
+            });
+            shape.SetName("CopyRow_" + excelRow);
+            shape.AddText("Копировать");
+            shape.SetVerticalTextAlign("center");
+            shape.SetHorizontalTextAlign("center");
+            shape.SetMacro("CopyAndColor");
+
+            sheet.AddShape(shape);
+        }
+
+        sheet.GetRange("Z1").SetValue("Кнопки созданы. Нажмите на кнопку напротив нужной строки.");
+
+    } catch(e) {
+        try { Api.GetActiveSheet().GetRange("Z1").SetValue("Ошибка: " + e.message); } catch(e2) {}
+    }
+})();
+
+
+
+
+
+
+
+
+
+(function()
+{
+    try {
+        if (typeof Api === 'undefined') throw new Error('Api не определён');
+        var sheet = Api.GetActiveSheet();
+
         // Пытаемся удалить старые кнопки (имена начинаются с "CopyRow_")
         try {
             var shapes = sheet.GetAllShapes();
