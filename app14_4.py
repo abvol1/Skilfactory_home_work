@@ -4,6 +4,76 @@
     try {
         if (typeof Api === 'undefined') throw new Error('Api не определён');
         var sheet = Api.GetActiveSheet();
+        var row = 1; // <-- Меняйте это число для каждой кнопки
+
+        var cell = sheet.GetRange("A" + row);
+        var value = cell.GetValue();
+
+        // Окрашиваем в зелёный (всегда работает)
+        var green = Api.CreateColorFromRGB(0, 255, 0);
+        cell.SetFillColor(green);
+
+        // === БЛОК КОПИРОВАНИЯ: пробуем все методы ===
+        var copied = false;
+
+        // Метод 1: прямое копирование диапазона
+        try { cell.Copy(); copied = true; } catch(e) {}
+
+        // Метод 2: копирование через выделение и команду редактора
+        if (!copied) {
+            try {
+                cell.Select();
+                Api.ExecCommand("copy");
+                copied = true;
+            } catch(e) {}
+        }
+
+        // Метод 3: глобальная функция Api.Copy (если есть)
+        if (!copied) {
+            try { Api.Copy(); copied = true; } catch(e) {}
+        }
+
+        // Метод 4: объект Clipboard (только для новых версий)
+        if (!copied) {
+            try {
+                var clip = Api.CreateClipboard();
+                clip.SetText(String(value));
+                copied = true;
+            } catch(e) {}
+        }
+
+        // Метод 5: отправка клавиш Ctrl+C (работает, если разрешено)
+        if (!copied) {
+            try {
+                cell.Select();
+                Api.SendKeys("^c");
+                copied = true;
+            } catch(e) {}
+        }
+
+        // Запись результата в Z1
+        if (copied) {
+            sheet.GetRange("Z1").SetValue("Готово! A" + row + " скопировано и окрашено.");
+        } else {
+            sheet.GetRange("Z1").SetValue("Ячейка окрашена. Скопируйте вручную: " + value);
+        }
+
+    } catch(e) {
+        try { Api.GetActiveSheet().GetRange("Z1").SetValue("Ошибка: " + e.message); } catch(e2) {}
+    }
+})();
+
+
+
+
+
+
+
+(function()
+{
+    try {
+        if (typeof Api === 'undefined') throw new Error('Api не определён');
+        var sheet = Api.GetActiveSheet();
         var row = 1; // номер строки, меняйте для каждого макроса вручную
 
         var cell = sheet.GetRange("A" + row);
