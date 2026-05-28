@@ -5,6 +5,78 @@
         if (typeof Api === 'undefined') throw new Error('Api не определён');
         var sheet = Api.GetActiveSheet();
 
+        // Удаляем старые кнопки (безопасный перебор)
+        try {
+            var shapes = sheet.GetAllShapes();
+            if (shapes && typeof shapes.length === 'number') {
+                for (var i = shapes.length - 1; i >= 0; i--) {
+                    var sh = shapes[i];
+                    var name = null;
+                    if (typeof sh.GetName === 'function') {
+                        name = sh.GetName();
+                    } else if (sh.Name !== undefined) {
+                        name = sh.Name;
+                    }
+                    if (name && name.indexOf("CopyRow_") === 0) {
+                        try { sh.Delete(); } catch(e) {}
+                    }
+                }
+            }
+        } catch(e) {
+            sheet.GetRange("Z1").SetValue("Предупреждение: старые кнопки не удалены. " + e.message);
+        }
+
+        var usedRange = sheet.GetUsedRange();
+        if (!usedRange) {
+            sheet.GetRange("Z1").SetValue("Нет данных для создания кнопок.");
+            return;
+        }
+
+        var data = usedRange.GetValue();
+        var btnWidth = 80 * 0.035 * 72; // примерно 80 пикселей
+        var btnHeight = 20 * 0.75;       // примерно 15pt
+
+        for (var rowIdx = 0; rowIdx < data.length; rowIdx++) {
+            var cellValue = data[rowIdx][0]; // значение в столбце A
+            if (cellValue === null || cellValue === undefined || String(cellValue).trim() === '') continue;
+
+            var excelRow = rowIdx + 1;
+
+            // Создаём кнопку-прямоугольник
+            var shape = Api.CreateShape("rect", {
+                Width: btnWidth,
+                Height: btnHeight,
+                Fill: Api.CreateColorFromRGB(200, 230, 255),
+                Stroke: Api.CreateColorFromRGB(100, 100, 100)
+            });
+            shape.SetName("CopyRow_" + excelRow);
+            shape.AddText("Копировать");
+            shape.SetVerticalTextAlign("center");
+            shape.SetHorizontalTextAlign("center");
+            shape.SetMacro("CopyAndColor");
+
+            // Привязываем фигуру к ячейке B<номер строки> – координаты не нужны
+            sheet.AddShape(shape, "B" + excelRow);
+        }
+
+        sheet.GetRange("Z1").SetValue("Кнопки созданы в столбце B. Нажмите на кнопку напротив нужной строки.");
+
+    } catch(e) {
+        try { Api.GetActiveSheet().GetRange("Z1").SetValue("Ошибка: " + e.message); } catch(e2) {}
+    }
+})();
+
+
+
+
+
+
+(function()
+{
+    try {
+        if (typeof Api === 'undefined') throw new Error('Api не определён');
+        var sheet = Api.GetActiveSheet();
+
         // Удаляем старые кнопки (безопасный способ)
         try {
             var shapes = sheet.GetAllShapes();
