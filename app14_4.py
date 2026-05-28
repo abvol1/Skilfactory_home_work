@@ -4,6 +4,64 @@
     try {
         if (typeof Api === 'undefined') throw new Error('Api не определён');
         var sheet = Api.GetActiveSheet();
+        var row = 1; // <-- меняйте для каждого макроса
+
+        var cell = sheet.GetRange("A" + row);
+        var value = cell.GetValue();
+
+        // Окрашиваем в зелёный
+        var green = Api.CreateColorFromRGB(0, 255, 0);
+        cell.SetFillColor(green);
+
+        // === НАДЁЖНОЕ КОПИРОВАНИЕ ===
+        var copied = false;
+
+        // Шаг 1: выделяем ячейку и входим в режим редактирования
+        cell.Select();                // выделяем ячейку
+        Api.ExecCommand("entercell"); // аналог нажатия F2
+        // Шаг 2: выделяем всё содержимое ячейки
+        Api.ExecCommand("selectall"); // Ctrl+A в режиме редактирования
+        // Шаг 3: копируем выделенный текст
+        if (typeof Api.ExecCommand === 'function') {
+            try {
+                Api.ExecCommand("copy");
+                copied = true;
+            } catch(e) {}
+        }
+        // Шаг 4: выходим из режима редактирования
+        Api.ExecCommand("escape");    // Esc
+
+        // Если основной способ не сработал, пробуем через SendKeys
+        if (!copied) {
+            try {
+                cell.Select();
+                Api.SendKeys("{F2}^a^c{Escape}"); // F2, Ctrl+A, Ctrl+C, Esc
+                copied = true;
+            } catch(e) {}
+        }
+
+        if (copied) {
+            sheet.GetRange("Z1").SetValue("Готово! A" + row + " скопировано и окрашено.");
+        } else {
+            sheet.GetRange("Z1").SetValue("Ячейка окрашена, но скопировать не удалось. Значение: " + value);
+        }
+
+    } catch(e) {
+        try { Api.GetActiveSheet().GetRange("Z1").SetValue("Ошибка: " + e.message); } catch(e2) {}
+    }
+})();
+
+
+
+
+
+
+
+(function()
+{
+    try {
+        if (typeof Api === 'undefined') throw new Error('Api не определён');
+        var sheet = Api.GetActiveSheet();
         var row = 1; // <-- Меняйте это число для каждой кнопки
 
         var cell = sheet.GetRange("A" + row);
