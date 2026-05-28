@@ -1,4 +1,39 @@
 
+(function()
+{
+    try {
+        if (typeof Api === 'undefined') throw new Error('Api не определён');
+        var sheet = Api.GetActiveSheet();
+
+        // Пытаемся удалить старые кнопки (имена начинаются с "CopyRow_")
+        try {
+            var shapes = sheet.GetAllShapes();
+            if (shapes && shapes.length) {
+                for (var i = 0; i < shapes.length; i++) {
+                    var sh = shapes[i];
+                    // В разных версиях имя может быть свойством или методом
+                    var name = null;
+                    try { name = sh.GetName(); } catch(e) {}
+                    if (!name && sh.Name) name = sh.Name;
+                    if (name && name.indexOf("CopyRow_") === 0) {
+                        sh.Delete();
+                    }
+                }
+            }
+        } catch(e) {
+            sheet.GetRange("Z1").SetValue("Предупреждение: не удалось удалить старые кнопки. Ошибка: " + e.message);
+        }
+
+        // ... (дальше код создания новых кнопок без изменений) ...
+
+
+
+
+
+
+
+
+
 Мы пришли к самому надёжному варианту: разместить кнопку напротив каждой заполненной ячейки в столбце A. Нажатие на такую кнопку считается действием пользователя, что даёт доступ к буферу обмена. Я подготовил два макроса.
 
 1. Создание кнопок «Копировать» в столбце B
