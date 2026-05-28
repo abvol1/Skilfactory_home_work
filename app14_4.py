@@ -1,4 +1,50 @@
 
+(function()
+{
+    try {
+        if (typeof Api === 'undefined') throw new Error('Api не определён');
+        var sheet = Api.GetActiveSheet();
+        var row = 1; // номер строки, меняйте для каждого макроса вручную
+
+        var cell = sheet.GetRange("A" + row);
+        var value = cell.GetValue();
+
+        // Окрашиваем в зелёный
+        var green = Api.CreateColorFromRGB(0, 255, 0);
+        cell.SetFillColor(green);
+
+        // Копируем в буфер обмена
+        var copied = false;
+        cell.Select();
+        if (typeof Api.ExecCommand === 'function') {
+            try {
+                Api.ExecCommand("copy");
+                copied = true;
+            } catch(e) {}
+        }
+        if (!copied && typeof Api.Copy === 'function') {
+            try { Api.Copy(); copied = true; } catch(e) {}
+        }
+
+        if (copied) {
+            sheet.GetRange("Z1").SetValue("Готово! A" + row + " скопировано и окрашено.");
+        } else {
+            sheet.GetRange("Z1").SetValue("Ячейка A" + row + " окрашена. Скопируйте вручную: " + value);
+        }
+
+    } catch(e) {
+        try { Api.GetActiveSheet().GetRange("Z1").SetValue("Ошибка: " + e.message); } catch(e2) {}
+    }
+})();
+
+
+
+
+
+
+
+
+
 Давайте сделаем финальный, самый надёжный вариант — вручную созданные кнопки напротив каждой строки. Вы сами расставите их (это быстро), а макрос по нажатию будет красить ячейку в столбце A и сразу копировать её текст в буфер. Код уже не будет вызывать ошибок GetLeft и GetPresentation, потому что не использует создание фигур через API.
 
 📌 Как это сделать (пошагово)
