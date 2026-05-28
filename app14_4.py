@@ -13,6 +13,44 @@
         var green = Api.CreateColorFromRGB(0, 255, 0);
         cell.SetFillColor(green);
 
+        // === КОПИРОВАНИЕ ЧЕРЕЗ SendKeys ===
+        var copied = false;
+        cell.Select(); // выделяем ячейку
+        try {
+            // Последовательность: F2 (редактирование), Ctrl+A (выделить всё), Ctrl+C (копировать), Escape (выход)
+            Api.SendKeys("{F2}^a^c{Escape}");
+            copied = true;
+        } catch(e) {}
+
+        if (copied) {
+            sheet.GetRange("Z1").SetValue("Готово! A" + row + " скопировано и окрашено.");
+        } else {
+            sheet.GetRange("Z1").SetValue("Ячейка окрашена. Скопируйте вручную: " + value);
+        }
+
+    } catch(e) {
+        try { Api.GetActiveSheet().GetRange("Z1").SetValue("Ошибка: " + e.message); } catch(e2) {}
+    }
+})();
+
+
+
+
+
+(function()
+{
+    try {
+        if (typeof Api === 'undefined') throw new Error('Api не определён');
+        var sheet = Api.GetActiveSheet();
+        var row = 1; // <-- меняйте для каждого макроса
+
+        var cell = sheet.GetRange("A" + row);
+        var value = cell.GetValue();
+
+        // Окрашиваем в зелёный
+        var green = Api.CreateColorFromRGB(0, 255, 0);
+        cell.SetFillColor(green);
+
         // === НАДЁЖНОЕ КОПИРОВАНИЕ ===
         var copied = false;
 
