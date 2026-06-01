@@ -1,4 +1,203 @@
 
+Конкретные правки в вашем коде
+
+Ниже перечислены 4 блока, которые нужно изменить, чтобы заглушка (блокировка филиала) заработала корректно.
+
+---
+
+1. Исправить метод check_user_by_name – возвращать filial_id
+
+Где: Класс DatabaseManager, метод check_user_by_name (строки примерно 160–170 в вашем файле).
+
+Было:
+
+```python
+def check_user_by_name(self, name: str):
+    df = self._to_df(
+        f"SELECT us.name, us.full_name, f.name AS filial_name FROM {self.schema}.users us LEFT JOIN {self.schema}.filials f ON us.name_filial::numeric = f.id WHERE LOWER(us.name)=LOWER(%s)",
+        (name,)
+    )
+    if not df.empty:
+        return True, df.iloc[0]['full_name'], df.iloc[0].get('filial_name')
+    return False, None, None
+```
+
+Стало:
+
+```python
+def check_user_by_name(self, name: str):
+    df = self._to_df(
+        f"SELECT us.name, us.full_name, f.name AS filial_name, f.id AS filial_id FROM {self.schema}.users us LEFT JOIN {self.schema}.filials f ON us.name_filial::numeric = f.id WHERE LOWER(us.name)=LOWER(%s)",
+        (name,)
+    )
+    if not df.empty:
+        row = df.iloc[0]
+        return True, row['full_name'], row.get('filial_name'), row.get('filial_id')
+    return False, None, None, None
+```
+
+---
+
+2. Исправить блок авторизации (вкладка «Новая проверка»)
+
+Где: Внутри tab_main (секция с st.text_input("👤 Учетная запись сотрудника")). Строки примерно 760–780.
+
+Было:
+
+```python
+if (login_norm and login_norm != st.session_state.user_name and not st.session_state.auth_valid):
+    exists, full, fil = db.check_user_by_name(login_norm)
+    if exists:
+        st.session_state.user_name = login_norm
+        st.session_state.user_full_name = full
+        st.session_state.auth_valid = True
+
+        filial_id_for_block = filial_map.get(fil)  # fil - название филиала из check_user_by_name
+        if filial_id_for_block:
+            st.session_state.user_filial_blocked = db.get_filial_blocked_status(filial_id_for_block)
+        else:
+            st.session_state.user_filial_blocked = False
+
+        if fil and fil in filial_names:
+            st.session_state.last_filial_name = fil
+            st.session_state.selected_filial_id = filial_map[fil]
+            st.session_state.last_filial_id = filial_map[fil]
+            st.session_state.update_counter += 1
+        st.success(f"✅ Добро пожаловать, {full}!"); st.rerun()
+```
+
+Стало:
+
+```python
+if (login_norm and login_norm != st.session_state.user_name and not st.session_state.auth_valid):
+    exists, full, fil, filial_id = db.check_user_by_name(login_norm)   # теперь 4 значения
+    if exists:
+        st.session_state.user_name = login_norm
+        st.session_state.user_full_name = full
+        st.session_state.auth_valid = True
+
+        # Блокировка определяется по ID, а не по названию
+        if filial_id is not None:
+            st.session_state.user_filial_blocked = db.get_filial_blocked_status(filial_id)
+            st.session_state.last_filial_id = filial_id
+        else:
+            st.session_state.user_filial_blocked = False
+
+        # Заполняем остальные данные
+        if fil and fil in filial_names:
+            st.session_state.last_filial_name = fil
+            st.session_state.selected_filial_id = filial_id
+            # st.session_state.last_filial_id уже установлен выше
+            st.session_state.update_counter += 1
+        st.success(f"✅ Добро пожаловать, {full}!"); st.rerun()
+```
+
+---
+
+3. Добавить принудительное обновление статуса блокировки перед каждой проверкой
+
+Где: Сразу после st.title("📋 Завершение операций по ВСП/РФ") (строка примерно 700), перед созданием вкладок.
+
+Вставьте этот код:
+
+```python
+# Обновляем статус блокировки для текущего пользователя
+if st.session_state.auth_valid and st.session_state.last_filial_id is not None:
+    st.session_state.user_filial_blocked = db.get_filial_blocked_status(st.session_state.last_filial_id)
+```
+
+Это гарантирует, что если админ изменил блокировку во время сессии пользователя, статус обновится при любом действии (переходе между вкладками, нажатии кнопки).
+
+---
+
+4. Заблокировать возможность продолжать черновик, если филиал заблокирован
+
+Где: Вкладка «Новая проверка», блок с today_drafts (строки примерно 740–750), внутри кнопки Продолжить.
+
+Было:
+
+```python
+if c1.button("📂 Продолжить", key=f"resume_{d['id']}", use_container_width=True):
+    st.session_state.current_session_id = d['id']; st.session_state.step = 1; st.rerun()
+```
+
+Стало:
+
+```python
+if c1.button("📂 Продолжить", key=f"resume_{d['id']}", use_container_width=True):
+    # Получаем filial_id из черновика (он есть в данных d)
+    # У вас в d уже есть колонка filial_name, но нет filial_id.
+    # Проще сделать дополнительный запрос к БД, либо добавить filial_id в df get_user_draft_sessions.
+    # Для простоты – сделаем запрос:
+    sess_data = db.get_session_data(d['id'])
+    if sess_data and sess_data['info'].get('filial_id'):
+        if db.get_filial_blocked_status(sess_data['info']['filial_id']):
+            st.error("Ваш филиал заблокирован. Продолжение невозможно.")
+        else:
+            st.session_state.current_session_id = d['id']; st.session_state.step = 1; st.rerun()
+    else:
+        st.session_state.current_session_id = d['id']; st.session_state.step = 1; st.rerun()
+```
+
+Альтернатива (проще): изменить метод get_user_draft_sessions, чтобы он возвращал также filial_id. Тогда не нужно делать лишний запрос.
+
+---
+
+5. (Дополнительно) Добавить проверку блокировки перед созданием новой сессии
+
+Где: Там же, внутри формы with st.form("new_session_form"), перед вызовом db.create_session.
+
+Сейчас у вас уже есть проверка:
+
+```python
+if st.session_state.user_filial_blocked:
+    st.error("Ваш филиал временно заблокирован для заполнения чек-листов.")
+```
+
+Но чтобы она работала с обновлённым статусом, добавьте перед этим строку (можно в начале блока if submitted):
+
+```python
+if submitted and sel_vsp_id is not None:
+    # Обновляем статус блокировки перед проверкой
+    st.session_state.user_filial_blocked = db.get_filial_blocked_status(sel_filial_id)
+    if st.session_state.user_filial_blocked:
+        st.error("Ваш филиал временно заблокирован для заполнения чек-листов.")
+    # ... остальные проверки
+```
+
+---
+
+Итог: что делать по шагам
+
+1. Скопируйте исправленный метод check_user_by_name в класс DatabaseManager.
+2. Найдите в коде блок авторизации (где st.text_input("👤 Учетная запись сотрудника")) – замените его на новый.
+3. Добавьте строчку обновления user_filial_blocked после st.title(...).
+4. Измените логику кнопки «Продолжить» для черновиков.
+5. При желании – добавьте обновление статуса перед созданием новой сессии.
+
+После этих правок административная галочка блокировки будет работать мгновенно для всех пользователей, включая тех, кто уже авторизован.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Вы правы, у вас уже есть чекбоксы во вкладке «Филиалы (чекбоксы)» для других целей (скорее всего, для check_name – пометки о миграции).
 Мы не будем их трогать – просто добавим второй столбец чекбоксов «Блокировать» в той же самой форме. Это не сломает существующую логику, а только расширит функционал.
 
