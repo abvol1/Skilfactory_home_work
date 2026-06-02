@@ -1,4 +1,114 @@
 
+Ошибка: can't adapt type 'numpy.int64'
+
+Это происходит, потому что вы передаёте в SQL-запрос значение типа numpy.int64 (извлечённое из pandas.DataFrame), а psycopg2 не умеет автоматически преобразовывать такие типы в PostgreSQL.
+
+Решение: везде, где вы получаете filial_id из DataFrame, явно приводите его к стандартному int.
+
+Конкретные места в вашем коде, которые нужно исправить
+
+1. Метод check_user_by_name (после исправления)
+
+```python
+def check_user_by_name(self, name: str):
+    df = self._to_df(...)
+    if not df.empty:
+        row = df.iloc[0]
+        filial_id = row.get('filial_id')
+        # ПРИВЕДЕНИЕ:
+        if filial_id is not None:
+            filial_id = int(filial_id)   # <-- добавить эту строку
+        return True, row['full_name'], row.get('filial_name'), filial_id
+    return False, None, None, None
+```
+
+2. В блоке авторизации (где вызывается check_user_by_name)
+
+```python
+exists, full, fil, filial_id = db.check_user_by_name(login_norm)
+if exists:
+    # Убедиться, что filial_id – это int (на всякий случай)
+    if filial_id is not None:
+        filial_id = int(filial_id)
+    st.session_state.last_filial_id = filial_id
+    # ...
+```
+
+3. В методе get_filial_blocked_status (чтобы защитить его от numpy.int64)
+
+```python
+def get_filial_blocked_status(self, filial_id: int) -> bool:
+    # Привести к int, если вдруг передали numpy.int64
+    filial_id = int(filial_id)
+    row = self._execute(
+        f"SELECT blocked FROM {self._table_name('filials')} WHERE id = %s",
+        (filial_id,), fetch_one=True
+    )
+    return row['blocked'] if row else False
+```
+
+Аналогично в set_filial_blocked:
+
+```python
+def set_filial_blocked(self, filial_id: int, blocked: bool):
+    filial_id = int(filial_id)
+    self._execute(
+        f"UPDATE {self._table_name('filials')} SET blocked = %s WHERE id = %s",
+        (blocked, filial_id)
+    )
+```
+
+4. При обновлении статуса блокировки после st.title
+
+```python
+if st.session_state.auth_valid and st.session_state.last_filial_id is not None:
+    fid = int(st.session_state.last_filial_id)   # привести
+    st.session_state.user_filial_blocked = db.get_filial_blocked_status(fid)
+```
+
+5. В форме создания новой проверки (перед db.create_session)
+
+```python
+if submitted and sel_vsp_id is not None:
+    # Обновляем статус блокировки
+    current_filial_id = int(sel_filial_id)   # привести
+    st.session_state.user_filial_blocked = db.get_filial_blocked_status(current_filial_id)
+    if st.session_state.user_filial_blocked:
+        st.error("Ваш филиал временно заблокирован...")
+```
+
+Универсальный способ – написать функцию-обёртку
+
+Чтобы не добавлять int() в каждом месте, можно модифицировать метод _execute, чтобы он автоматически конвертировал numpy.int64 в int:
+
+```python
+def _execute(self, query, params=None, fetch_one=False, fetch_all=False, commit=True):
+    if params:
+        # Преобразуем numpy.int64 и numpy.int32 в обычный int
+        params = tuple(
+            int(p) if hasattr(p, 'dtype') and 'int' in str(p.dtype) else p
+            for p in params
+        )
+    # ... остальной код
+```
+
+Но проще и нагляднее явно приводить типы там, где вы передаёте значения из DataFrame.
+
+Что делать прямо сейчас
+
+1. Найдите в своём коде все вызовы db.get_filial_blocked_status(...) и db.set_filial_blocked(...).
+2. Убедитесь, что аргумент filial_id обёрнут в int().
+3. Исправьте метод check_user_by_name, как показано выше.
+4. Перезапустите приложение.
+
+После этих правок ошибка can't adapt type 'numpy.int64' исчезнет, и блокировка филиалов будет работать корректно.
+
+
+
+
+
+
+
 Конкретные правки в вашем коде
 
 Ниже перечислены 4 блока, которые нужно изменить, чтобы заглушка (блокировка филиала) заработала корректно.
