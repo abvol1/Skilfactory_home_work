@@ -1,4 +1,107 @@
 
+Ошибка: TypeError: Query must be a string
+
+Ошибка возникает в методе _to_df, потому что в pd.read_sql_query передаётся не строка. Судя по скриншоту, проблема в вызове db.check_user_by_name(load_data) – переменная load_data не является строкой (возможно, это DataFrame или другой объект).
+
+Что нужно проверить и исправить
+
+1. Найдите строку вызова check_user_by_name
+
+Скорее всего, она находится в блоке авторизации (вкладка «Новая проверка»). У вас было:
+
+```python
+exists, full, fil, fil_id = db.check_user_by_name(load_data)
+```
+
+Исправьте на:
+
+```python
+exists, full, fil, fil_id = db.check_user_by_name(login_norm)
+```
+
+Переменная login_norm – это нормализованный логин (строка). load_data – это что-то другое (возможно, вы переименовали не ту переменную).
+
+2. Убедитесь, что метод check_user_by_name возвращает 4 значения и правильно формирует запрос
+
+Вот правильная версия метода (без ошибок типов):
+
+```python
+def check_user_by_name(self, name: str):
+    query = f"""
+        SELECT us.name, us.full_name, f.name AS filial_name, f.id AS filial_id
+        FROM {self.schema}.users us
+        LEFT JOIN {self.schema}.filials f ON us.name_filial::numeric = f.id
+        WHERE LOWER(us.name) = LOWER(%s)
+    """
+    df = self._to_df(query, (name,))
+    if not df.empty:
+        row = df.iloc[0]
+        filial_id = int(row['filial_id']) if row.get('filial_id') is not None else None
+        return True, row['full_name'], row.get('filial_name'), filial_id
+    return False, None, None, None
+```
+
+3. В вызове _to_df всегда передавайте строку запроса, а не f-string напрямую
+
+Как сделано выше – запрос вынесен в переменную query. Это безопаснее.
+
+4. Проверьте, что self.schema определён и является строкой
+
+В начале класса DatabaseManager вы используете self.schema = PG_CONFIG['schema']. Убедитесь, что в конфиге указана строка (например, "checklist_rf"), а не None.
+
+5. Если ошибка остаётся – добавьте отладку
+
+Перед вызовом pd.read_sql_query в методе _to_df напечатайте тип query:
+
+```python
+def _to_df(self, query, params=None):
+    print(f"DEBUG: query type = {type(query)}, query = {query[:100] if query else None}")
+    conn = self._get_connection()
+    return pd.read_sql_query(query, conn, params=params or ())
+```
+
+Это поможет понять, что именно передаётся.
+
+Полный исправленный фрагмент кода для авторизации
+
+```python
+# В блоке tab_main, после получения login
+login = st.text_input(...)
+login_norm = login.lower().strip() if login else ""
+
+if login_norm and login_norm != st.session_state.user_name and not st.session_state.auth_valid:
+    exists, full, fil, filial_id = db.check_user_by_name(login_norm)   # важно: login_norm
+    if exists:
+        st.session_state.user_name = login_norm
+        st.session_state.user_full_name = full
+        st.session_state.auth_valid = True
+        
+        if filial_id is not None:
+            st.session_state.user_filial_blocked = db.get_filial_blocked_status(filial_id)
+            st.session_state.last_filial_id = filial_id
+        else:
+            st.session_state.user_filial_blocked = False
+        
+        if fil:
+            st.session_state.last_filial_name = fil
+            st.session_state.selected_filial_id = filial_id
+        
+        st.success(f"✅ Добро пожаловать, {full}!")
+        st.rerun()
+    else:
+        st.error(f"❌ Пользователь '{login_norm}' не найден!")
+```
+
+После этих исправлений ошибка TypeError должна исчезнуть.
+
+
+
+
+
+
+
+
+
 Ошибка: can't adapt type 'numpy.int64'
 
 Это происходит, потому что вы передаёте в SQL-запрос значение типа numpy.int64 (извлечённое из pandas.DataFrame), а psycopg2 не умеет автоматически преобразовывать такие типы в PostgreSQL.
