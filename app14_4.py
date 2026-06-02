@@ -1,4 +1,44 @@
 
+class DatabaseManager:
+    # ... другие методы ...
+
+    def get_filials(self):
+        return self._to_df(...)
+
+    # ---- ДОБАВИТЬ ЭТОТ БЛОК ----
+    def get_filial_blocked_status(self, filial_id: int) -> bool:
+        filial_id = int(filial_id)
+        row = self._execute(
+            f"SELECT blocked FROM {self._table_name('filials')} WHERE id = %s",
+            (filial_id,), fetch_one=True
+        )
+        return row['blocked'] if row else False
+
+    def set_filial_blocked(self, filial_id: int, blocked: bool):
+        filial_id = int(filial_id)
+        self._execute(
+            f"UPDATE {self._table_name('filials')} SET blocked = %s WHERE id = %s",
+            (blocked, filial_id)
+        )
+    # ---------------------------
+
+    def get_vsp_by_filial(self, filial_id):
+        # ...
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Ошибка: TypeError: Query must be a string
 
 Ошибка возникает в методе _to_df, потому что в pd.read_sql_query передаётся не строка. Судя по скриншоту, проблема в вызове db.check_user_by_name(load_data) – переменная load_data не является строкой (возможно, это DataFrame или другой объект).
