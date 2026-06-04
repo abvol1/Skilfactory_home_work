@@ -1,4 +1,37 @@
 
+def check_user_by_name(self, name: str):
+    query = f"""
+        SELECT 
+            us.name, 
+            us.full_name, 
+            f.name AS filial_name, 
+            f.id AS filial_id,
+            us.name_vsp,
+            v.id AS vsp_id
+        FROM {self.schema}.users us
+        LEFT JOIN {self.schema}.filials f ON us.name_filial::numeric = f.id
+        LEFT JOIN {self.schema}.vsp v ON us.name_vsp = v.name
+        WHERE LOWER(us.name) = LOWER(%s)
+    """
+    df = self._to_df(query, (name,))
+    if not df.empty:
+        row = df.iloc[0]
+        filial_id = int(row['filial_id']) if row.get('filial_id') is not None else None
+        vsp_id = int(row['vsp_id']) if row.get('vsp_id') is not None else None
+        return (
+            True,
+            row['full_name'],
+            row.get('filial_name'),
+            filial_id,
+            row.get('name_vsp'),
+            vsp_id
+        )
+    return False, None, None, None, None, None
+
+
+
+
+
 Извините за путаницу! Вернём как было, но добавим выбор ВСП с чекбоксом.
 
 Мы не трогаем существующую форму авторизации (логин, ФИО, филиал, дата, кнопка).
