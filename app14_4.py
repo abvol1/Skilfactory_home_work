@@ -1,4 +1,44 @@
 
+vsp_df = db.get_vsp_by_filial(sel_filial_id)
+if not vsp_df.empty:
+    vsp_names = vsp_df['name'].tolist()
+    vsp_map = dict(zip(vsp_df['name'], vsp_df['id']))
+    
+    default_vsp_name = st.session_state.get('default_vsp_name')
+    default_vsp_id = st.session_state.get('default_vsp_id')
+    
+    use_default = st.checkbox("🔒 Использовать моё ВСП", 
+                              value=(default_vsp_name is not None and default_vsp_name in vsp_names),
+                              key="use_my_vsp")
+    
+    if use_default and default_vsp_name and default_vsp_name in vsp_names:
+        selected_vsp_name = default_vsp_name
+        selected_vsp_id = default_vsp_id
+        st.info(f"🏪 Ваше ВСП: **{selected_vsp_name}**")
+    else:
+        default_idx = 0
+        if 'last_vsp_name' in st.session_state and st.session_state.last_vsp_name in vsp_names:
+            default_idx = vsp_names.index(st.session_state.last_vsp_name)
+        elif default_vsp_name and default_vsp_name in vsp_names:
+            default_idx = vsp_names.index(default_vsp_name)
+        selected_vsp_name = st.selectbox("🏪 ВСП", vsp_names, index=default_idx, key="vsp_select")
+        selected_vsp_id = vsp_map[selected_vsp_name]
+    
+    # !!! ВАЖНО: добавляем старые имена переменных для обратной совместимости
+    sel_vsp = selected_vsp_name
+    sel_vsp_id = selected_vsp_id
+    
+    st.session_state.last_vsp_name = selected_vsp_name
+    st.session_state.last_vsp_id = selected_vsp_id
+    st.session_state.selected_vsp_id = selected_vsp_id
+else:
+    sel_vsp_id = None
+    sel_vsp = None
+    st.warning("Нет ВСП в выбранном филиале")
+
+
+
+
 def check_user_by_name(self, name: str):
     query = f"""
         SELECT 
