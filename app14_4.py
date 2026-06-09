@@ -1,3 +1,131 @@
+Массовое удаление суббот для нескольких ВСП через мультиселект
+
+Добавляем возможность выбрать несколько ВСП в одном филиале и удалить все субботы для каждого из них.
+
+1. Новый метод в DatabaseManager
+
+В класс DatabaseManager добавляем метод, который принимает список vsp_ids:
+
+```python
+def delete_saturdays_for_vsp_list(self, vsp_ids, date_from, date_to):
+    """
+    Удаляет нерабочие дни (субботы) для списка ВСП в указанном диапазоне дат.
+    vsp_ids: список целых чисел (ID ВСП)
+    Возвращает общее количество удалённых записей.
+    """
+    if not vsp_ids:
+        return 0
+    # Приводим все ID к int
+    vsp_ids = [int(vid) for vid in vsp_ids]
+    params = [tuple(vsp_ids), date_from, date_to]
+    
+    # Считаем количество суббот, подлежащих удалению
+    count_query = f"""
+        SELECT COUNT(*) as cnt 
+        FROM {self._table_name('vsp_non_working_days')}
+        WHERE vsp_id = ANY(%s) 
+          AND date BETWEEN %s AND %s 
+          AND EXTRACT(DOW FROM date) = 6
+    """
+    count_row = self._execute(count_query, params, fetch_one=True)
+    count = count_row['cnt'] if count_row else 0
+    
+    if count:
+        delete_query = f"""
+            DELETE FROM {self._table_name('vsp_non_working_days')}
+            WHERE vsp_id = ANY(%s) 
+              AND date BETWEEN %s AND %s 
+              AND EXTRACT(DOW FROM date) = 6
+        """
+        self._execute(delete_query, params)
+    
+    return count
+```
+
+2. Интерфейс во вкладке администратора (с мультиселектом)
+
+Замените предыдущий блок удаления суббот на этот (или добавьте рядом):
+
+```python
+with st.expander("🗑️ Массовое удаление суббот для нескольких ВСП", expanded=False):
+    st.markdown("Выберите филиал, затем **одно или несколько ВСП** для удаления всех нерабочих суббот за период.")
+    
+    filials_df = db.get_filials()
+    if not filials_df.empty:
+        selected_filial_name = st.selectbox("🏢 Филиал", filials_df['name'].tolist(), key="del_multi_filial")
+        filial_id = int(filials_df[filials_df['name'] == selected_filial_name]['id'].iloc[0])
+        
+        vsp_df = db.get_vsp_by_filial(filial_id)
+        if not vsp_df.empty:
+            # Создаём список (ID, название) для мультиселекта
+            vsp_options = {row['id']: row['name'] for _, row in vsp_df.iterrows()}
+            selected_vsp_ids = st.multiselect(
+                "🏪 Выберите ВСП (можно несколько)",
+                options=list(vsp_options.keys()),
+                format_func=lambda x: vsp_options[x],
+                key="del_multi_vsp"
+            )
+        else:
+            st.warning("В филиале нет ВСП")
+            selected_vsp_ids = []
+        
+        if selected_vsp_ids:
+            col3, col4 = st.columns(2)
+            with col3:
+                date_from_del = st.date_input("📅 Дата от", value=datetime.date(2026, 1, 1), key="multi_date_from")
+            with col4:
+                date_to_del = st.date_input("📅 Дата до", value=datetime.date.today(), key="multi_date_to")
+            
+            # Показываем выбранные ВСП для наглядности
+            st.write(f"Выбрано ВСП: {', '.join([vsp_options[vid] for vid in selected_vsp_ids])}")
+            
+            confirm = st.checkbox("⚠️ Я подтверждаю удаление всех суббот для выбранных ВСП за указанный период", key="confirm_multi")
+            
+            if st.button("🗑️ Удалить субботы для выбранных ВСП", type="primary", disabled=not confirm):
+                if date_from_del > date_to_del:
+                    st.error("Дата от не может быть позже даты до")
+                else:
+                    deleted = db.delete_saturdays_for_vsp_list(selected_vsp_ids, date_from_del, date_to_del)
+                    if deleted:
+                        st.success(f"✅ Удалено нерабочих суббот: {deleted}")
+                        st.rerun()
+                    else:
+                        st.info("Нет нерабочих суббот за выбранный период у выбранных ВСП.")
+        elif selected_vsp_ids is not None:
+            st.info("Выберите хотя бы одно ВСП.")
+    else:
+        st.warning("Нет филиалов в базе")
+```
+
+Что изменилось
+
+· Мультиселект – позволяет выбрать несколько ВСП (Ctrl+клик или обычный выбор, если интерфейс позволяет).
+· Один SQL-запрос – удаление происходит для всех выбранных ВСП за раз, это эффективно.
+· Подтверждение осталось – чтобы случайно не удалить много данных.
+· Удаляются только субботы, как и требовалось.
+
+Проверка
+
+· Если выбрано 0 ВСП – кнопка не активна, либо выводится предупреждение.
+· Количество удалённых записей выводится общее (сумма по всем выбранным ВСП).
+· После удаления страница перезагружается, и удалённые записи исчезают из отчёта.
+
+Теперь вы можете за один раз очистить субботы для нескольких ВСП (например, для всего филиала).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 Реализация: массовое удаление только суббот для выбранного ВСП
 
