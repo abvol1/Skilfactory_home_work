@@ -1,3 +1,53 @@
+
+def delete_saturdays_for_vsp_list(self, vsp_ids, date_from, date_to):
+    """
+    Удаляет нерабочие дни (субботы) для списка ВСП в указанном диапазоне дат.
+    vsp_ids: список целых чисел (ID ВСП)
+    Возвращает общее количество удалённых записей.
+    """
+    if not vsp_ids:
+        return 0
+    
+    # Приводим все ID к int и сохраняем как список
+    vsp_ids = [int(vid) for vid in vsp_ids]
+    
+    # Параметры: (список, дата_от, дата_до)
+    params = (vsp_ids, date_from, date_to)
+    
+    count_query = f"""
+        SELECT COUNT(*) as cnt 
+        FROM {self._table_name('vsp_non_working_days')}
+        WHERE vsp_id = ANY(%s) 
+          AND date BETWEEN %s AND %s 
+          AND EXTRACT(DOW FROM date) = 6
+    """
+    count_row = self._execute(count_query, params, fetch_one=True)
+    count = count_row['cnt'] if count_row else 0
+    
+    if count:
+        delete_query = f"""
+            DELETE FROM {self._table_name('vsp_non_working_days')}
+            WHERE vsp_id = ANY(%s) 
+              AND date BETWEEN %s AND %s 
+              AND EXTRACT(DOW FROM date) = 6
+        """
+        self._execute(delete_query, params)
+    
+    return count
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Массовое удаление суббот для нескольких ВСП через мультиселект
 
 Добавляем возможность выбрать несколько ВСП в одном филиале и удалить все субботы для каждого из них.
