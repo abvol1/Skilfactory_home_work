@@ -1,3 +1,113 @@
+
+Реализация: массовое удаление только суббот для выбранного ВСП
+
+Вы правы – добавляем только удаление суббот, без лишних опций. Ниже – готовый код.
+
+1. Добавляем метод в DatabaseManager
+
+```python
+def delete_saturdays_for_vsp(self, vsp_id, date_from, date_to):
+    """
+    Удаляет нерабочие дни, приходящиеся на субботы, для указанного ВСП в диапазоне дат.
+    Возвращает количество удалённых записей.
+    """
+    vsp_id = int(vsp_id)
+    params = (vsp_id, date_from, date_to)
+    
+    # Считаем, сколько суббот будет удалено
+    count_row = self._execute(f"""
+        SELECT COUNT(*) as cnt 
+        FROM {self._table_name('vsp_non_working_days')}
+        WHERE vsp_id = %s AND date BETWEEN %s AND %s AND EXTRACT(DOW FROM date) = 6
+    """, params, fetch_one=True)
+    count = count_row['cnt'] if count_row else 0
+    
+    if count:
+        self._execute(f"""
+            DELETE FROM {self._table_name('vsp_non_working_days')}
+            WHERE vsp_id = %s AND date BETWEEN %s AND %s AND EXTRACT(DOW FROM date) = 6
+        """, params)
+    
+    return count
+```
+
+2. Добавляем интерфейс во вкладку администратора
+
+Найдите вкладку «📅 Нерабочие дни (отчет)» (у вас tab_admin_non_working). Внутри неё добавьте новый st.expander (можно после существующих блоков):
+
+```python
+with st.expander("🗑️ Массовое удаление суббот (нерабочих дней) для ВСП", expanded=False):
+    st.markdown("Удалить все нерабочие субботы для выбранного ВСП за указанный период.")
+    
+    filials_df = db.get_filials()
+    if not filials_df.empty:
+        col1, col2 = st.columns(2)
+        with col1:
+            selected_filial_name = st.selectbox("🏢 Филиал", filials_df['name'].tolist(), key="del_filial_sat")
+            filial_id_del = int(filials_df[filials_df['name'] == selected_filial_name]['id'].iloc[0])
+        with col2:
+            vsp_df = db.get_vsp_by_filial(filial_id_del)
+            if not vsp_df.empty:
+                selected_vsp_name = st.selectbox("🏪 ВСП", vsp_df['name'].tolist(), key="del_vsp_sat")
+                selected_vsp_id = int(vsp_df[vsp_df['name'] == selected_vsp_name]['id'].iloc[0])
+            else:
+                st.warning("В филиале нет ВСП")
+                selected_vsp_id = None
+        
+        if selected_vsp_id:
+            col3, col4 = st.columns(2)
+            with col3:
+                date_from_del = st.date_input("📅 Дата от", value=datetime.date(2026, 1, 1), key="del_sat_date_from")
+            with col4:
+                date_to_del = st.date_input("📅 Дата до", value=datetime.date.today(), key="del_sat_date_to")
+            
+            confirm = st.checkbox("⚠️ Я подтверждаю удаление всех суббот для этого ВСП за выбранный период", key="confirm_del_sat")
+            
+            if st.button("🗑️ Удалить субботы", type="primary", disabled=not confirm):
+                if date_from_del > date_to_del:
+                    st.error("Дата от не может быть позже даты до")
+                else:
+                    deleted = db.delete_saturdays_for_vsp(selected_vsp_id, date_from_del, date_to_del)
+                    if deleted:
+                        st.success(f"✅ Удалено нерабочих суббот: {deleted}")
+                        st.rerun()
+                    else:
+                        st.info("Нет нерабочих суббот за выбранный период.")
+    else:
+        st.warning("Нет филиалов в базе")
+```
+
+Что важно
+
+· Удаляются только субботы (проверка EXTRACT(DOW FROM date) = 6).
+· Другие дни недели (воскресенье, понедельник и т.д.) остаются нетронутыми.
+· Подтверждение через чекбокс – защита от случайного массового удаления.
+· После удаления страница обновляется, изменения видны в отчёте.
+
+Проверка корректности
+
+· В PostgreSQL EXTRACT(DOW FROM date) возвращает 0 для воскресенья, 6 для субботы. Это соответствует стандарту.
+· Если вы используете другой SQL-диалект (например, DATE_PART('dow', date)), код будет работать одинаково.
+
+Теперь у вас есть точный инструмент для удаления суббот для конкретного ВСП без лишних опций.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Реализация массового удаления суббот для выбранного ВСП
 
 Добавим в админ-панель возможность удалить все субботы (или любые нерабочие дни) для конкретного ВСП за указанный период.
