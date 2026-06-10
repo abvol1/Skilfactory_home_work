@@ -1,6 +1,67 @@
 
 import requests
 import json
+import re
+from bs4 import BeautifulSoup
+
+url = "https://www.rshb.ru/branches/"
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
+}
+
+try:
+    r = requests.get(url, headers=headers, timeout=15)
+    r.raise_for_status()
+    soup = BeautifulSoup(r.text, 'html.parser')
+
+    storage_uuid = None
+    # Ищем во всех тегах script
+    for script in soup.find_all('script'):
+        if script.string and 'branchesDataStorageUuid' in script.string:
+            # Пытаемся извлечь UUID через регулярное выражение
+            match = re.search(r'branchesDataStorageUuid["\']?\s*:\s*["\']([^"\']+)["\']', script.string)
+            if match:
+                storage_uuid = match.group(1)
+                print(f"✅ UUID найден в скрипте: {storage_uuid}")
+                break
+            # Альтернативно: если это window.__NEXT_DATA__ = {...}
+            match = re.search(r'__NEXT_DATA__\s*=\s*({.*?});', script.string, re.DOTALL)
+            if match:
+                data = json.loads(match.group(1))
+                try:
+                    storage_uuid = data['props']['pageProps']['branchesDataStorageUuid']
+                    print(f"✅ UUID найден через __NEXT_DATA__: {storage_uuid}")
+                    break
+                except KeyError:
+                    pass
+
+    if not storage_uuid:
+        print("❌ UUID не найден ни в одном скрипте.")
+        print("➡️  Похоже, данные загружаются отдельным API-запросом после рендеринга страницы.")
+        print("    Используй DevTools браузера (вкладка Network), чтобы перехватить этот запрос.")
+    else:
+        data_url = f"https://www.rshb.ru/api/v1/storage/{storage_uuid}/file"
+        print("⏳ Загрузка данных отделений...")
+        data_r = requests.get(data_url, headers=headers, timeout=15)
+        data_r.raise_for_status()
+        offices = data_r.json()
+        print(f"✅ Загружено {len(offices)} офисов")
+
+        with open("rshb_offices.json", "w", encoding="utf-8") as f:
+            json.dump(offices, f, ensure_ascii=False, indent=2)
+        print("📁 Данные сохранены в 'rshb_offices.json'")
+
+except Exception as e:
+    print(f"⚠️ Ошибка: {e}")
+
+
+
+
+
+import requests
+import json
 
 # --- НАСТРОЙКИ ---
 # URL сайта (убедитесь, что он правильный)
