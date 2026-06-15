@@ -1,4 +1,190 @@
 
+Исправляем: пользователь может удалять только свои нерабочие дни (своего ВСП)
+
+Проблема
+
+В предыдущей реализации пользователь, выбрав в выпадающем списке чужое ВСП (сняв галочку «Использовать моё ВСП»), мог удалить записи нерабочих дней этого чужого ВСП. Это недопустимо.
+
+Решение
+
+· При удалении всегда использовать привязанное к пользователю ВСП (default_vsp_id), а не выбранное в интерфейсе.
+· Проверять также user_name (кто создал запись) – чтобы пользователь удалял только свои собственные записи (даже если у него есть доступ к чужому ВСП).
+· При показе «всех ВСП филиала» кнопка удаления вообще не должна отображаться (как и было в оригинале).
+
+1. Исправленный метод в DatabaseManager (безопасное удаление)
+
+Замените метод delete_non_working_days_by_ids_for_user на этот:
+
+```python
+def delete_my_non_working_days(self, ids, user_name, vsp_id, filial_id):
+    """
+    Удаляет записи о нерабочих днях, созданные пользователем,
+    для указанного ВСП и филиала (дополнительная проверка).
+    Возвращает количество удалённых записей.
+    """
+    if not ids:
+        return 0
+    ids = [int(i) for i in ids]
+    vsp_id = int(vsp_id)
+    filial_id = int(filial_id)
+    query = f"""
+        DELETE FROM {self._table_name('vsp_non_working_days')}
+        WHERE id = ANY(%s)
+          AND user_name = %s
+          AND vsp_id = %s
+          AND filial_id = %s
+    """
+    self._execute(query, (ids, user_name, vsp_id, filial_id))
+    return len(ids)
+```
+
+2. Исправленный блок вкладки пользователя
+
+Полностью замените содержимое вкладки tab_non_working (пользовательскую) на следующий код:
+
+```python
+if tab_non_working is not None:
+    with tab_non_working:
+        st.markdown("## 📅 Внесение нерабочих дней ВСП")
+        st.caption("Укажите дату и причину. Удалить можно только свои записи (только для вашего ВСП).")
+        
+        # Определяем филиал пользователя
+        if st.session_state.get("last_filial_id") is None:
+            exists, full, fil, filial_id, default_vsp_name, default_vsp_id = db.check_user_by_name(st.session_state.user_name)
+            if exists and filial_id:
+                st.session_state.last_filial_id = filial_id
+                st.session_state.last_filial_name = fil
+                st.session_state.default_vsp_id = default_vsp_id
+                st.session_state.default_vsp_name = default_vsp_name
+            else:
+                st.error("Не удалось определить ваш филиал."); st.stop()
+        
+        current_filial_id = st.session_state.last_filial_id
+        current_filial_name = st.session_state.last_filial_name
+        my_vsp_id = st.session_state.get('default_vsp_id')
+        my_vsp_name = st.session_state.get('default_vsp_name')
+        
+        st.markdown(f"**Филиал:** {current_filial_name}")
+        
+        if not my_vsp_id:
+            st.error("Для вашего логина не указано ВСП в таблице users. Обратитесь к администратору.")
+            st.stop()
+        
+        # Показываем информацию о своём ВСП
+        st.info(f"🏪 Ваше ВСП: **{my_vsp_name}** (ID {my_vsp_id})")
+        
+        # ---- Форма добавления нового нерабочего дня ----
+        nw_date = st.date_input("📅 Дата нерабочего дня", value=datetime.date.today(), key="user_nw_date")
+        nw_reason = st.selectbox("📌 Причина", NON_WORKING_REASONS, key="user_nw_reason")
+        
+        if st.button("💾 Добавить нерабочий день", type="primary", use_container_width=True):
+            db.add_non_working_day(
+                st.session_state.user_full_name,
+                current_filial_id,
+                my_vsp_id,   # всегда добавляем для своего ВСП
+                nw_date,
+                nw_reason
+            )
+            st.success(f"✅ Нерабочий день {nw_date} для вашего ВСП сохранён!")
+            time.sleep(1)
+            st.rerun()
+        
+        st.divider()
+        
+        # ---- Отображение ранее добавленных нерабочих дней (только своих, для своего ВСП) ----
+        st.markdown("### 📋 Ранее добавленные вами нерабочие дни")
+        
+        # Загружаем только записи, созданные пользователем для его ВСП
+        my_nw_df = db.get_non_working_days(
+            filial_id=current_filial_id,
+            vsp_id=my_vsp_id
+        )
+        # Дополнительно фильтруем по user_name (на всякий случай)
+        my_nw_df = my_nw_df[my_nw_df['user_name'] == st.session_state.user_full_name]
+        
+        if my_nw_df.empty:
+            st.info("У вас нет добавленных нерабочих дней.")
+        else:
+            # Подготавливаем таблицу
+            display_df = my_nw_df[['id', 'date', 'reason']].copy()
+            display_df['Выбрать для удаления'] = False
+            display_df['date'] = pd.to_datetime(display_df['date']).dt.date
+            
+            edited_df = st.data_editor(
+                display_df,
+                column_config={
+                    "id": st.column_config.NumberColumn("ID", disabled=True),
+                    "date": st.column_config.DateColumn("Дата", disabled=True),
+                    "reason": st.column_config.TextColumn("Причина", disabled=True),
+                    "Выбрать для удаления": st.column_config.CheckboxColumn("Удалить", default=False),
+                },
+                hide_index=True,
+                use_container_width=True,
+                height=400
+            )
+            
+            col_btn1, col_btn2 = st.columns([1, 4])
+            with col_btn1:
+                if st.button("🗑️ Удалить выбранные", key="user_del_my"):
+                    ids_to_delete = edited_df[edited_df['Выбрать для удаления'] == True]['id'].tolist()
+                    if not ids_to_delete:
+                        st.warning("Не выбрано ни одной записи.")
+                    else:
+                        deleted = db.delete_my_non_working_days(
+                            ids_to_delete,
+                            st.session_state.user_full_name,
+                            my_vsp_id,
+                            current_filial_id
+                        )
+                        st.success(f"✅ Удалено записей: {deleted}")
+                        st.rerun()
+            with col_btn2:
+                if st.button("🔄 Обновить список", key="user_refresh_my"):
+                    st.rerun()
+        
+        # ---- Дополнительно: возможность посмотреть все ВСП филиала (только просмотр) ----
+        st.markdown("### 👁️ Просмотр нерабочих дней других ВСП (только чтение)")
+        show_all = st.checkbox("Показать все ВСП филиала", value=False, key="user_show_all_readonly")
+        if show_all:
+            all_nw_df = db.get_non_working_days(filial_id=current_filial_id, vsp_id=None)
+            if not all_nw_df.empty:
+                st.dataframe(
+                    all_nw_df[['vsp', 'date', 'reason', 'user_name']],
+                    column_config={
+                        "vsp": "ВСП",
+                        "date": "Дата",
+                        "reason": "Причина",
+                        "user_name": "Кто добавил"
+                    },
+                    hide_index=True,
+                    use_container_width=True,
+                    height=400
+                )
+            else:
+                st.info("Нет записей.")
+```
+
+Что изменилось
+
+1. Добавление нового дня – всегда для своего ВСП (my_vsp_id).
+2. Отображение – только записи пользователя для его ВСП.
+3. Удаление – через метод delete_my_non_working_days, который проверяет user_name, vsp_id, filial_id.
+4. Просмотр чужих ВСП – отдельный блок с st.dataframe только для чтения, без кнопок удаления.
+5. Убрана возможность выбора чужого ВСП для удаления.
+
+Безопасность
+
+· Пользователь может удалить только свои собственные записи (по user_name).
+· Даже если в таблице окажется запись с его user_name, но для чужого ВСП – она не будет удалена, потому что проверка по vsp_id отсечёт.
+· При добавлении нового дня vsp_id берётся из сессии (my_vsp_id), а не из выпадающего списка.
+
+Теперь всё корректно: пользователь работает только со своим ВСП, не может повлиять на чужие данные.
+
+
+
+
+
+
 Переделываем вкладку пользователя «Нерабочие дни ВСП» в табличную форму с массовым удалением
 
 Сейчас во вкладке пользователя записи выводятся через цикл с кнопкой «🗑️» для каждой строки, что при большом количестве записей вызывает зависание. Заменим на st.data_editor с чекбоксами и одной кнопкой «Удалить выбранные», но только для записей текущего ВСП пользователя.
