@@ -1,4 +1,167 @@
 
+Всё правильно: пользователь может удалить любой нерабочий день по своему ВСП (даже чужой)
+
+Вы подтвердили: сотрудник ВСП должен иметь возможность удалить любую запись нерабочего дня, относящуюся к его ВСП, независимо от того, кто её создал.
+
+Финальный код вкладки пользователя (безопасный, с удалением любых записей своего ВСП)
+
+Ниже – полный рабочий код для tab_non_working. Он:
+
+· Показывает все нерабочие дни для ВСП пользователя (с указанием автора).
+· Позволяет массово удалять выбранные записи (свои и чужие) – только для его ВСП.
+· Имеет отдельный блок просмотра других ВСП (только чтение).
+
+```python
+if tab_non_working is not None:
+    with tab_non_working:
+        st.markdown("## 📅 Внесение нерабочих дней ВСП")
+        st.caption("Вы можете удалять **любые** нерабочие дни для вашего ВСП, независимо от того, кто их создал.")
+
+        # Определяем филиал и своё ВСП
+        if st.session_state.get("last_filial_id") is None:
+            exists, full, fil, filial_id, default_vsp_name, default_vsp_id = db.check_user_by_name(st.session_state.user_name)
+            if exists and filial_id:
+                st.session_state.last_filial_id = filial_id
+                st.session_state.last_filial_name = fil
+                st.session_state.default_vsp_id = default_vsp_id
+                st.session_state.default_vsp_name = default_vsp_name
+            else:
+                st.error("Не удалось определить ваш филиал."); st.stop()
+
+        current_filial_id = st.session_state.last_filial_id
+        current_filial_name = st.session_state.last_filial_name
+        my_vsp_id = st.session_state.get('default_vsp_id')
+        my_vsp_name = st.session_state.get('default_vsp_name')
+
+        st.markdown(f"**Филиал:** {current_filial_name}")
+        if not my_vsp_id:
+            st.error("Для вашего логина не указано ВСП в таблице users. Обратитесь к администратору.")
+            st.stop()
+        st.info(f"🏪 Ваше ВСП: **{my_vsp_name}** (ID {my_vsp_id})")
+
+        # ---- Форма добавления нового нерабочего дня (только для своего ВСП) ----
+        with st.form("user_add_nw_form"):
+            nw_date = st.date_input("📅 Дата нерабочего дня", value=datetime.date.today())
+            nw_reason = st.selectbox("📌 Причина", NON_WORKING_REASONS)
+            submitted_add = st.form_submit_button("💾 Добавить нерабочий день", type="primary", use_container_width=True)
+            if submitted_add:
+                db.add_non_working_day(
+                    st.session_state.user_full_name,
+                    current_filial_id,
+                    my_vsp_id,
+                    nw_date,
+                    nw_reason
+                )
+                st.success(f"✅ Нерабочий день {nw_date} для вашего ВСП сохранён!")
+                st.rerun()
+
+        st.divider()
+
+        # ---- Отображение всех нерабочих дней для своего ВСП (можно удалять любые) ----
+        st.markdown("### 📋 Все нерабочие дни вашего ВСП")
+        my_vsp_nw = db.get_non_working_days(filial_id=current_filial_id, vsp_id=my_vsp_id)
+        if my_vsp_nw.empty:
+            st.info("Нет записей о нерабочих днях для вашего ВСП.")
+        else:
+            # Подготовка таблицы
+            display_df = my_vsp_nw[['id', 'date', 'reason', 'user_name']].copy()
+            display_df['Выбрать для удаления'] = False
+            display_df['date'] = pd.to_datetime(display_df['date']).dt.date
+
+            edited_df = st.data_editor(
+                display_df,
+                column_config={
+                    "id": st.column_config.NumberColumn("ID", disabled=True),
+                    "date": st.column_config.DateColumn("Дата", disabled=True),
+                    "reason": st.column_config.TextColumn("Причина", disabled=True),
+                    "user_name": st.column_config.TextColumn("Кто добавил", disabled=True),
+                    "Выбрать для удаления": st.column_config.CheckboxColumn("Удалить", default=False),
+                },
+                hide_index=True,
+                use_container_width=True,
+                height=400
+            )
+
+            col_btn1, col_btn2 = st.columns([1, 4])
+            with col_btn1:
+                if st.button("🗑️ Удалить выбранные", type="primary"):
+                    ids_to_delete = edited_df[edited_df['Выбрать для удаления'] == True]['id'].tolist()
+                    if not ids_to_delete:
+                        st.warning("Не выбрано ни одной записи.")
+                    else:
+                        deleted = db.delete_non_working_days_by_ids_for_vsp(
+                            ids_to_delete, my_vsp_id, current_filial_id
+                        )
+                        st.success(f"✅ Удалено записей: {deleted}")
+                        st.rerun()
+            with col_btn2:
+                if st.button("🔄 Обновить список"):
+                    st.rerun()
+
+        # ---- Просмотр других ВСП филиала (только чтение) ----
+        with st.expander("👁️ Просмотр нерабочих дней других ВСП (только чтение)"):
+            show_all = st.checkbox("Показать все ВСП филиала", key="user_show_all_readonly")
+            if show_all:
+                all_nw = db.get_non_working_days(filial_id=current_filial_id, vsp_id=None)
+                if not all_nw.empty:
+                    st.dataframe(
+                        all_nw[['vsp', 'date', 'reason', 'user_name']],
+                        column_config={
+                            "vsp": "ВСП",
+                            "date": "Дата",
+                            "reason": "Причина",
+                            "user_name": "Кто добавил"
+                        },
+                        hide_index=True,
+                        use_container_width=True,
+                        height=400
+                    )
+                else:
+                    st.info("Нет записей.")
+```
+
+Убедитесь, что в DatabaseManager есть метод:
+
+```python
+def delete_non_working_days_by_ids_for_vsp(self, ids, vsp_id, filial_id):
+    """Удаляет записи по списку id для указанного ВСП и филиала (без проверки user_name)."""
+    if not ids:
+        return 0
+    ids = [int(i) for i in ids]
+    vsp_id = int(vsp_id)
+    filial_id = int(filial_id)
+    self._execute(
+        f"DELETE FROM {self._table_name('vsp_non_working_days')} WHERE id = ANY(%s) AND vsp_id = %s AND filial_id = %s",
+        (ids, vsp_id, filial_id)
+    )
+    return len(ids)
+```
+
+Проверка безопасности
+
+· Вкладка пользователя работает только с my_vsp_id (его ВСП).
+· Удаление происходит с проверкой vsp_id и filial_id – чужие записи других ВСП не затронет.
+· Просмотр других ВСП – только чтение, удалять нельзя.
+· Добавление – только для своего ВСП.
+
+Всё соответствует вашему требованию: пользователь может удалить любой выходной по своему ВСП, даже другого пользователя.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Отлично, всё исправили! Теперь пользователь может удалять любые записи нерабочих дней для СВОЕГО ВСП
 
 Ваше требование выполнено: сотрудник ВСП имеет право удалять нерабочие дни, относящиеся к его ВСП, независимо от того, кто их создал. При этом он не может затронуть записи других ВСП.
