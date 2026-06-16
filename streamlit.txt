@@ -1,3 +1,213 @@
+
+Добавляем столбец close_vsp и вкладку управления ВСП для администратора с возможностью пометки закрытых ВСП
+
+Мы реализуем:
+
+· Добавление столбца close_vsp (boolean, default false) в таблицу vsp.
+· Администратор может отмечать ВСП как закрытые (чекбокс в таблице).
+· Новые ВСП добавляются со статусом "открыто" (close_vsp = false).
+· Пользователи при выборе ВСП видят только открытые (close_vsp = false). Это делает закрытые ВСП недоступными для заполнения чек-листов и других действий.
+
+---
+
+1. Добавляем столбец в базу данных
+
+Выполните в вашей БД PostgreSQL:
+
+```sql
+ALTER TABLE checklist_rf.vsp ADD COLUMN close_vsp BOOLEAN DEFAULT FALSE;
+```
+
+(замените checklist_rf на вашу схему, если она другая)
+
+---
+
+2. Обновляем методы в DatabaseManager
+
+Замените существующие методы и добавьте новые:
+
+```python
+# ---- УПРАВЛЕНИЕ ВСП (АДМИН) ----
+
+def get_all_vsp_with_filial(self, only_open=False):
+    """
+    Возвращает все ВСП с названием филиала и статусом close_vsp.
+    Если only_open=True, возвращает только close_vsp = False.
+    """
+    query = f"""
+        SELECT v.id, v.name, f.name AS filial_name, v.filial_id, v.close_vsp
+        FROM {self.schema}.vsp v
+        JOIN {self.schema}.filials f ON v.filial_id = f.id
+    """
+    if only_open:
+        query += " WHERE v.close_vsp = false"
+    query += " ORDER BY f.name, v.name"
+    return self._to_df(query)
+
+def add_vsp(self, name, filial_id):
+    """Добавляет новый ВСП с close_vsp = False"""
+    self._execute(
+        f"INSERT INTO {self.schema}.vsp (name, filial_id, close_vsp) VALUES (%s, %s, false)",
+        (name, int(filial_id))
+    )
+
+def update_vsp(self, vsp_id, new_name, close_vsp):
+    """Обновляет название и статус закрытия ВСП"""
+    self._execute(
+        f"UPDATE {self.schema}.vsp SET name = %s, close_vsp = %s WHERE id = %s",
+        (new_name, close_vsp, int(vsp_id))
+    )
+
+def get_vsp_by_filial(self, filial_id, only_open=True):
+    """
+    Возвращает ВСП филиала. По умолчанию только открытые (close_vsp=false).
+    """
+    query = f"""
+        SELECT id, name FROM {self.schema}.vsp
+        WHERE filial_id = %s
+    """
+    if only_open:
+        query += " AND close_vsp = false"
+    query += " ORDER BY name"
+    return self._to_df(query, (int(filial_id),))
+
+def get_all_vsp(self, only_open=True):
+    """Возвращает все ВСП, по умолчанию только открытые."""
+    query = f"SELECT id, name FROM {self.schema}.vsp"
+    if only_open:
+        query += " WHERE close_vsp = false"
+    query += " ORDER BY name"
+    return self._to_df(query)
+```
+
+---
+
+3. Новая вкладка администратора «Управление ВСП»
+
+Добавьте вкладку в список вкладок администратора (после tab_views_admin):
+
+```python
+    tab_views_admin = tabs[idx]; idx += 1
+    tab_vsp_admin = tabs[idx]; idx += 1   # Новая вкладка
+```
+
+И создайте её содержимое (замените старую вкладку, если была):
+
+```python
+if tab_vsp_admin is not None:
+    with tab_vsp_admin:
+        st.markdown("## 🏪 Управление ВСП")
+        st.caption("Добавление новых ВСП и управление статусом (открыто/закрыто). Закрытые ВСП не видны пользователям.")
+        
+        # ---- Форма добавления ----
+        with st.form("add_vsp_form"):
+            col1, col2 = st.columns(2)
+            with col1:
+                new_vsp_name = st.text_input("Название ВСП", placeholder="ВСП 123")
+            with col2:
+                filials_df = db.get_filials()
+                if not filials_df.empty:
+                    filial_options = {row['name']: row['id'] for _, row in filials_df.iterrows()}
+                    selected_filial_name = st.selectbox("Филиал", list(filial_options.keys()))
+                    selected_filial_id = filial_options[selected_filial_name]
+                else:
+                    st.error("Нет филиалов в базе")
+                    selected_filial_id = None
+            submitted_add = st.form_submit_button("➕ Добавить ВСП", type="primary", use_container_width=True)
+            if submitted_add and new_vsp_name and selected_filial_id:
+                db.add_vsp(new_vsp_name.strip(), selected_filial_id)
+                st.success(f"ВСП «{new_vsp_name}» добавлен в филиал {selected_filial_name}")
+                st.rerun()
+            elif submitted_add and not new_vsp_name:
+                st.warning("Введите название ВСП")
+        
+        st.divider()
+        
+        # ---- Таблица ВСП с редактированием названия и статуса ----
+        st.markdown("### 📋 Список ВСП")
+        vsp_data = db.get_all_vsp_with_filial()  # все, включая закрытые
+        
+        if vsp_data.empty:
+            st.info("Нет ВСП в базе данных")
+        else:
+            # Редактируемая таблица с колонкой close_vsp
+            edited_vsp = st.data_editor(
+                vsp_data,
+                column_config={
+                    "id": st.column_config.NumberColumn("ID", disabled=True),
+                    "name": st.column_config.TextColumn("Название ВСП", required=True),
+                    "filial_name": st.column_config.TextColumn("Филиал", disabled=True),
+                    "filial_id": st.column_config.NumberColumn("filial_id", disabled=True),
+                    "close_vsp": st.column_config.CheckboxColumn("Закрыто", default=False),
+                },
+                hide_index=True,
+                use_container_width=True,
+                height=500
+            )
+            
+            # Обработка изменений (название и статус)
+            changed = False
+            for idx, row in edited_vsp.iterrows():
+                original = vsp_data[vsp_data['id'] == row['id']]
+                if not original.empty:
+                    orig_name = original['name'].iloc[0]
+                    orig_close = original['close_vsp'].iloc[0]
+                    if orig_name != row['name'] or orig_close != row['close_vsp']:
+                        db.update_vsp(row['id'], row['name'], row['close_vsp'])
+                        changed = True
+            if changed:
+                st.success("Изменения сохранены")
+                st.rerun()
+            
+            # Дополнительно: фильтр для отображения только открытых/закрытых
+            st.caption("Используйте чекбокс «Закрыто» для скрытия ВСП от пользователей.")
+```
+
+---
+
+4. Автоматическая фильтрация закрытых ВСП для пользователей
+
+В методах, которые получают ВСП для пользователей, мы уже добавили параметр only_open=True. Везде, где раньше вызывались db.get_vsp_by_filial(filial_id) или db.get_all_vsp(), по умолчанию будут возвращаться только открытые. Это касается:
+
+· Выпадающего списка ВСП при создании новой проверки (вкладка пользователя).
+· Списка ВСП в визуализации (если используется).
+· Всех других мест, где пользователь выбирает ВСП.
+
+Если в каком-то месте нужно показать закрытые (только для админа), можно явно передать only_open=False.
+
+Никаких дополнительных правок не требуется, потому что мы изменили методы, и они уже используются в коде.
+
+---
+
+5. Проверка
+
+1. Зайдите в админ-панель → вкладка «Управление ВСП».
+2. Добавьте новый ВСП – он появится со статусом «открыто».
+3. Отметьте любой ВСП как «Закрыто» (через чекбокс в таблице) – изменения сохранятся.
+4. Перейдите на вкладку пользователя «Новая проверка» – закрытое ВСП не будет отображаться в выпадающем списке.
+5. В админ-панели закрытые ВСП видны и доступны для редактирования.
+
+Всё безопасно: пользователи не видят закрытые ВСП, администратор управляет ими. Старые сессии и нерабочие дни остаются, но новые проверить по закрытому ВСП уже нельзя.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 """
 ЧЕК-ЛИСТ ВСП (Streamlit + PostgreSQL)
 =====================================
