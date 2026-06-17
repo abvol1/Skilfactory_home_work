@@ -1,3 +1,177 @@
+Конкретная инструкция: что куда вставить
+
+Найдите в вашем файле блок, который начинается с:
+
+```python
+# --- Добавление/удаление новых ВСП ---
+if tab_vsp_admin is not None:
+    with tab_vsp_admin:
+```
+
+И полностью замените ВЕСЬ этот блок на код ниже.
+
+---
+
+ВОТ ВЕСЬ БЛОК, КОТОРЫЙ НУЖНО ВСТАВИТЬ
+
+```python
+# --- Добавление/удаление новых ВСП ---
+if tab_vsp_admin is not None:
+    with tab_vsp_admin:
+        st.markdown("## 🏪 Управление ВСП")
+        st.caption("Добавление новых ВСП и управление статусом (открыто/закрыто). Закрытые ВСП не видны пользователям.")
+        
+        # ---- ФОРМА ДОБАВЛЕНИЯ (используем st.form) ----
+        st.markdown("### ➕ Добавить новое ВСП")
+        
+        with st.form(key="add_vsp_form"):
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                new_vsp_name = st.text_input(
+                    "Название ВСП",
+                    placeholder="ВСП 123"
+                )
+            
+            with col2:
+                new_vsp_name_vsp = st.text_input(
+                    "Код ВСП (name_vsp)",
+                    placeholder="013-001"
+                )
+            
+            with col3:
+                filials_df = db.get_filials()
+                if not filials_df.empty:
+                    filial_options = {row['name']: row['id'] for _, row in filials_df.iterrows()}
+                    selected_filial_name = st.selectbox(
+                        "Филиал",
+                        list(filial_options.keys())
+                    )
+                    selected_filial_id = filial_options[selected_filial_name]
+                else:
+                    st.error("Нет филиалов в базе")
+                    selected_filial_id = None
+            
+            # Кнопка отправки формы
+            submitted = st.form_submit_button(
+                "➕ Добавить ВСП",
+                type="primary",
+                use_container_width=True
+            )
+            
+            # Обработка отправки формы
+            if submitted:
+                # Проверяем, что все поля заполнены
+                if not new_vsp_name or not new_vsp_name_vsp or not selected_filial_id:
+                    st.warning("Заполните все поля!")
+                else:
+                    # Проверяем, существует ли уже такой код ВСП
+                    if db.vsp_exists(new_vsp_name_vsp.strip()):
+                        st.error(f"❌ ВСП с кодом {new_vsp_name_vsp} уже существует!")
+                    else:
+                        # Добавляем новое ВСП
+                        db.add_vsp(
+                            new_vsp_name.strip(),
+                            new_vsp_name_vsp.strip(),
+                            selected_filial_id
+                        )
+                        st.success(f"✅ ВСП «{new_vsp_name}» (код {new_vsp_name_vsp}) добавлен в филиал {selected_filial_name}")
+                        # Очищаем кэш, чтобы таблица обновилась
+                        st.session_state.pop('vsp_data', None)
+                        st.rerun()
+        
+        st.divider()
+        
+        # ---- ТАБЛИЦА ВСП (с кэшированием) ----
+        st.markdown("### 📋 Список ВСП")
+        
+        # Загружаем данные один раз и сохраняем в session_state
+        if 'vsp_data' not in st.session_state:
+            with st.spinner("Загрузка списка ВСП..."):
+                st.session_state.vsp_data = db.get_all_vsp_with_filial()
+        
+        vsp_data = st.session_state.vsp_data
+        
+        if vsp_data.empty:
+            st.info("Нет ВСП в базе данных")
+        else:
+            edited_vsp = st.data_editor(
+                vsp_data,
+                column_config={
+                    "id": st.column_config.NumberColumn("ID", disabled=True),
+                    "name": st.column_config.TextColumn("Название ВСП", required=True),
+                    "name_vsp": st.column_config.TextColumn("Код ВСП", required=True),
+                    "filial_name": st.column_config.TextColumn("Филиал", disabled=True),
+                    "filial_id": st.column_config.NumberColumn("filial_id", disabled=True),
+                    "close_vsp": st.column_config.CheckboxColumn("Закрыто", default=False),
+                },
+                hide_index=True,
+                use_container_width=True,
+                height=500
+            )
+            
+            # Обработка изменений в таблице
+            changed = False
+            for idx, row in edited_vsp.iterrows():
+                original = vsp_data[vsp_data['id'] == row['id']]
+                if not original.empty:
+                    orig_name = original['name'].iloc[0]
+                    orig_name_vsp = original['name_vsp'].iloc[0] if 'name_vsp' in original.columns else ''
+                    orig_close = original['close_vsp'].iloc[0]
+                    
+                    if (orig_name != row['name'] or 
+                        orig_name_vsp != row.get('name_vsp', '') or 
+                        orig_close != row['close_vsp']):
+                        db.update_vsp(
+                            row['id'], 
+                            row['name'], 
+                            row.get('name_vsp', ''), 
+                            row['close_vsp']
+                        )
+                        changed = True
+            
+            if changed:
+                st.success("Изменения сохранены")
+                st.session_state.pop('vsp_data', None)
+                st.rerun()
+            
+            st.caption("Используйте чекбокс «Закрыто» для скрытия ВСП от пользователей.")
+```
+
+---
+
+Что именно изменилось
+
+Что было Что стало
+Кнопка вне формы (if st.button(...)) Форма с кнопкой внутри (with st.form(...))
+Переменные сбрасывались при перерисовке Переменные сохраняются внутри формы
+"Заполните все поля" даже при заполненных полях Проверка работает корректно
+ВСП не добавлялся ВСП будет добавляться
+
+---
+
+После вставки
+
+1. Сохраните файл.
+2. Перезапустите Streamlit (Ctrl+C и снова streamlit run main.py).
+3. Зайдите во вкладку "🏪 Управление ВСП".
+4. Заполните все три поля.
+5. Нажмите "➕ Добавить ВСП".
+
+Теперь ВСП должен добавиться, и таблица обновится автоматически.
+
+
+
+
+
+
+
+
+
+
+
+
+
 Почему ВСП не добавляется: основная причина
 
 Проблема в том, что при использовании обычной кнопки (без st.form) каждый раз при вводе текста Streamlit полностью перерисовывает страницу. При этом:
