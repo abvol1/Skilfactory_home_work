@@ -1,4 +1,18 @@
 
+def delete_non_working_day_by_vsp_date(self, vsp_id, date):
+    """Удаляет запись о нерабочем дне для конкретного ВСП на конкретную дату (если есть)."""
+    self._execute(
+        f"DELETE FROM {self._table_name('vsp_non_working_days')} WHERE vsp_id = %s AND date = %s",
+        (vsp_id, date)
+    )
+
+
+
+
+
+
+
+
 """
 ЧЕК-ЛИСТ ВСП (Streamlit + PostgreSQL)
 =====================================
