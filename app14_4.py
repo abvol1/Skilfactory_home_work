@@ -1,3 +1,164 @@
+
+Да, совершенно верно! Если в таблице vsp есть колонка name_vsp, то при добавлении и обновлении записей нужно её указывать.
+
+Исправленные методы:
+
+1. add_vsp - добавление нового ВСП:
+
+```python
+def add_vsp(self, name, name_vsp, filial_id):
+    """Добавляет новый ВСП с close_vsp = False"""
+    self._execute(
+        f"INSERT INTO {self.schema}.vsp (name, name_vsp, filial_id, close_vsp) VALUES (%s, %s, %s, false)",
+        (name, name_vsp, int(filial_id))
+    )
+```
+
+2. update_vsp - обновление ВСП:
+
+```python
+def update_vsp(self, vsp_id, new_name, new_name_vsp, close_vsp):
+    """Обновляет название, name_vsp и статус закрытия ВСП"""
+    self._execute(
+        f"UPDATE {self.schema}.vsp SET name = %s, name_vsp = %s, close_vsp = %s WHERE id = %s",
+        (new_name, new_name_vsp, close_vsp, int(vsp_id))
+    )
+```
+
+Обновите форму добавления ВСП в интерфейсе админа:
+
+```python
+# Вкладка "Управление ВСП" (tab_vsp_admin)
+with st.form("add_vsp_form"):
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        new_vsp_name = st.text_input("Название ВСП", placeholder="ВСП 123")
+    with col2:
+        new_vsp_name_vsp = st.text_input("Код ВСП (name_vsp)", placeholder="013-001")
+    with col3:
+        filials_df = db.get_filials()
+        if not filials_df.empty:
+            filial_options = {row['name']: row['id'] for _, row in filials_df.iterrows()}
+            selected_filial_name = st.selectbox("Филиал", list(filial_options.keys()))
+            selected_filial_id = filial_options[selected_filial_name]
+        else:
+            st.error("Нет филиалов в базе")
+            selected_filial_id = None
+    
+    submitted_add = st.form_submit_button("➕ Добавить ВСП", type="primary", use_container_width=True)
+    if submitted_add and new_vsp_name and new_vsp_name_vsp and selected_filial_id:
+        db.add_vsp(new_vsp_name.strip(), new_vsp_name_vsp.strip(), selected_filial_id)
+        st.success(f"ВСП «{new_vsp_name}» (код {new_vsp_name_vsp}) добавлен в филиал {selected_filial_name}")
+        st.rerun()
+    elif submitted_add:
+        st.warning("Заполните все поля")
+```
+
+Обновите таблицу редактирования ВСП:
+
+```python
+# В том же tab_vsp_admin
+if not vsp_data.empty:
+    # Редактируемая таблица с колонками name и name_vsp
+    edited_vsp = st.data_editor(
+        vsp_data,
+        column_config={
+            "id": st.column_config.NumberColumn("ID", disabled=True),
+            "name": st.column_config.TextColumn("Название ВСП", required=True),
+            "name_vsp": st.column_config.TextColumn("Код ВСП", required=True),
+            "filial_name": st.column_config.TextColumn("Филиал", disabled=True),
+            "filial_id": st.column_config.NumberColumn("filial_id", disabled=True),
+            "close_vsp": st.column_config.CheckboxColumn("Закрыто", default=False),
+        },
+        hide_index=True,
+        use_container_width=True,
+        height=500
+    )
+    
+    # Обработка изменений
+    changed = False
+    for idx, row in edited_vsp.iterrows():
+        original = vsp_data[vsp_data['id'] == row['id']]
+        if not original.empty:
+            orig_name = original['name'].iloc[0]
+            orig_name_vsp = original['name_vsp'].iloc[0] if 'name_vsp' in original.columns else ''
+            orig_close = original['close_vsp'].iloc[0]
+            if (orig_name != row['name'] or 
+                orig_name_vsp != row.get('name_vsp', '') or 
+                orig_close != row['close_vsp']):
+                db.update_vsp(
+                    row['id'], 
+                    row['name'], 
+                    row.get('name_vsp', ''), 
+                    row['close_vsp']
+                )
+                changed = True
+    if changed:
+        st.success("Изменения сохранены")
+        st.rerun()
+```
+
+Проверьте также другие методы, где используется вставка/обновление vsp:
+
+```python
+# Возможно, есть ещё методы, например:
+# - bulk_insert_vsp (если есть)
+# - import_vsp_from_file (если есть)
+# - sync_vsp_with_users (если есть)
+```
+
+Если в users таблице тоже есть name_vsp:
+
+```python
+def check_user_by_name(self, name: str):
+    query = f"""
+        SELECT 
+            us.name, 
+            us.full_name, 
+            f.name AS filial_name, 
+            f.id AS filial_id,
+            us.name_vsp,
+            v.id AS vsp_id
+        FROM {self.schema}.users us
+        LEFT JOIN {self.schema}.filials f ON us.name_filial::numeric = f.id
+        LEFT JOIN {self.schema}.vsp v ON us.name_vsp = v.name_vsp  -- изменил на v.name_vsp
+        WHERE LOWER(us.name) = LOWER(%s)
+    """
+    # ... остальной код
+```
+
+Добавьте проверку перед вставкой:
+
+```python
+# Дополнительная проверка на дубликаты name_vsp
+def vsp_exists(self, name_vsp):
+    """Проверяет, существует ли ВСП с таким name_vsp"""
+    row = self._execute(
+        f"SELECT id FROM {self.schema}.vsp WHERE name_vsp = %s",
+        (name_vsp,), fetch_one=True
+    )
+    return row is not None
+
+# Используйте в add_vsp:
+if db.vsp_exists(new_vsp_name_vsp):
+    st.error(f"ВСП с кодом {new_vsp_name_vsp} уже существует!")
+else:
+    db.add_vsp(new_vsp_name, new_vsp_name_vsp, selected_filial_id)
+```
+
+После всех этих исправлений новые ВСП должны успешно добавляться с заполненным полем name_vsp.
+
+
+
+
+
+
+
+
+
+
+
+
 """
 ЧЕК-ЛИСТ ВСП (Streamlit + PostgreSQL)
 =====================================
