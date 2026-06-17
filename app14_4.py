@@ -1,3 +1,229 @@
+Почему ВСП не добавляется: основная причина
+
+Проблема в том, что при использовании обычной кнопки (без st.form) каждый раз при вводе текста Streamlit полностью перерисовывает страницу. При этом:
+
+1. Заново загружается вся таблица ВСП через db.get_all_vsp_with_filial() (тяжёлый запрос).
+2. Значения полей ввода сохраняются, но из-за постоянной перерисовки страница "зависает".
+
+Почему кнопка пишет "Заполните все поля": из-за того, что поля сбрасываются при перерисовке, или вы ввели не все данные (например, не выбрали филиал).
+
+---
+
+Исправление: используем st.form + кэширование
+
+Шаг 1: Добавьте кэширование для get_all_vsp_with_filial
+
+В классе DatabaseManager измените метод, добавив @st.cache_data(ttl=300):
+
+```python
+@st.cache_data(ttl=300)  # кэш на 5 минут
+def get_all_vsp_with_filial(self, only_open=False):
+    """
+    Возвращает все ВСП с названием филиала и статусом close_vsp.
+    Если only_open=True, возвращает только close_vsp = False.
+    """
+    query = f"""
+        SELECT v.id, v.name, v.name_vsp, f.name AS filial_name, v.filial_id, v.close_vsp
+        FROM {self.schema}.vsp v
+        JOIN {self.schema}.filials f ON v.filial_id = f.id
+    """
+    if only_open:
+        query += " WHERE v.close_vsp = false"
+    query += " ORDER BY f.name, v.name"
+    return self._to_df(query)
+```
+
+Шаг 2: После добавления/обновления очищать кэш
+
+Добавьте в методы add_vsp и update_vsp:
+
+```python
+def add_vsp(self, name, name_vsp, filial_id):
+    self._execute(
+        f"INSERT INTO {self.schema}.vsp (name, name_vsp, filial_id, close_vsp) VALUES (%s, %s, %s, false)",
+        (name, name_vsp, int(filial_id))
+    )
+    st.cache_data.clear()  # Очищаем кэш
+
+def update_vsp(self, vsp_id, new_name, new_name_vsp, close_vsp):
+    self._execute(
+        f"UPDATE {self.schema}.vsp SET name = %s, name_vsp = %s, close_vsp = %s WHERE id = %s",
+        (new_name, new_name_vsp, close_vsp, int(vsp_id))
+    )
+    st.cache_data.clear()  # Очищаем кэш
+```
+
+Шаг 3: Используйте st.form для добавления ВСП
+
+Замените текущий блок добавления (строки 2550-2585) на этот:
+
+```python
+        # ---- Форма добавления (с st.form, чтобы поля не сбрасывались) ----
+        st.markdown("### ➕ Добавить новое ВСП")
+        with st.form("add_vsp_form"):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                new_vsp_name = st.text_input("Название ВСП", placeholder="ВСП 123")
+            with col2:
+                new_vsp_name_vsp = st.text_input("Код ВСП (name_vsp)", placeholder="013-001")
+            with col3:
+                filials_df = db.get_filials()
+                if not filials_df.empty:
+                    filial_options = {row['name']: row['id'] for _, row in filials_df.iterrows()}
+                    selected_filial_name = st.selectbox("Филиал", list(filial_options.keys()))
+                    selected_filial_id = filial_options[selected_filial_name]
+                else:
+                    st.error("Нет филиалов в базе")
+                    selected_filial_id = None
+            
+            submitted_add = st.form_submit_button("➕ Добавить ВСП", type="primary", use_container_width=True)
+            
+            if submitted_add:
+                if not new_vsp_name or not new_vsp_name_vsp or not selected_filial_id:
+                    st.warning("Заполните все поля!")
+                else:
+                    if db.vsp_exists(new_vsp_name_vsp.strip()):
+                        st.error(f"❌ ВСП с кодом {new_vsp_name_vsp} уже существует!")
+                    else:
+                        db.add_vsp(new_vsp_name.strip(), new_vsp_name_vsp.strip(), selected_filial_id)
+                        st.success(f"✅ ВСП «{new_vsp_name}» (код {new_vsp_name_vsp}) добавлен в филиал {selected_filial_name}")
+                        st.rerun()
+```
+
+Шаг 4: Загружайте таблицу ВСП через session_state (чтобы не перезагружалась при каждом вводе)
+
+Замените блок с vsp_data = db.get_all_vsp_with_filial() на:
+
+```python
+        # ---- Таблица ВСП с редактированием ----
+        st.markdown("### 📋 Список ВСП")
+        
+        # Загружаем данные один раз и сохраняем в session_state
+        if 'vsp_data' not in st.session_state:
+            with st.spinner("Загрузка списка ВСП..."):
+                st.session_state.vsp_data = db.get_all_vsp_with_filial()
+        
+        vsp_data = st.session_state.vsp_data
+```
+
+---
+
+Итоговый исправленный блок для вкладки управления ВСП
+
+```python
+# --- Добавление/удаление новых ВСП ---
+if tab_vsp_admin is not None:
+    with tab_vsp_admin:
+        st.markdown("## 🏪 Управление ВСП")
+        st.caption("Добавление новых ВСП и управление статусом (открыто/закрыто). Закрытые ВСП не видны пользователям.")
+        
+        # ---- Форма добавления (с st.form) ----
+        st.markdown("### ➕ Добавить новое ВСП")
+        with st.form("add_vsp_form"):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                new_vsp_name = st.text_input("Название ВСП", placeholder="ВСП 123")
+            with col2:
+                new_vsp_name_vsp = st.text_input("Код ВСП (name_vsp)", placeholder="013-001")
+            with col3:
+                filials_df = db.get_filials()
+                if not filials_df.empty:
+                    filial_options = {row['name']: row['id'] for _, row in filials_df.iterrows()}
+                    selected_filial_name = st.selectbox("Филиал", list(filial_options.keys()))
+                    selected_filial_id = filial_options[selected_filial_name]
+                else:
+                    st.error("Нет филиалов в базе")
+                    selected_filial_id = None
+            
+            submitted_add = st.form_submit_button("➕ Добавить ВСП", type="primary", use_container_width=True)
+            
+            if submitted_add:
+                if not new_vsp_name or not new_vsp_name_vsp or not selected_filial_id:
+                    st.warning("Заполните все поля!")
+                else:
+                    if db.vsp_exists(new_vsp_name_vsp.strip()):
+                        st.error(f"❌ ВСП с кодом {new_vsp_name_vsp} уже существует!")
+                    else:
+                        db.add_vsp(new_vsp_name.strip(), new_vsp_name_vsp.strip(), selected_filial_id)
+                        st.success(f"✅ ВСП «{new_vsp_name}» (код {new_vsp_name_vsp}) добавлен в филиал {selected_filial_name}")
+                        # Очищаем кэш и перезагружаем
+                        st.session_state.pop('vsp_data', None)
+                        st.rerun()
+        
+        st.divider()
+        
+        # ---- Таблица ВСП с редактированием ----
+        st.markdown("### 📋 Список ВСП")
+        
+        # Загружаем данные один раз и сохраняем в session_state
+        if 'vsp_data' not in st.session_state:
+            with st.spinner("Загрузка списка ВСП..."):
+                st.session_state.vsp_data = db.get_all_vsp_with_filial()
+        
+        vsp_data = st.session_state.vsp_data
+        
+        if vsp_data.empty:
+            st.info("Нет ВСП в базе данных")
+        else:
+            edited_vsp = st.data_editor(
+                vsp_data,
+                column_config={
+                    "id": st.column_config.NumberColumn("ID", disabled=True),
+                    "name": st.column_config.TextColumn("Название ВСП", required=True),
+                    "name_vsp": st.column_config.TextColumn("Код ВСП", required=True),
+                    "filial_name": st.column_config.TextColumn("Филиал", disabled=True),
+                    "filial_id": st.column_config.NumberColumn("filial_id", disabled=True),
+                    "close_vsp": st.column_config.CheckboxColumn("Закрыто", default=False),
+                },
+                hide_index=True,
+                use_container_width=True,
+                height=500
+            )
+            
+            changed = False
+            for idx, row in edited_vsp.iterrows():
+                original = vsp_data[vsp_data['id'] == row['id']]
+                if not original.empty:
+                    orig_name = original['name'].iloc[0]
+                    orig_name_vsp = original['name_vsp'].iloc[0] if 'name_vsp' in original.columns else ''
+                    orig_close = original['close_vsp'].iloc[0]
+                    if (orig_name != row['name'] or 
+                        orig_name_vsp != row.get('name_vsp', '') or 
+                        orig_close != row['close_vsp']):
+                        db.update_vsp(
+                            row['id'], 
+                            row['name'], 
+                            row.get('name_vsp', ''), 
+                            row['close_vsp']
+                        )
+                        changed = True
+            if changed:
+                st.success("Изменения сохранены")
+                st.session_state.pop('vsp_data', None)
+                st.rerun()
+            
+            st.caption("Используйте чекбокс «Закрыто» для скрытия ВСП от пользователей.")
+```
+
+---
+
+Что изменилось и почему теперь будет работать
+
+1. Форма с st.form – поля не сбрасываются при отправке, данные сохраняются.
+2. Кэширование данных – таблица ВСП загружается один раз, а не при каждом взаимодействии.
+3. Хранение в session_state – данные не перезагружаются при перерисовке страницы.
+4. Очистка кэша после добавления/обновления – чтобы новые данные появились в таблице.
+
+Теперь ВСП будет добавляться корректно, и страница не будет зависать.
+
+
+
+
+
+
+
+
+
 """
 ЧЕК-ЛИСТ ВСП (Streamlit + PostgreSQL)
 =====================================
