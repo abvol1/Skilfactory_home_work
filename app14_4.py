@@ -1,3 +1,350 @@
+Как убрать зависание при открытии вкладки "Управление ВСП"
+
+Вы правы — таблица ВСП загружается при каждом открытии вкладки и если у вас много ВСП, это вызывает зависание. Вот два решения — выбирайте любое.
+
+---
+
+Решение 1: Отложенная загрузка (только по кнопке)
+
+Таблица загружается только когда вы нажимаете кнопку, а не при открытии вкладки.
+
+Замените блок с таблицей (st.markdown("### 📋 Список ВСП") и ниже) на:
+
+```python
+        # ---- ТАБЛИЦА ВСП (загружается по кнопке) ----
+        st.markdown("### 📋 Список ВСП")
+        
+        # Кнопка для загрузки данных
+        if st.button("🔄 Загрузить список ВСП", use_container_width=True):
+            with st.spinner("Загрузка данных..."):
+                st.session_state.vsp_data = db.get_all_vsp_with_filial()
+                st.session_state.vsp_loaded = True
+            st.rerun()
+        
+        # Показываем таблицу, только если данные загружены
+        if st.session_state.get('vsp_loaded', False) and st.session_state.get('vsp_data') is not None:
+            vsp_data = st.session_state.vsp_data
+            
+            if vsp_data.empty:
+                st.info("Нет ВСП в базе данных")
+            else:
+                edited_vsp = st.data_editor(
+                    vsp_data,
+                    column_config={
+                        "id": st.column_config.NumberColumn("ID", disabled=True),
+                        "name": st.column_config.TextColumn("Название ВСП", required=True),
+                        "name_vsp": st.column_config.TextColumn("Код ВСП", required=True),
+                        "filial_name": st.column_config.TextColumn("Филиал", disabled=True),
+                        "filial_id": st.column_config.NumberColumn("filial_id", disabled=True),
+                        "close_vsp": st.column_config.CheckboxColumn("Закрыто", default=False),
+                    },
+                    hide_index=True,
+                    use_container_width=True,
+                    height=400
+                )
+                
+                # Обработка изменений
+                changed = False
+                for idx, row in edited_vsp.iterrows():
+                    original = vsp_data[vsp_data['id'] == row['id']]
+                    if not original.empty:
+                        orig_name = original['name'].iloc[0]
+                        orig_name_vsp = original['name_vsp'].iloc[0] if 'name_vsp' in original.columns else ''
+                        orig_close = original['close_vsp'].iloc[0]
+                        
+                        if (orig_name != row['name'] or 
+                            orig_name_vsp != row.get('name_vsp', '') or 
+                            orig_close != row['close_vsp']):
+                            db.update_vsp(
+                                row['id'], 
+                                row['name'], 
+                                row.get('name_vsp', ''), 
+                                row['close_vsp']
+                            )
+                            changed = True
+                
+                if changed:
+                    st.success("Изменения сохранены")
+                    st.session_state.pop('vsp_data', None)
+                    st.session_state.pop('vsp_loaded', None)
+                    st.rerun()
+                
+                st.caption("Используйте чекбокс «Закрыто» для скрытия ВСП от пользователей.")
+        else:
+            st.info("Нажмите кнопку «Загрузить список ВСП», чтобы увидеть таблицу.")
+```
+
+---
+
+Решение 2: Свёрнутый аккордеон (expander)
+
+Таблица загружается только когда вы разворачиваете аккордеон, а не при открытии вкладки.
+
+Замените блок с таблицей на:
+
+```python
+        # ---- ТАБЛИЦА ВСП (в аккордеоне) ----
+        with st.expander("📋 Показать список ВСП", expanded=False):
+            with st.spinner("Загрузка данных..."):
+                vsp_data = db.get_all_vsp_with_filial()
+            
+            if vsp_data.empty:
+                st.info("Нет ВСП в базе данных")
+            else:
+                edited_vsp = st.data_editor(
+                    vsp_data,
+                    column_config={
+                        "id": st.column_config.NumberColumn("ID", disabled=True),
+                        "name": st.column_config.TextColumn("Название ВСП", required=True),
+                        "name_vsp": st.column_config.TextColumn("Код ВСП", required=True),
+                        "filial_name": st.column_config.TextColumn("Филиал", disabled=True),
+                        "filial_id": st.column_config.NumberColumn("filial_id", disabled=True),
+                        "close_vsp": st.column_config.CheckboxColumn("Закрыто", default=False),
+                    },
+                    hide_index=True,
+                    use_container_width=True,
+                    height=400
+                )
+                
+                # Обработка изменений
+                changed = False
+                for idx, row in edited_vsp.iterrows():
+                    original = vsp_data[vsp_data['id'] == row['id']]
+                    if not original.empty:
+                        orig_name = original['name'].iloc[0]
+                        orig_name_vsp = original['name_vsp'].iloc[0] if 'name_vsp' in original.columns else ''
+                        orig_close = original['close_vsp'].iloc[0]
+                        
+                        if (orig_name != row['name'] or 
+                            orig_name_vsp != row.get('name_vsp', '') or 
+                            orig_close != row['close_vsp']):
+                            db.update_vsp(
+                                row['id'], 
+                                row['name'], 
+                                row.get('name_vsp', ''), 
+                                row['close_vsp']
+                            )
+                            changed = True
+                
+                if changed:
+                    st.success("Изменения сохранены")
+                    st.rerun()
+                
+                st.caption("Используйте чекбокс «Закрыто» для скрытия ВСП от пользователей.")
+```
+
+---
+
+Решение 3 (комбинированное): аккордеон + кнопка внутри
+
+Самый экономный вариант — таблица загружается только при разворачивании аккордеона, и внутри него есть кнопка для принудительного обновления.
+
+Замените блок с таблицей на:
+
+```python
+        # ---- ТАБЛИЦА ВСП (аккордеон + кнопка обновления) ----
+        with st.expander("📋 Показать список ВСП", expanded=False):
+            # Кнопка обновления внутри аккордеона
+            if st.button("🔄 Обновить список", key="refresh_vsp_table", use_container_width=True):
+                st.session_state.pop('vsp_data', None)
+                st.session_state.pop('vsp_loaded', None)
+                st.rerun()
+            
+            # Загружаем данные только если их нет в session_state
+            if 'vsp_data' not in st.session_state:
+                with st.spinner("Загрузка данных..."):
+                    st.session_state.vsp_data = db.get_all_vsp_with_filial()
+                    st.session_state.vsp_loaded = True
+            
+            vsp_data = st.session_state.vsp_data
+            
+            if vsp_data.empty:
+                st.info("Нет ВСП в базе данных")
+            else:
+                edited_vsp = st.data_editor(
+                    vsp_data,
+                    column_config={
+                        "id": st.column_config.NumberColumn("ID", disabled=True),
+                        "name": st.column_config.TextColumn("Название ВСП", required=True),
+                        "name_vsp": st.column_config.TextColumn("Код ВСП", required=True),
+                        "filial_name": st.column_config.TextColumn("Филиал", disabled=True),
+                        "filial_id": st.column_config.NumberColumn("filial_id", disabled=True),
+                        "close_vsp": st.column_config.CheckboxColumn("Закрыто", default=False),
+                    },
+                    hide_index=True,
+                    use_container_width=True,
+                    height=400
+                )
+                
+                # Обработка изменений
+                changed = False
+                for idx, row in edited_vsp.iterrows():
+                    original = vsp_data[vsp_data['id'] == row['id']]
+                    if not original.empty:
+                        orig_name = original['name'].iloc[0]
+                        orig_name_vsp = original['name_vsp'].iloc[0] if 'name_vsp' in original.columns else ''
+                        orig_close = original['close_vsp'].iloc[0]
+                        
+                        if (orig_name != row['name'] or 
+                            orig_name_vsp != row.get('name_vsp', '') or 
+                            orig_close != row['close_vsp']):
+                            db.update_vsp(
+                                row['id'], 
+                                row['name'], 
+                                row.get('name_vsp', ''), 
+                                row['close_vsp']
+                            )
+                            changed = True
+                
+                if changed:
+                    st.success("Изменения сохранены")
+                    st.session_state.pop('vsp_data', None)
+                    st.rerun()
+                
+                st.caption("Используйте чекбокс «Закрыто» для скрытия ВСП от пользователей.")
+```
+
+---
+
+Рекомендация
+
+Используйте Решение 3 — оно оптимальное:
+
+· Вкладка открывается мгновенно (данные не загружаются).
+· Данные загружаются только когда вы разворачиваете аккордеон.
+· Кнопка обновления позволяет перезагрузить данные после добавления нового ВСП.
+· session_state хранит данные, чтобы не перезагружать при каждом сворачивании/разворачивании.
+
+---
+
+Полный блок для вставки (Решение 3)
+
+Если хотите, вот полный блок вкладки "Управление ВСП" с Решением 3:
+
+```python
+# --- Добавление/удаление новых ВСП ---
+if tab_vsp_admin is not None:
+    with tab_vsp_admin:
+        st.markdown("## 🏪 Управление ВСП")
+        st.caption("Добавление новых ВСП и управление статусом (открыто/закрыто). Закрытые ВСП не видны пользователям.")
+        
+        # ---- ФОРМА ДОБАВЛЕНИЯ ----
+        st.markdown("### ➕ Добавить новое ВСП")
+        
+        with st.form(key="add_vsp_form"):
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                new_vsp_name = st.text_input("Название ВСП", placeholder="ВСП 123")
+            
+            with col2:
+                new_vsp_name_vsp = st.text_input("Код ВСП (name_vsp)", placeholder="013-001")
+            
+            with col3:
+                filials_df = db.get_filials()
+                if not filials_df.empty:
+                    filial_options = {row['name']: row['id'] for _, row in filials_df.iterrows()}
+                    selected_filial_name = st.selectbox("Филиал", list(filial_options.keys()))
+                    selected_filial_id = filial_options[selected_filial_name]
+                else:
+                    st.error("Нет филиалов в базе")
+                    selected_filial_id = None
+            
+            submitted = st.form_submit_button("➕ Добавить ВСП", type="primary", use_container_width=True)
+            
+            if submitted:
+                if not new_vsp_name or not new_vsp_name_vsp or not selected_filial_id:
+                    st.warning("Заполните все поля!")
+                else:
+                    if db.vsp_exists(new_vsp_name_vsp.strip()):
+                        st.error(f"❌ ВСП с кодом {new_vsp_name_vsp} уже существует!")
+                    else:
+                        db.add_vsp(new_vsp_name.strip(), new_vsp_name_vsp.strip(), selected_filial_id)
+                        st.success(f"✅ ВСП «{new_vsp_name}» (код {new_vsp_name_vsp}) добавлен в филиал {selected_filial_name}")
+                        st.session_state.pop('vsp_data', None)
+                        st.rerun()
+        
+        st.divider()
+        
+        # ---- ТАБЛИЦА ВСП (аккордеон + кнопка обновления) ----
+        with st.expander("📋 Показать список ВСП", expanded=False):
+            if st.button("🔄 Обновить список", key="refresh_vsp_table", use_container_width=True):
+                st.session_state.pop('vsp_data', None)
+                st.rerun()
+            
+            if 'vsp_data' not in st.session_state:
+                with st.spinner("Загрузка данных..."):
+                    st.session_state.vsp_data = db.get_all_vsp_with_filial()
+            
+            vsp_data = st.session_state.vsp_data
+            
+            if vsp_data.empty:
+                st.info("Нет ВСП в базе данных")
+            else:
+                edited_vsp = st.data_editor(
+                    vsp_data,
+                    column_config={
+                        "id": st.column_config.NumberColumn("ID", disabled=True),
+                        "name": st.column_config.TextColumn("Название ВСП", required=True),
+                        "name_vsp": st.column_config.TextColumn("Код ВСП", required=True),
+                        "filial_name": st.column_config.TextColumn("Филиал", disabled=True),
+                        "filial_id": st.column_config.NumberColumn("filial_id", disabled=True),
+                        "close_vsp": st.column_config.CheckboxColumn("Закрыто", default=False),
+                    },
+                    hide_index=True,
+                    use_container_width=True,
+                    height=400
+                )
+                
+                changed = False
+                for idx, row in edited_vsp.iterrows():
+                    original = vsp_data[vsp_data['id'] == row['id']]
+                    if not original.empty:
+                        orig_name = original['name'].iloc[0]
+                        orig_name_vsp = original['name_vsp'].iloc[0] if 'name_vsp' in original.columns else ''
+                        orig_close = original['close_vsp'].iloc[0]
+                        
+                        if (orig_name != row['name'] or 
+                            orig_name_vsp != row.get('name_vsp', '') or 
+                            orig_close != row['close_vsp']):
+                            db.update_vsp(
+                                row['id'], 
+                                row['name'], 
+                                row.get('name_vsp', ''), 
+                                row['close_vsp']
+                            )
+                            changed = True
+                
+                if changed:
+                    st.success("Изменения сохранены")
+                    st.session_state.pop('vsp_data', None)
+                    st.rerun()
+                
+                st.caption("Используйте чекбокс «Закрыто» для скрытия ВСП от пользователей.")
+```
+
+---
+
+Теперь вкладка не зависает при открытии, а данные загружаются только по вашему запросу! 🚀
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Конкретная инструкция: что куда вставить
 
 Найдите в вашем файле блок, который начинается с:
