@@ -1,3 +1,167 @@
+Этот код нужно добавить в форму добавления ВСП во вкладке "Управление ВСП" (таб tab_vsp_admin).
+
+Вот точное место с полным контекстом:
+
+```python
+# --- Вкладка "Управление ВСП" (таб tab_vsp_admin) ---
+if tab_vsp_admin is not None:
+    with tab_vsp_admin:
+        st.markdown("## 🏪 Управление ВСП")
+        st.caption("Добавление новых ВСП и управление статусом (открыто/закрыто).")
+        
+        # ---- Форма добавления ----
+        with st.form("add_vsp_form"):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                new_vsp_name = st.text_input("Название ВСП", placeholder="ВСП 123")
+            with col2:
+                new_vsp_name_vsp = st.text_input("Код ВСП (name_vsp)", placeholder="013-001")
+            with col3:
+                filials_df = db.get_filials()
+                if not filials_df.empty:
+                    filial_options = {row['name']: row['id'] for _, row in filials_df.iterrows()}
+                    selected_filial_name = st.selectbox("Филиал", list(filial_options.keys()))
+                    selected_filial_id = filial_options[selected_filial_name]
+                else:
+                    st.error("Нет филиалов в базе")
+                    selected_filial_id = None
+            
+            submitted_add = st.form_submit_button("➕ Добавить ВСП", type="primary", use_container_width=True)
+            
+            # ========== ВОТ СЮДА ДОБАВЬТЕ ПРОВЕРКУ ==========
+            if submitted_add:
+                if not new_vsp_name or not new_vsp_name_vsp or not selected_filial_id:
+                    st.warning("Заполните все поля")
+                else:
+                    # Проверяем, существует ли уже такой ВСП
+                    if db.vsp_exists(new_vsp_name_vsp.strip()):
+                        st.error(f"❌ ВСП с кодом {new_vsp_name_vsp} уже существует!")
+                    else:
+                        # Добавляем новый ВСП
+                        db.add_vsp(new_vsp_name.strip(), new_vsp_name_vsp.strip(), selected_filial_id)
+                        st.success(f"✅ ВСП «{new_vsp_name}» (код {new_vsp_name_vsp}) добавлен в филиал {selected_filial_name}")
+                        st.rerun()
+```
+
+А также нужно добавить метод vsp_exists в класс DatabaseManager:
+
+Добавьте этот метод в класс DatabaseManager (примерно после метода get_all_vsp_with_filial):
+
+```python
+def vsp_exists(self, name_vsp):
+    """Проверяет, существует ли ВСП с таким name_vsp"""
+    row = self._execute(
+        f"SELECT id FROM {self.schema}.vsp WHERE name_vsp = %s",
+        (name_vsp,), fetch_one=True
+    )
+    return row is not None
+```
+
+И обновить метод add_vsp:
+
+```python
+def add_vsp(self, name, name_vsp, filial_id):
+    """Добавляет новый ВСП с close_vsp = False"""
+    self._execute(
+        f"INSERT INTO {self.schema}.vsp (name, name_vsp, filial_id, close_vsp) VALUES (%s, %s, %s, false)",
+        (name, name_vsp, int(filial_id))
+    )
+```
+
+Полный код вкладки "Управление ВСП" (если нужно целиком):
+
+```python
+# --- Добавление/удаление новых ВСП ---
+if tab_vsp_admin is not None:
+    with tab_vsp_admin:
+        st.markdown("## 🏪 Управление ВСП")
+        st.caption("Добавление новых ВСП и управление статусом (открыто/закрыто). Закрытые ВСП не видны пользователям.")
+        
+        # ---- Форма добавления ----
+        with st.form("add_vsp_form"):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                new_vsp_name = st.text_input("Название ВСП", placeholder="ВСП 123")
+            with col2:
+                new_vsp_name_vsp = st.text_input("Код ВСП (name_vsp)", placeholder="013-001")
+            with col3:
+                filials_df = db.get_filials()
+                if not filials_df.empty:
+                    filial_options = {row['name']: row['id'] for _, row in filials_df.iterrows()}
+                    selected_filial_name = st.selectbox("Филиал", list(filial_options.keys()))
+                    selected_filial_id = filial_options[selected_filial_name]
+                else:
+                    st.error("Нет филиалов в базе")
+                    selected_filial_id = None
+            
+            submitted_add = st.form_submit_button("➕ Добавить ВСП", type="primary", use_container_width=True)
+            
+            if submitted_add:
+                if not new_vsp_name or not new_vsp_name_vsp or not selected_filial_id:
+                    st.warning("Заполните все поля")
+                else:
+                    # Проверяем существование
+                    if db.vsp_exists(new_vsp_name_vsp.strip()):
+                        st.error(f"❌ ВСП с кодом {new_vsp_name_vsp} уже существует!")
+                    else:
+                        db.add_vsp(new_vsp_name.strip(), new_vsp_name_vsp.strip(), selected_filial_id)
+                        st.success(f"✅ ВСП «{new_vsp_name}» (код {new_vsp_name_vsp}) добавлен в филиал {selected_filial_name}")
+                        st.rerun()
+        
+        st.divider()
+        
+        # ---- Таблица ВСП с редактированием ----
+        st.markdown("### 📋 Список ВСП")
+        vsp_data = db.get_all_vsp_with_filial()
+        
+        if vsp_data.empty:
+            st.info("Нет ВСП в базе данных")
+        else:
+            edited_vsp = st.data_editor(
+                vsp_data,
+                column_config={
+                    "id": st.column_config.NumberColumn("ID", disabled=True),
+                    "name": st.column_config.TextColumn("Название ВСП", required=True),
+                    "name_vsp": st.column_config.TextColumn("Код ВСП", required=True),
+                    "filial_name": st.column_config.TextColumn("Филиал", disabled=True),
+                    "filial_id": st.column_config.NumberColumn("filial_id", disabled=True),
+                    "close_vsp": st.column_config.CheckboxColumn("Закрыто", default=False),
+                },
+                hide_index=True,
+                use_container_width=True,
+                height=500
+            )
+            
+            changed = False
+            for idx, row in edited_vsp.iterrows():
+                original = vsp_data[vsp_data['id'] == row['id']]
+                if not original.empty:
+                    orig_name = original['name'].iloc[0]
+                    orig_name_vsp = original['name_vsp'].iloc[0] if 'name_vsp' in original.columns else ''
+                    orig_close = original['close_vsp'].iloc[0]
+                    if (orig_name != row['name'] or 
+                        orig_name_vsp != row.get('name_vsp', '') or 
+                        orig_close != row['close_vsp']):
+                        db.update_vsp(
+                            row['id'], 
+                            row['name'], 
+                            row.get('name_vsp', ''), 
+                            row['close_vsp']
+                        )
+                        changed = True
+            if changed:
+                st.success("Изменения сохранены")
+                st.rerun()
+```
+
+Теперь при добавлении нового ВСП будет проверка на дубликат кода name_vsp, и запись будет добавляться с заполненными обоими полями.
+
+
+
+
+
+
+
 
 Да, совершенно верно! Если в таблице vsp есть колонка name_vsp, то при добавлении и обновлении записей нужно её указывать.
 
