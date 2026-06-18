@@ -1,4 +1,92 @@
 
+with t1:
+    st.markdown("**Описание процедуры:**"); st.info(chosen_info)
+    if chosen_filter != "Не задан":
+        filter_display = chosen_filter
+        today = datetime.date.today()
+
+        if "[Дата1]" in filter_display:
+            st.date_input("📅 Дата (автоматически сегодня)", value=today, disabled=True, key=f"date_{item_id}", format="DD.MM.YYYY")
+            filter_display = filter_display.replace("[Дата1]", today.strftime("%d.%m.%y"))
+        if "[Дата1 гггг-мм-дд]" in filter_display:
+            filter_display = filter_display.replace("[Дата1 гггг-мм-дд]", today.strftime("%Y-%m-%d"))
+        if "[Дата1 дд.мм.гггг]" in filter_display:
+            filter_display = filter_display.replace("[Дата1 дд.мм.гггг]", today.strftime("%d.%m.%Y"))
+        filter_display = filter_display.replace("[РФ]", vsp_name)
+        filter_display = filter_display.replace("[РФ1]", vsp_name[:3])
+        
+        st.code(filter_display, language="text")
+        
+        # ---- КНОПКА КОПИРОВАНИЯ (через components.html) ----
+        import streamlit.components.v1 as components
+        
+        # Экранируем кавычки в filter_display для JS
+        escaped_text = filter_display.replace("'", "\\'").replace('"', '\\"')
+        
+        copy_html = f'''
+        <div style="margin-top:8px">
+            <button id="copy_btn_{item_id}" style="background:#4CAF50;color:white;padding:8px 12px;border:none;border-radius:5px;width:100%;cursor:pointer;font-size:14px;">
+                📋 КОПИРОВАТЬ ФИЛЬТР
+            </button>
+            <div id="copy_status_{item_id}" style="margin-top:5px;font-size:12px;text-align:center;color:#28a745;"></div>
+        </div>
+        <script>
+            (function() {{
+                var btn = document.getElementById("copy_btn_{item_id}");
+                var statusDiv = document.getElementById("copy_status_{item_id}");
+                var textToCopy = "{escaped_text}";
+                
+                btn.addEventListener("click", function() {{
+                    if (navigator.clipboard && navigator.clipboard.writeText) {{
+                        navigator.clipboard.writeText(textToCopy)
+                            .then(function() {{
+                                statusDiv.innerHTML = "✅ Скопировано!";
+                                statusDiv.style.color = "#28a745";
+                                setTimeout(function() {{
+                                    statusDiv.innerHTML = "";
+                                }}, 2500);
+                            }})
+                            .catch(function(err) {{
+                                statusDiv.innerHTML = "❌ Ошибка копирования";
+                                statusDiv.style.color = "#dc3545";
+                            }});
+                    }} else {{
+                        // Fallback для старых браузеров
+                        var textarea = document.createElement("textarea");
+                        textarea.value = textToCopy;
+                        document.body.appendChild(textarea);
+                        textarea.select();
+                        try {{
+                            document.execCommand("copy");
+                            statusDiv.innerHTML = "✅ Скопировано!";
+                            statusDiv.style.color = "#28a745";
+                            setTimeout(function() {{
+                                statusDiv.innerHTML = "";
+                            }}, 2500);
+                        }} catch(e) {{
+                            statusDiv.innerHTML = "❌ Ошибка копирования";
+                            statusDiv.style.color = "#dc3545";
+                        }}
+                        document.body.removeChild(textarea);
+                    }}
+                }});
+            }})();
+        </script>
+        '''
+        components.html(copy_html, height=100)
+    else:
+        st.info("Фильтр не задан")
+
+
+
+
+
+
+
+
+
+
+
 for _, tpl in template.iterrows():
     item_id = tpl['id']; order = tpl['item_order']; desc = tpl['description']
     std_filter = tpl['filter_value'] or "Не задан"
