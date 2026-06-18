@@ -1,3 +1,136 @@
+Отличный вопрос! Давайте разберем, почему в первой вкладке кнопка работает, а во второй - нет.
+
+🔍 Анализ проблемы
+
+Посмотрите внимательно на ID элементов в коде:
+
+Вкладка "Фильтр" (работает):
+
+```javascript
+// ID кнопки
+id="copy_{item_id}"           // например: copy_123
+
+// ID статуса  
+id="status_{item_id}"         // например: status_123
+
+// В JavaScript:
+var btn = document.getElementById("copy_{item_id}");
+var statusDiv = document.getElementById("status_{item_id}");
+```
+
+Вкладка "Дополнительный фильтр" (НЕ работает):
+
+```javascript
+// ID кнопки
+id="copy2_{item_id}"          // например: copy2_123
+
+// ID статуса
+id="status_{item_id}"         // например: status_123   ⚠️ ТАКОЙ ЖЕ!
+
+// В JavaScript:
+var btn = document.getElementById("copy_2{item_id}");  // ❌ ОШИБКА!
+// Должно быть: "copy2_{item_id}", а написано "copy_2{item_id}"
+```
+
+🐛 Ошибки в коде второй вкладки:
+
+1. Несоответствие ID: В HTML кнопка имеет id="copy2_{item_id}", а в JavaScript ищется "copy_2{item_id}" (без подчеркивания)
+2. Статус-бар имеет такой же ID, как в первой вкладке - конфликт
+
+✅ Исправленный код для вкладки "Дополнительный фильтр":
+
+```python
+with t2:
+    st.markdown("**Описание процедуры:**"); st.info(chosen_info)
+    if chosen_events != "Не задан":
+        filter_display = chosen_events
+        today = datetime.date.today()
+
+        if "[Дата1]" in filter_display:
+            st.date_input("📅 Дата (автоматически сегодня)", value=today, disabled=True, key=f"date2_{item_id}", format="DD.MM.YYYY")
+            filter_display = filter_display.replace("[Дата1]", today.strftime("%d.%m.%y"))
+        if "[Дата1 гггг-мм-дд]" in filter_display:
+            filter_display = filter_display.replace("[Дата1 гггг-мм-дд]", today.strftime("%Y-%m-%d"))
+        if "[Дата1 дд.мм.гггг]" in filter_display:
+            filter_display = filter_display.replace("[Дата1 дд.мм.гггг]", today.strftime("%d.%m.%Y"))
+        filter_display = filter_display.replace("[РФ]", vsp_name)
+        filter_display = filter_display.replace("[РФ1]", vsp_name[:3])
+        st.code(filter_display, language="text")
+        
+        import streamlit.components.v1 as components
+        js = f"""<div style="margin-top:8px">
+            <button id="copy2_{item_id}" style="background:#4CAF50;color:white;padding:8px;border:none;border-radius:5px;width:100%">📋 КОПИРОВАТЬ ФИЛЬТР</button>
+            <div id="status2_{item_id}" style="margin-top:5px;font-size:12px;text-align:center"></div>
+        </div>
+        <script>
+        (function(){{
+            var btn = document.getElementById("copy2_{item_id}");
+            var statusDiv = document.getElementById("status2_{item_id}");
+            var textToCopy = {repr(filter_display)};
+            btn.addEventListener("click", function(){{
+                navigator.clipboard.writeText(textToCopy)
+                    .then(function(){{
+                        statusDiv.innerHTML = "✅ Скопировано!";
+                        statusDiv.style.color = "green";
+                        setTimeout(function(){{ statusDiv.innerHTML = ""; }}, 2000);
+                    }})
+                    .catch(function(){{
+                        statusDiv.innerHTML = "❌ Ошибка";
+                        statusDiv.style.color = "red";
+                    }});
+            }});
+        }})();
+        </script>"""
+        components.html(js, height=100)
+    else:
+        st.info("Фильтр не задан")
+```
+
+📝 Что было исправлено:
+
+1. ID статуса: status_{item_id} → status2_{item_id} (чтобы не конфликтовать с первой вкладкой)
+2. JavaScript селектор: "copy_2{item_id}" → "copy2_{item_id}" (исправлена опечатка)
+3. Улучшена читаемость кода для отладки
+
+🎯 Альтернатива - если хотите просто убрать кнопку:
+
+Если вы все же хотите удалить кнопку, вот гарантированно работающий вариант:
+
+```python
+with t2:
+    st.markdown("**Описание процедуры:**"); st.info(chosen_info)
+    if chosen_events != "Не задан":
+        filter_display = chosen_events
+        today = datetime.date.today()
+
+        if "[Дата1]" in filter_display:
+            st.date_input("📅 Дата (автоматически сегодня)", value=today, disabled=True, key=f"date2_{item_id}", format="DD.MM.YYYY")
+            filter_display = filter_display.replace("[Дата1]", today.strftime("%d.%m.%y"))
+        if "[Дата1 гггг-мм-дд]" in filter_display:
+            filter_display = filter_display.replace("[Дата1 гггг-мм-дд]", today.strftime("%Y-%m-%d"))
+        if "[Дата1 дд.мм.гггг]" in filter_display:
+            filter_display = filter_display.replace("[Дата1 дд.мм.гггг]", today.strftime("%d.%m.%Y"))
+        filter_display = filter_display.replace("[РФ]", vsp_name)
+        filter_display = filter_display.replace("[РФ1]", vsp_name[:3])
+        
+        # Показываем только текст фильтра, без кнопки
+        st.code(filter_display, language="text")
+        # ВСЕ! Никакого JavaScript, никаких кнопок
+    else:
+        st.info("Фильтр не задан")
+```
+
+Этот вариант точно не упадет, потому что мы удаляем весь проблемный код.
+
+
+
+
+
+
+
+
+
+
 """
 ЧЕК-ЛИСТ ВСП (Streamlit + PostgreSQL)
 =====================================
