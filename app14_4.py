@@ -1,4 +1,179 @@
 
+Отлично! Посмотрел ваш полный код. Вижу, что у вас нет отдельного блока админ-панели в этом коде. Здесь только чек-лист (шаг 1).
+
+📍 Где в вашем коде вставить проверки:
+
+Ваш код заканчивается на блоке if st.session_state.step == 1:. Вам нужно добавить диагностику перед этим блоком или внутри него.
+
+Вариант 1: Вставьте проверки в самое начало (перед шагами)
+
+Найдите в вашем коде:
+
+```python
+# =============================================================================
+# ШАГ 1: ЗАПОЛНЕНИЕ ЧЕК-ЛИСТА (без изменений в логике)
+# =============================================================================
+if st.session_state.step == 1:
+    # ... ваш код
+```
+
+Замените на:
+
+```python
+# =============================================================================
+# ДИАГНОСТИКА (временная)
+# =============================================================================
+import time
+
+# Проверка роли
+st.write(f"🔍 Текущая роль: {st.session_state.get('role')}")
+
+if st.session_state.get('role') == 'admin':
+    st.warning("🔐 Обнаружен админ! Запуск диагностики...")
+    
+    # Проверка 1: session_state
+    st.write(f"✅ SessionState содержит: {list(st.session_state.keys())}")
+    time.sleep(0.5)
+    
+    # Проверка 2: подключение к БД
+    try:
+        test_conn = db._get_connection()
+        st.success("✅ Подключение к БД успешно!")
+        time.sleep(0.5)
+    except Exception as e:
+        st.error(f"❌ Ошибка БД: {e}")
+        st.stop()
+    
+    # Проверка 3: простой запрос к БД
+    try:
+        cursor = db._get_cursor()
+        cursor.execute("SELECT COUNT(*) FROM checklist_sessions")
+        count = cursor.fetchone()[0]
+        st.write(f"✅ В БД {count} сессий")
+        time.sleep(0.5)
+    except Exception as e:
+        st.error(f"❌ Ошибка запроса: {e}")
+        st.stop()
+    
+    st.success("✅ Все проверки пройдены! Загружаем чек-лист...")
+    time.sleep(0.5)
+
+# =============================================================================
+# ШАГ 1: ЗАПОЛНЕНИЕ ЧЕК-ЛИСТА (без изменений в логике)
+# =============================================================================
+if st.session_state.step == 1:
+    # ... ваш существующий код
+```
+
+Вариант 2: Вставьте проверки ВНУТРЬ блока step == 1 (после загрузки сессии)
+
+Найдите в вашем коде:
+
+```python
+if st.session_state.step == 1:
+    if "current_session_id" not in st.session_state:
+        st.error("Сессия не найдена"); st.session_state.step = 0; st.rerun()
+    sid = st.session_state.current_session_id
+    sess = db.get_session_data(sid)
+    # ... остальной код
+```
+
+Вставьте диагностику ПОСЛЕ загрузки данных сессии:
+
+```python
+if st.session_state.step == 1:
+    if "current_session_id" not in st.session_state:
+        st.error("Сессия не найдена"); st.session_state.step = 0; st.rerun()
+    sid = st.session_state.current_session_id
+    sess = db.get_session_data(sid)
+    if not sess:
+        st.error("Данные сессии отсутствуют"); st.stop()
+    
+    # ===== ДИАГНОСТИКА ДЛЯ АДМИНА =====
+    import time
+    if st.session_state.get('role') == 'admin':
+        st.warning("🔐 АДМИН-ДИАГНОСТИКА")
+        
+        # Проверка 1: данные сессии
+        st.write(f"✅ Сессия ID: {sid}")
+        st.write(f"✅ Статус: {sess['info']['status_bul']}")
+        time.sleep(0.5)
+        
+        # Проверка 2: шаблон
+        st.write("🔄 Загрузка шаблона...")
+        template = db.get_checklist_template()
+        st.write(f"✅ Шаблон загружен: {len(template)} пунктов")
+        time.sleep(0.5)
+        
+        # Проверка 3: подключение к БД (повторная)
+        try:
+            cursor = db._get_cursor()
+            cursor.execute("SELECT COUNT(*) FROM checklist_sessions")
+            count = cursor.fetchone()[0]
+            st.write(f"✅ Всего сессий в БД: {count}")
+        except Exception as e:
+            st.error(f"❌ Ошибка: {e}")
+        time.sleep(0.5)
+        
+        st.success("✅ Диагностика завершена!")
+        st.divider()
+    
+    template = db.get_checklist_template()
+    # ... остальной код
+```
+
+Вариант 3: САМЫЙ ПРОСТОЙ - вставьте в самое начало файла
+
+В самом верху вашего файла, после всех импортов, добавьте:
+
+```python
+# В самом начале файла, после импортов
+import time
+
+# ===== ДИАГНОСТИКА СТАРТА =====
+if st.session_state.get('role') == 'admin':
+    st.warning("🔐 АДМИН-ДИАГНОСТИКА ЗАПУЩЕНА")
+    st.write(f"Шаг: {st.session_state.get('step')}")
+    st.write(f"Сессия ID: {st.session_state.get('current_session_id')}")
+    st.write(f"Ключи session_state: {list(st.session_state.keys())}")
+    time.sleep(1)
+    
+    try:
+        conn = db._get_connection()
+        st.success("✅ БД подключена")
+    except Exception as e:
+        st.error(f"❌ БД НЕ ДОСТУПНА: {e}")
+        st.stop()
+    
+    st.divider()
+```
+
+🎯 Какой вариант выбрать?
+
+Рекомендую Вариант 1 - он самый безопасный, так как:
+
+1. Проверяет всё до загрузки чек-листа
+2. Не вмешивается в логику существующего кода
+3. Легко удалить после отладки
+
+📝 После вставки:
+
+1. Запустите приложение под админом
+2. Смотрите на экран - какое последнее сообщение увидите
+3. Если зависло - напишите мне на каком сообщении остановилось
+
+Например, если увидели:
+
+· "✅ Подключение к БД успешно!" но дальше ничего - проблема в запросе к БД
+· "✅ SessionState содержит: ..." но дальше ничего - проблема в подключении к БД
+· Ничего не увидели - проблема в самом начале, до проверок
+
+
+
+
+
+
+
 📍 Куда именно вставить код диагностики
 
 Вам нужно найти в вашем коде существующий блок админ-панели и заменить его.
