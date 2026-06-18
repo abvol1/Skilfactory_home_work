@@ -1,3 +1,203 @@
+
+📍 Куда именно вставить код диагностики
+
+Вам нужно найти в вашем коде существующий блок админ-панели и заменить его.
+
+1️⃣ Сначала найдите в своем коде где начинается админ-панель
+
+Ищите что-то похожее на:
+
+```python
+# ВАШ СУЩЕСТВУЮЩИЙ КОД (пример)
+if st.session_state.get('role') == 'admin':
+    st.title("Админ-панель")
+    # ... много кода админки
+    # ... загрузка данных
+    # ... отображение интерфейса
+```
+
+2️⃣ Замените НАЧАЛО этого блока
+
+БЫЛО (ваш код):
+
+```python
+if st.session_state.get('role') == 'admin':
+    st.title("Админ-панель")
+    # ... ваш код
+```
+
+СТАЛО (с диагностикой):
+
+```python
+if st.session_state.get('role') == 'admin':
+    
+    # ⏱️ ПРОСТАЯ ДИАГНОСТИКА
+    st.toast("🟢 ШАГ 1: Загрузка админ-панели...")
+    time.sleep(0.5)
+    
+    # Проверка 1: session_state
+    st.toast(f"🟢 ШАГ 2: SessionState OK. Ключей: {len(st.session_state)}")
+    time.sleep(0.5)
+    
+    # Проверка 2: подключение к БД
+    try:
+        test_conn = db._get_connection()
+        st.toast("🟢 ШАГ 3: Подключение к БД OK")
+        time.sleep(0.5)
+    except Exception as e:
+        st.error(f"❌ БД не доступна: {e}")
+        st.stop()
+    
+    # Проверка 3: загрузка данных
+    try:
+        # Загружаем по частям с уведомлениями
+        st.toast("🟡 ШАГ 4: Загрузка пользователей...")
+        users = db.get_all_users()
+        st.toast(f"🟢 Загружено {len(users)} пользователей")
+        time.sleep(0.5)
+        
+        st.toast("🟡 ШАГ 5: Загрузка сессий...")
+        sessions = db.get_all_sessions()
+        st.toast(f"🟢 Загружено {len(sessions)} сессий")
+        time.sleep(0.5)
+        
+        st.toast("🟡 ШАГ 6: Загрузка статистики...")
+        stats = db.get_admin_stats()
+        st.toast("🟢 Статистика загружена")
+        time.sleep(0.5)
+        
+    except Exception as e:
+        st.error(f"❌ Ошибка загрузки: {e}")
+        st.stop()
+    
+    st.toast("✅ ВСЕ ЗАГРУЖЕНО! Отрисовка интерфейса...")
+    time.sleep(0.5)
+    
+    # ДАЛЬШЕ ВАШ КОД АДМИН-ПАНЕЛИ (который был до этого)
+    st.title("Админ-панель")
+    # ... остальной ваш код админки
+```
+
+3️⃣ Весь ваш существующий код админки ОСТАВЛЯЕМ без изменений
+
+Весь код, который был у вас внутри if st.session_state.get('role') == 'admin': остается как есть, просто мы добавили диагностику в начало.
+
+🔍 Пример полной замены
+
+Допустим, у вас было так:
+
+```python
+if st.session_state.get('role') == 'admin':
+    st.title("🔐 Админ-панель")
+    
+    menu = st.sidebar.selectbox(
+        "Меню",
+        ["Пользователи", "Сессии", "Статистика"]
+    )
+    
+    if menu == "Пользователи":
+        users = db.get_all_users()
+        st.dataframe(users)
+    elif menu == "Сессии":
+        sessions = db.get_all_sessions()
+        st.dataframe(sessions)
+    else:
+        stats = db.get_admin_stats()
+        st.metric("Всего сессий", stats['total'])
+```
+
+После вставки диагностики будет так:
+
+```python
+if st.session_state.get('role') == 'admin':
+    
+    # ⏱️ ПРОСТАЯ ДИАГНОСТИКА
+    st.toast("🟢 ШАГ 1: Загрузка админ-панели...")
+    time.sleep(0.5)
+    
+    st.toast(f"🟢 ШАГ 2: SessionState OK. Ключей: {len(st.session_state)}")
+    time.sleep(0.5)
+    
+    try:
+        test_conn = db._get_connection()
+        st.toast("🟢 ШАГ 3: Подключение к БД OK")
+        time.sleep(0.5)
+    except Exception as e:
+        st.error(f"❌ БД не доступна: {e}")
+        st.stop()
+    
+    try:
+        st.toast("🟡 ШАГ 4: Загрузка пользователей...")
+        users = db.get_all_users()
+        st.toast(f"🟢 Загружено {len(users)} пользователей")
+        time.sleep(0.5)
+        
+        st.toast("🟡 ШАГ 5: Загрузка сессий...")
+        sessions = db.get_all_sessions()
+        st.toast(f"🟢 Загружено {len(sessions)} сессий")
+        time.sleep(0.5)
+        
+        st.toast("🟡 ШАГ 6: Загрузка статистики...")
+        stats = db.get_admin_stats()
+        st.toast("🟢 Статистика загружена")
+        time.sleep(0.5)
+        
+    except Exception as e:
+        st.error(f"❌ Ошибка загрузки: {e}")
+        st.stop()
+    
+    st.toast("✅ ВСЕ ЗАГРУЖЕНО! Отрисовка интерфейса...")
+    time.sleep(0.5)
+    
+    # ===== ВАШ СУЩЕСТВУЮЩИЙ КОД =====
+    st.title("🔐 Админ-панель")
+    
+    menu = st.sidebar.selectbox(
+        "Меню",
+        ["Пользователи", "Сессии", "Статистика"]
+    )
+    
+    if menu == "Пользователи":
+        # users уже загружены выше
+        st.dataframe(users)
+    elif menu == "Сессии":
+        # sessions уже загружены выше
+        st.dataframe(sessions)
+    else:
+        # stats уже загружены выше
+        st.metric("Всего сессий", stats['total'])
+```
+
+⚠️ Важно!
+
+1. Не забудьте импортировать time в начале файла (если еще нет):
+
+```python
+import time
+```
+
+2. Если у вас нет функций db.get_all_users(), db.get_all_sessions(), db.get_admin_stats() - замените на ваши реальные функции загрузки данных
+3. Смотрите в какой момент останавливается выполнение - какое последнее сообщение вы видите
+
+📌 Если после вставки кода ничего не работает - просто уберите диагностику и скажите мне, какие функции у вас есть в админ-панели, я подстрою код под них.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Отличный вопрос! Давайте разберем, почему в первой вкладке кнопка работает, а во второй - нет.
 
 🔍 Анализ проблемы
