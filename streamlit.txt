@@ -1,3 +1,93 @@
+
+for _, tpl in template.iterrows():
+    item_id = tpl['id']; order = tpl['item_order']; desc = tpl['description']
+    std_filter = tpl['filter_value'] or "Не задан"
+    std_info = tpl['additional_info'] or "Описание отсутствует"
+    std_events = tpl['events_value'] or "Фильтр2 не задан"
+    alt_filter = tpl['alt_filter_value'] or ""
+    alt_info = tpl['alt_additional_info'] or ""
+    alt_events = tpl['alt_events_value'] or ""
+    chosen_filter = alt_filter if (use_alt and alt_filter) else std_filter
+    chosen_info = alt_info if (use_alt and alt_info) else std_info
+    chosen_events = alt_events if (use_alt and alt_events) else std_events
+    current = st.session_state.temp_answers.get(item_id, saved.get(item_id, False))
+
+    cols = st.columns([1,5,2,1])
+    cols[0].write(f"**{order}**"); cols[1].markdown(desc)
+    with cols[2]:
+        with st.popover(f"ℹ️ Подробнее о проверке №{order}", use_container_width=True):
+            t1, t2 = st.tabs(["🔍 Фильтр", "📌 Фильтр2"])
+            
+            # ---- Вкладка 1: Фильтр ----
+            with t1:
+                st.markdown("**Описание процедуры:**"); st.info(chosen_info)
+                if chosen_filter != "Не задан":
+                    filter_display = chosen_filter
+                    today = datetime.date.today()
+ 
+                    if "[Дата1]" in filter_display:
+                        st.date_input("📅 Дата (автоматически сегодня)", value=today, disabled=True, key=f"date_{item_id}", format="DD.MM.YYYY")
+                        filter_display = filter_display.replace("[Дата1]", today.strftime("%d.%m.%y"))
+                    if "[Дата1 гггг-мм-дд]" in filter_display:
+                        filter_display = filter_display.replace("[Дата1 гггг-мм-дд]", today.strftime("%Y-%m-%d"))
+                    if "[Дата1 дд.мм.гггг]" in filter_display:
+                        filter_display = filter_display.replace("[Дата1 дд.мм.гггг]", today.strftime("%d.%m.%Y"))
+                    filter_display = filter_display.replace("[РФ]", vsp_name)
+                    filter_display = filter_display.replace("[РФ1]", vsp_name[:3])
+                    
+                    st.code(filter_display, language="text")
+                    
+                    if st.button("📋 КОПИРОВАТЬ ФИЛЬТР", key=f"copy_btn_{item_id}", use_container_width=True):
+                        st.write(f'<script>navigator.clipboard.writeText("{filter_display}");</script>', unsafe_allow_html=True)
+                        st.toast("✅ Скопировано!", icon="✅")
+                else:
+                    st.info("Фильтр не задан")
+            
+            # ---- Вкладка 2: Фильтр2 ----
+            with t2:
+                st.markdown("**Описание процедуры:**"); st.info(chosen_info)
+                if chosen_events != "Не задан" and chosen_events != "Фильтр2 не задан":
+                    filter_display = chosen_events
+                    today = datetime.date.today()
+ 
+                    if "[Дата1]" in filter_display:
+                        st.date_input("📅 Дата (автоматически сегодня)", value=today, disabled=True, key=f"date2_{item_id}", format="DD.MM.YYYY")
+                        filter_display = filter_display.replace("[Дата1]", today.strftime("%d.%m.%y"))
+                    if "[Дата1 гггг-мм-дд]" in filter_display:
+                        filter_display = filter_display.replace("[Дата1 гггг-мм-дд]", today.strftime("%Y-%m-%d"))
+                    if "[Дата1 дд.мм.гггг]" in filter_display:
+                        filter_display = filter_display.replace("[Дата1 дд.мм.гггг]", today.strftime("%d.%m.%Y"))
+                    filter_display = filter_display.replace("[РФ]", vsp_name)
+                    filter_display = filter_display.replace("[РФ1]", vsp_name[:3])
+                    
+                    st.code(filter_display, language="text")
+                    
+                    if st.button("📋 КОПИРОВАТЬ ФИЛЬТР2", key=f"copy_btn2_{item_id}", use_container_width=True):
+                        st.write(f'<script>navigator.clipboard.writeText("{filter_display}");</script>', unsafe_allow_html=True)
+                        st.toast("✅ Скопировано!", icon="✅")
+                else:
+                    st.info("Фильтр2 не задан")
+    
+    with cols[3]:
+        new_val = st.checkbox(" ", value=current, key=f"chk_{item_id}", label_visibility="collapsed")
+        if new_val != current: st.session_state.temp_answers[item_id] = new_val
+    st.markdown("<hr style='margin:8px 0;border:1.5px solid #000000;'>", unsafe_allow_html=True)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # =============================================================================
 # ШАГ 1: ЗАПОЛНЕНИЕ ЧЕК-ЛИСТА (без изменений в логике)
 # =============================================================================
