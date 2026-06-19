@@ -1,4 +1,266 @@
 
+Извините за путаницу! Давайте разберем защитный код простыми словами.
+
+Что такое защитный код?
+
+Это код, который НЕ ДАЕТ ПРИЛОЖЕНИЮ УПАСТЬ, даже если в базе данных нет нужной колонки.
+
+---
+
+Проблема без защиты:
+
+```python
+def get_vsp_by_filial(self, filial_id):
+    # Если колонки close_vsp нет - ПРИЛОЖЕНИЕ УПАДЕТ с ошибкой!
+    return self._to_df(f"""
+        SELECT id, name, name_vsp 
+        FROM vsp 
+        WHERE filial_id=%s AND close_vsp = false 
+        ORDER BY name
+    """, (filial_id,))
+```
+
+Ошибка: ERROR: column "close_vsp" does not exist
+
+---
+
+Решение с защитным кодом:
+
+Вариант 1: try/except (ПРОСТОЙ)
+
+```python
+def get_vsp_by_filial(self, filial_id):
+    try:
+        # Пытаемся выполнить запрос с close_vsp
+        return self._to_df(f"""
+            SELECT id, name, name_vsp 
+            FROM {self._table_name('vsp')} 
+            WHERE filial_id=%s AND close_vsp = false 
+            ORDER BY name
+        """, (int(filial_id),))
+    except Exception as e:
+        # Если колонки нет - делаем запрос БЕЗ close_vsp
+        print(f"⚠️ Колонка close_vsp не найдена, работаем без фильтра. Ошибка: {e}")
+        return self._to_df(f"""
+            SELECT id, name, name_vsp 
+            FROM {self._table_name('vsp')} 
+            WHERE filial_id=%s 
+            ORDER BY name
+        """, (int(filial_id),))
+```
+
+Как работает:
+
+1. Пытается выполнить запрос с close_vsp
+2. Если колонка есть → работает с фильтром
+3. Если колонки нет → ловит ошибку и выполняет запрос без фильтра
+4. Приложение НЕ ПАДАЕТ!
+
+---
+
+Вариант 2: Проверка при запуске (БОЛЕЕ ЭФФЕКТИВНЫЙ)
+
+Добавьте в класс DatabaseManager в __init__:
+
+```python
+def __init__(self):
+    self.schema = PG_CONFIG['schema']
+    self._connection = None
+    self._cursor = None
+    
+    # ПРОВЕРЯЕМ НАЛИЧИЕ КОЛОНКИ ПРИ ЗАПУСКЕ
+    self.has_close_vsp = self._check_column_exists('vsp', 'close_vsp')
+    
+def _check_column_exists(self, table, column):
+    """Проверяет, существует ли колонка в таблице"""
+    try:
+        result = self._execute(f"""
+            SELECT EXISTS (
+                SELECT 1 
+                FROM information_schema.columns 
+                WHERE table_schema = %s 
+                AND table_name = %s 
+                AND column_name = %s
+            )
+        """, (self.schema, table, column), fetch_one=True)
+        return result['exists'] if result else False
+    except:
+        return False
+```
+
+И используем:
+
+```python
+def get_vsp_by_filial(self, filial_id):
+    if self.has_close_vsp:
+        # Колонка есть - используем фильтр
+        return self._to_df(f"""
+            SELECT id, name, name_vsp 
+            FROM {self._table_name('vsp')} 
+            WHERE filial_id=%s AND close_vsp = false 
+            ORDER BY name
+        """, (int(filial_id),))
+    else:
+        # Колонки нет - работаем без фильтра
+        return self._to_df(f"""
+            SELECT id, name, name_vsp 
+            FROM {self._table_name('vsp')} 
+            WHERE filial_id=%s 
+            ORDER BY name
+        """, (int(filial_id),))
+```
+
+---
+
+Вариант 3: Самый простой - использовать COALESCE
+
+```python
+def get_vsp_by_filial(self, filial_id):
+    # COALESCE превращает NULL в false
+    # Если колонки нет - все равно упадет!
+    return self._to_df(f"""
+        SELECT id, name, name_vsp 
+        FROM {self._table_name('vsp')} 
+        WHERE filial_id=%s 
+        AND COALESCE(close_vsp, false) = false 
+        ORDER BY name
+    """, (int(filial_id),))
+```
+
+НО! Этот вариант все равно упадет, если колонки нет в принципе.
+
+---
+
+ГДЕ ВСТАВЛЯТЬ ЗАЩИТНЫЙ КОД?
+
+Место 1: В класс DatabaseManager (строки ~30-50)
+
+Было:
+
+```python
+class DatabaseManager:
+    def __init__(self):
+        self.schema = PG_CONFIG['schema']
+        self._connection = None
+        self._cursor = None
+```
+
+Стало:
+
+```python
+class DatabaseManager:
+    def __init__(self):
+        self.schema = PG_CONFIG['schema']
+        self._connection = None
+        self._cursor = None
+        # Проверяем наличие колонки
+        self._check_close_vsp()
+    
+    def _check_close_vsp(self):
+        """Проверяет существование колонки close_vsp"""
+        try:
+            result = self._execute(f"""
+                SELECT EXISTS (
+                    SELECT 1 
+                    FROM information_schema.columns 
+                    WHERE table_schema = %s 
+                    AND table_name = 'vsp' 
+                    AND column_name = 'close_vsp'
+                )
+            """, (self.schema,), fetch_one=True)
+            self.has_close_vsp = result['exists'] if result else False
+        except:
+            self.has_close_vsp = False
+```
+
+Место 2: Функции get_vsp_by_filial и get_all_vsp
+
+Было:
+
+```python
+def get_vsp_by_filial(self, filial_id):
+    return self._to_df(f"SELECT id, name, name_vsp FROM {self._table_name('vsp')} WHERE filial_id=%s ORDER BY name", (int(filial_id),))
+```
+
+Стало:
+
+```python
+def get_vsp_by_filial(self, filial_id):
+    if hasattr(self, 'has_close_vsp') and self.has_close_vsp:
+        # Колонка есть - фильтруем
+        return self._to_df(f"""
+            SELECT id, name, name_vsp 
+            FROM {self._table_name('vsp')} 
+            WHERE filial_id=%s AND close_vsp = false 
+            ORDER BY name
+        """, (int(filial_id),))
+    else:
+        # Колонки нет - без фильтра
+        return self._to_df(f"""
+            SELECT id, name, name_vsp 
+            FROM {self._table_name('vsp')} 
+            WHERE filial_id=%s 
+            ORDER BY name
+        """, (int(filial_id),))
+```
+
+---
+
+СРАВНЕНИЕ ВАРИАНТОВ:
+
+Вариант Сложность Надежность Что делает
+Без защиты Нет ❌ Падает Просто запрос
+try/except Простой ✅ Не падает Пробует, если ошибка - переключается
+Проверка при запуске Средний ✅ Не падает Проверяет один раз при старте
+COALESCE Простой ⚠️ Падает если нет колонки Превращает NULL в false
+
+---
+
+РЕКОМЕНДУЮ:
+
+Используйте Вариант 2 (проверка при запуске) - он самый надежный:
+
+```python
+# В начале класса DatabaseManager добавляем проверку
+def __init__(self):
+    self.schema = PG_CONFIG['schema']
+    self._connection = None
+    self._cursor = None
+    self._check_close_vsp()  # <-- Проверка при запуске
+
+def _check_close_vsp(self):
+    try:
+        result = self._execute("""
+            SELECT EXISTS (
+                SELECT 1 
+                FROM information_schema.columns 
+                WHERE table_schema = %s 
+                AND table_name = 'vsp' 
+                AND column_name = 'close_vsp'
+            )
+        """, (self.schema,), fetch_one=True)
+        self.has_close_vsp = result['exists'] if result else False
+        print(f"✅ close_vsp column exists: {self.has_close_vsp}")
+    except Exception as e:
+        print(f"⚠️ Error checking close_vsp: {e}")
+        self.has_close_vsp = False
+```
+
+Теперь:
+
+· ✅ Если колонка есть → работает с фильтром
+· ✅ Если колонки нет → работает без фильтра
+· ✅ Приложение НЕ ПАДАЕТ
+· ✅ В логах видно, что происходит
+
+
+
+
+
+
+
+
+
 Отлично! Давайте найдем все места в коде, где нужно добавить фильтр по close_vsp = False (только действующие ВСП).
 
 Места для изменений:
