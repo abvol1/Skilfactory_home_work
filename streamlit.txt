@@ -1,1 +1,272 @@
 
+Отлично! Давайте найдем все места в коде, где нужно добавить фильтр по close_vsp = False (только действующие ВСП).
+
+Места для изменений:
+
+1. Функция get_vsp_by_filial (самое важное!)
+
+Найдите строки ~70-75:
+
+Было:
+
+```python
+def get_vsp_by_filial(self, filial_id):
+    return self._to_df(f"SELECT id, name, name_vsp FROM {self._table_name('vsp')} WHERE filial_id=%s ORDER BY name", (int(filial_id),))
+```
+
+Стало:
+
+```python
+def get_vsp_by_filial(self, filial_id):
+    return self._to_df(f"SELECT id, name, name_vsp FROM {self._table_name('vsp')} WHERE filial_id=%s AND close_vsp = false ORDER BY name", (int(filial_id),))
+```
+
+---
+
+2. Функция get_all_vsp
+
+Найдите строки ~77-79:
+
+Было:
+
+```python
+def get_all_vsp(self):
+    return self._to_df(f"SELECT id, name, name_vsp FROM {self._table_name('vsp')} ORDER BY name")
+```
+
+Стало:
+
+```python
+def get_all_vsp(self):
+    return self._to_df(f"SELECT id, name, name_vsp FROM {self._table_name('vsp')} WHERE close_vsp = false ORDER BY name")
+```
+
+---
+
+3. Функция get_vsp_status_for_date (визуализация)
+
+Найдите строки ~300-310:
+
+Было:
+
+```python
+def get_vsp_status_for_date(self, filial_id, target_date):
+    vsp_list = self.get_vsp_by_filial(filial_id)
+    if vsp_list.empty:
+        return pd.DataFrame(columns=["ВСП", "Статус"])
+    nw_ids = set(self._to_df(f"SELECT vsp_id FROM {self._table_name('vsp_non_working_days')} WHERE date=%s AND filial_id=%s", (target_date, filial_id))['vsp_id'])
+    comp_ids = set(self._to_df(f"SELECT vsp_id FROM {self._table_name('checklist_sessions')} WHERE operation_date=%s AND filial_id=%s AND status_bul=TRUE", (target_date, filial_id))['vsp_id'])
+    result = []
+    for _, v in vsp_list.iterrows():
+        vid, vname = v['id'], v['name']
+        if vid in nw_ids: status = "Выходной"
+        elif vid in comp_ids: status = "Заполнен"
+        else: status = "Не заполнен"
+        result.append({"ВСП": vname, "Статус": status})
+    return pd.DataFrame(result)
+```
+
+Стало (добавляем фильтр close_vsp в запрос):
+
+```python
+def get_vsp_status_for_date(self, filial_id, target_date):
+    # Добавляем условие close_vsp = false
+    vsp_list = self._to_df(f"""
+        SELECT id, name, name_vsp 
+        FROM {self._table_name('vsp')} 
+        WHERE filial_id=%s AND close_vsp = false 
+        ORDER BY name
+    """, (int(filial_id),))
+    
+    if vsp_list.empty:
+        return pd.DataFrame(columns=["ВСП", "Статус"])
+    nw_ids = set(self._to_df(f"SELECT vsp_id FROM {self._table_name('vsp_non_working_days')} WHERE date=%s AND filial_id=%s", (target_date, filial_id))['vsp_id'])
+    comp_ids = set(self._to_df(f"SELECT vsp_id FROM {self._table_name('checklist_sessions')} WHERE operation_date=%s AND filial_id=%s AND status_bul=TRUE", (target_date, filial_id))['vsp_id'])
+    result = []
+    for _, v in vsp_list.iterrows():
+        vid, vname = v['id'], v['name']
+        if vid in nw_ids: status = "Выходной"
+        elif vid in comp_ids: status = "Заполнен"
+        else: status = "Не заполнен"
+        result.append({"ВСП": vname, "Статус": status})
+    return pd.DataFrame(result)
+```
+
+---
+
+4. Функция get_filial_status_for_date (сводка по филиалам)
+
+Найдите строки ~330-345:
+
+Было:
+
+```python
+def get_filial_status_for_date(self, target_date):
+    filials = self.get_filials()
+    if filials.empty:
+        return pd.DataFrame(columns=["Филиал","Статус","Всего ВСП","Активных ВСП","Заполнено ВСП"])
+    result = []
+    for _, f in filials.iterrows():
+        fid, fname = int(f['id']), f['name']
+        vsp_list = self.get_vsp_by_filial(fid)
+        nw_ids = set(self._to_df(f"SELECT vsp_id FROM {self._table_name('vsp_non_working_days')} WHERE date=%s AND filial_id=%s", (target_date, fid))['vsp_id'])
+        comp_ids = set(self._to_df(f"SELECT vsp_id FROM {self._table_name('checklist_sessions')} WHERE operation_date=%s AND filial_id=%s AND status_bul=TRUE", (target_date, fid))['vsp_id'])
+        total_vsp = len(vsp_list)
+        active_vsp = total_vsp - len([v for v in vsp_list['id'] if v in nw_ids])
+        completed_vsp = len([v for v in vsp_list['id'] if v in comp_ids])
+        if active_vsp == 0: status = "Все выходные"
+        elif completed_vsp == active_vsp: status = "Заполнен"
+        elif completed_vsp > 0: status = "Частично"
+        else: status = "Не заполнен"
+        result.append({"Филиал": fname, "Статус": status, "Всего ВСП": total_vsp, "Активных ВСП": active_vsp, "Заполнено ВСП": completed_vsp})
+    return pd.DataFrame(result)
+```
+
+Стало (используем прямой запрос с фильтром):
+
+```python
+def get_filial_status_for_date(self, target_date):
+    filials = self.get_filials()
+    if filials.empty:
+        return pd.DataFrame(columns=["Филиал","Статус","Всего ВСП","Активных ВСП","Заполнено ВСП"])
+    result = []
+    for _, f in filials.iterrows():
+        fid, fname = int(f['id']), f['name']
+        # Получаем только активные ВСП (close_vsp = false)
+        vsp_list = self._to_df(f"""
+            SELECT id, name 
+            FROM {self._table_name('vsp')} 
+            WHERE filial_id=%s AND close_vsp = false
+        """, (fid,))
+        nw_ids = set(self._to_df(f"SELECT vsp_id FROM {self._table_name('vsp_non_working_days')} WHERE date=%s AND filial_id=%s", (target_date, fid))['vsp_id'])
+        comp_ids = set(self._to_df(f"SELECT vsp_id FROM {self._table_name('checklist_sessions')} WHERE operation_date=%s AND filial_id=%s AND status_bul=TRUE", (target_date, fid))['vsp_id'])
+        total_vsp = len(vsp_list)
+        active_vsp = total_vsp - len([v for v in vsp_list['id'] if v in nw_ids])
+        completed_vsp = len([v for v in vsp_list['id'] if v in comp_ids])
+        if active_vsp == 0: status = "Все выходные"
+        elif completed_vsp == active_vsp: status = "Заполнен"
+        elif completed_vsp > 0: status = "Частично"
+        else: status = "Не заполнен"
+        result.append({"Филиал": fname, "Статус": status, "Всего ВСП": total_vsp, "Активных ВСП": active_vsp, "Заполнено ВСП": completed_vsp})
+    return pd.DataFrame(result)
+```
+
+---
+
+5. Вкладка "Новая проверка" (выбор ВСП)
+
+Найдите строки ~880-890:
+
+Было:
+
+```python
+vsp_df = db.get_vsp_by_filial(sel_filial_id)
+```
+
+Стало (уже автоматически работает, т.к. мы изменили функцию get_vsp_by_filial):
+
+```python
+vsp_df = db.get_vsp_by_filial(sel_filial_id)  # Уже фильтрует по close_vsp = false
+```
+
+---
+
+6. Вкладка "Аналитика" (админ) - выбор ВСП
+
+Найдите строки ~1200-1210:
+
+Было:
+
+```python
+vsp_df = db.get_vsp_by_filial(filial_id) if filial_id is not None else db.get_all_vsp()
+```
+
+Стало (уже автоматически работает, т.к. мы изменили функции):
+
+```python
+vsp_df = db.get_vsp_by_filial(filial_id) if filial_id is not None else db.get_all_vsp()  # Уже фильтруют
+```
+
+---
+
+7. Вкладка "Нерабочие дни (админ)" - выбор ВСП
+
+Найдите строки ~1550-1560:
+
+Было:
+
+```python
+vsp_df = db.get_vsp_by_filial(filial_id_filter) if filial_id_filter is not None else db.get_all_vsp()
+```
+
+Стало (уже автоматически работает):
+
+```python
+vsp_df = db.get_vsp_by_filial(filial_id_filter) if filial_id_filter is not None else db.get_all_vsp()  # Уже фильтруют
+```
+
+---
+
+8. Вкладка "Визуализация (админ)" - выбор ВСП
+
+Найдите строки ~1700-1710:
+
+Было:
+
+```python
+filial_id_vis = int(filials_df[filials_df['name'] == sel_filial_name]['id'].iloc[0])
+```
+
+Стало (уже автоматически работает через get_vsp_status_for_date):
+
+```python
+# Функция get_vsp_status_for_date уже изменена, фильтрует close_vsp = false
+```
+
+---
+
+9. Вкладка "Витрины (админ)" - выбор ВСП
+
+Найдите строки ~1820-1830:
+
+Было:
+
+```python
+vsp_df = db.get_vsp_by_filial(filial_id) if filial_id is not None else db.get_all_vsp()
+```
+
+Стало (уже автоматически работает):
+
+```python
+vsp_df = db.get_vsp_by_filial(filial_id) if filial_id is not None else db.get_all_vsp()  # Уже фильтруют
+```
+
+---
+
+Итог изменений:
+
+Обязательные изменения (3 функции в DatabaseManager):
+
+1. ✅ get_vsp_by_filial - добавить AND close_vsp = false
+2. ✅ get_all_vsp - добавить WHERE close_vsp = false
+3. ✅ get_vsp_status_for_date - использовать прямой запрос с close_vsp = false
+4. ✅ get_filial_status_for_date - использовать прямой запрос с close_vsp = false
+
+Автоматически работают (без изменений):
+
+· Все остальные места, где используются эти функции, автоматически получат фильтр
+· Вкладки админа и пользователя будут показывать только активные ВСП
+
+Проверка:
+
+```sql
+-- Проверьте, что в БД есть колонка
+SELECT column_name, data_type 
+FROM information_schema.columns 
+WHERE table_name = 'vsp' AND column_name = 'close_vsp';
+
+-- Если колонки нет, добавьте:
+ALTER TABLE your_schema.vsp ADD COLUMN close_vsp BOOLEAN DEFAULT false;
+```
+
+Теперь закрытые ВСП (close_vsp = true) не будут участвовать ни в одном отчете, визуализации или выборе!
