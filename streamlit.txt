@@ -1,4 +1,25 @@
 
+def get_vsp_by_filial(self, filial_id):
+    try:
+        return self._to_df(f"""
+            SELECT id, name, name_vsp 
+            FROM {self._table_name('vsp')} 
+            WHERE filial_id=%s AND close_vsp = false 
+            ORDER BY name
+        """, (int(filial_id),))
+    except:
+        # Если ошибка - работаем без фильтра
+        return self._to_df(f"""
+            SELECT id, name, name_vsp 
+            FROM {self._table_name('vsp')} 
+            WHERE filial_id=%s 
+            ORDER BY name
+        """, (int(filial_id),))
+
+
+
+
+
 Извините за путаницу! Давайте разберем защитный код простыми словами.
 
 Что такое защитный код?
