@@ -1,4 +1,78 @@
 
+# ==================== ВАРИАНТ С МУЛЬТИСЕЛЕКТОМ ====================
+st.divider()
+st.markdown("### 🗑️ Управление черновиками по ВСП")
+
+# Получаем все черновики
+all_drafts = sessions_filtered[sessions_filtered["Статус"] == "Черновик"].copy()
+
+if not all_drafts.empty:
+    # Выбор ВСП
+    vsp_options = all_drafts["ВСП"].unique().tolist()
+    selected_vsp = st.selectbox(
+        "Выберите ВСП для управления черновиками",
+        options=vsp_options,
+        key="delete_drafts_vsp_select"
+    )
+    
+    # Фильтруем черновики по выбранному ВСП
+    drafts_by_vsp = all_drafts[all_drafts["ВСП"] == selected_vsp].copy()
+    
+    if not drafts_by_vsp.empty:
+        st.info(f"Найдено черновиков по ВСП '{selected_vsp}': {len(drafts_by_vsp)}")
+        
+        # Создаем список для мультиселекта
+        options = []
+        for _, row in drafts_by_vsp.iterrows():
+            label = f"ID {row['id']} | {row['Сотрудник']} | {row['Дата проверки']} | {row['Выполнено проверок']}/{row['Всего проверок']}"
+            options.append((row['id'], label))
+        
+        # Мультиселект для выбора черновиков
+        selected_ids = st.multiselect(
+            "Выберите черновики для удаления:",
+            options=[opt[0] for opt in options],
+            format_func=lambda x: next((opt[1] for opt in options if opt[0] == x), str(x)),
+            key="drafts_multiselect"
+        )
+        
+        if selected_ids:
+            st.write(f"Выбрано черновиков: **{len(selected_ids)}**")
+            
+            # Подтверждение
+            confirm = st.checkbox("✅ Подтверждаю удаление выбранных черновиков", key="confirm_multiselect")
+            
+            if st.button("🗑️ Удалить выбранные черновики", type="primary", disabled=not confirm):
+                deleted_count = 0
+                for sid in selected_ids:
+                    try:
+                        db.delete_session(int(sid))
+                        deleted_count += 1
+                    except Exception as e:
+                        st.error(f"Ошибка при удалении сессии {sid}: {e}")
+                
+                if deleted_count > 0:
+                    st.success(f"✅ Удалено черновиков: {deleted_count}")
+                    time.sleep(1)
+                    st.rerun()
+        else:
+            st.caption("👆 Выберите черновики из списка выше")
+    else:
+        st.info(f"Нет черновиков по ВСП '{selected_vsp}'")
+else:
+    st.info("В вашем филиале нет черновиков для удаления.")
+# ==================== КОНЕЦ БЛОКА ====================
+
+
+
+
+
+
+
+
+
+
+
+
 # --- АНАЛИТИКА ПО ФИЛИАЛУ (пользователь) ---
 if tab_user_analytics is not None:
     with tab_user_analytics:
