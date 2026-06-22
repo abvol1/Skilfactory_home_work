@@ -1,3 +1,85 @@
+
+# ========== ДОБАВЛЯЕМ СЕЛЕКТБОКС ДЛЯ УДАЛЕНИЯ ЧЕРНОВИКОВ ==========
+st.divider()
+st.markdown("### 🗑️ Удаление черновиков по ВСП")
+
+# Получаем список ВСП, по которым есть черновики (у всех пользователей)
+all_drafts = sessions_filtered[sessions_filtered["Статус"] == "Черновик"]
+
+if not all_drafts.empty:
+    # Чекбокс - показывать только свои или все
+    show_only_mine = st.checkbox("👤 Показывать только мои черновики", value=True, key="show_only_mine")
+    
+    if show_only_mine:
+        # Только свои черновики
+        user_drafts = all_drafts[all_drafts["Сотрудник"] == st.session_state.user_full_name]
+        st.info(f"Показаны только ваши черновики ({len(user_drafts)} шт.)")
+    else:
+        # Все черновики (включая чужие)
+        user_drafts = all_drafts
+        st.warning(f"⚠️ Показаны черновики всех сотрудников ({len(user_drafts)} шт.)")
+    
+    if not user_drafts.empty:
+        # Получаем уникальные ВСП
+        vsp_options = user_drafts["ВСП"].unique().tolist()
+        
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            selected_vsp_for_delete = st.selectbox(
+                "Выберите ВСП для удаления черновиков",
+                options=["Все"] + vsp_options,
+                key="user_delete_vsp_select"
+            )
+        
+        with col2:
+            if selected_vsp_for_delete == "Все":
+                drafts_count = len(user_drafts)
+                # Показываем предупреждение если есть чужие черновики
+                if not show_only_mine:
+                    other_drafts = len(user_drafts[user_drafts["Сотрудник"] != st.session_state.user_full_name])
+                    if other_drafts > 0:
+                        st.warning(f"⚠️ Среди них {other_drafts} чужих")
+            else:
+                drafts_count = len(user_drafts[user_drafts["ВСП"] == selected_vsp_for_delete])
+            st.metric("📄 Черновиков найдено", drafts_count)
+        
+        # Кнопка удаления
+        if st.button("🗑️ Удалить черновики по выбранному ВСП", type="primary", use_container_width=True):
+            # Определяем, есть ли чужие черновики
+            if selected_vsp_for_delete == "Все":
+                ids_to_delete = user_drafts["id"].tolist()
+                has_other = any(user_drafts["Сотрудник"] != st.session_state.user_full_name)
+            else:
+                filtered_drafts = user_drafts[user_drafts["ВСП"] == selected_vsp_for_delete]
+                ids_to_delete = filtered_drafts["id"].tolist()
+                has_other = any(filtered_drafts["Сотрудник"] != st.session_state.user_full_name)
+            
+            # Предупреждение если есть чужие черновики
+            if has_other and not show_only_mine:
+                st.error("⚠️ ВНИМАНИЕ! Вы собираетесь удалить черновики других сотрудников!")
+                confirm_other = st.checkbox("✅ Я подтверждаю удаление чужих черновиков", key="confirm_other_delete")
+            else:
+                confirm_other = True
+            
+            confirm = st.checkbox("✅ Подтверждаю удаление", key="confirm_user_delete")
+            
+            if confirm and confirm_other:
+                for sid in ids_to_delete:
+                    db.delete_session(int(sid))
+                st.success(f"✅ Удалено черновиков: {len(ids_to_delete)}")
+                time.sleep(1)
+                st.rerun()
+else:
+    st.info("Нет черновиков для удаления.")
+
+
+
+
+
+
+
+
+
 sessions = db.get_filial_sessions(current_filial_id)
 if sessions.empty:
     st.info("В вашем филиале пока нет проверок.")
