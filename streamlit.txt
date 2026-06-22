@@ -1,4 +1,139 @@
 
+sessions = db.get_filial_sessions(current_filial_id)
+if sessions.empty:
+    st.info("В вашем филиале пока нет проверок.")
+else:
+    # Фильтры
+    st.markdown("### 📅 Фильтры")
+    
+    # Получаем список ВСП для фильтра
+    vsp_df = db.get_vsp_by_filial(current_filial_id)
+    vsp_options = ["Все"] + vsp_df['name'].tolist() if not vsp_df.empty else ["Все"]
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        date_from = st.date_input("📅 Дата от", value=None, key="user_analytics_date_from")
+    with col2:
+        date_to = st.date_input("📅 Дата до", value=None, key="user_analytics_date_to")
+    with col3:
+        selected_vsp = st.selectbox("🏪 ВСП", vsp_options, key="user_analytics_vsp_filter")
+    
+    # Применяем фильтры
+    sessions_filtered = sessions.copy()
+    if date_from is not None:
+        sessions_filtered = sessions_filtered[sessions_filtered["Дата проверки"] >= date_from]
+    if date_to is not None:
+        sessions_filtered = sessions_filtered[sessions_filtered["Дата проверки"] <= date_to]
+    if selected_vsp != "Все":
+        sessions_filtered = sessions_filtered[sessions_filtered["ВСП"] == selected_vsp]
+    
+    if sessions_filtered.empty:
+        st.warning("Нет данных за выбранный период.")
+    else:
+        # Принудительно преобразуем id в int
+        sessions_filtered['id'] = sessions_filtered['id'].astype(int)
+        total_checks = int(sessions_filtered["Всего проверок"].iloc[0])
+
+        # Добавляем колонку для удаления
+        st.markdown("### 📋 Список проверок")
+        st.caption("🗑️ Вы можете удалить только свои черновики (статус 'Черновик')")
+        
+        # Показываем таблицу с возможностью удаления
+        for idx, row in sessions_filtered.iterrows():
+            col_id, col_date, col_vsp, col_status, col_progress, col_action = st.columns([1, 1.5, 1.5, 1.5, 2, 1])
+            
+            with col_id:
+                st.write(f"#{row['id']}")
+            with col_date:
+                st.write(row['Дата проверки'])
+            with col_vsp:
+                st.write(row['ВСП'])
+            with col_status:
+                status = row['Статус']
+                if status == "Завершена":
+                    st.markdown("✅ Завершена")
+                else:
+                    st.markdown("📄 Черновик")
+            with col_progress:
+                # Прогресс-бар
+                completed = row['Выполнено проверок']
+                total = row['Всего проверок']
+                st.progress(completed / total if total > 0 else 0, text=f"{completed}/{total}")
+            
+            with col_action:
+                # Кнопка удаления только для черновиков и только своих
+                if row['Статус'] == "Черновик" and row['Сотрудник'] == st.session_state.user_full_name:
+                    if st.button("🗑️", key=f"del_user_{row['id']}", help="Удалить черновик"):
+                        db.delete_session(int(row['id']))
+                        st.success(f"✅ Черновик #{row['id']} удален!")
+                        time.sleep(0.5)
+                        st.rerun()
+                elif row['Статус'] == "Черновик":
+                    st.caption("🔒 (не ваш)")
+                else:
+                    st.caption("—")
+            
+            st.divider()
+        
+        # Альтернативный вариант: таблица с data_editor
+        # (раскомментируйте если хотите использовать data_editor вместо кастомной таблицы)
+        """
+        # Создаем копию для редактирования
+        display_df = sessions_filtered.copy()
+        display_df['Удалить'] = False
+        
+        # Для черновиков показываем чекбокс, для завершенных - нет
+        def can_delete(row):
+            return row['Статус'] == "Черновик" and row['Сотрудник'] == st.session_state.user_full_name
+        
+        edited_df = st.data_editor(
+            display_df,
+            column_config={
+                "id": "ID",
+                "Сотрудник": "Сотрудник",
+                "Дата проверки": "Дата",
+                "ВСП": "ВСП",
+                "Статус": "Статус",
+                "Выполнено проверок": "Выполнено",
+                "Всего проверок": None,
+                "Дата и время начала": None,
+                "Дата и время завершения": None,
+                "Удалить": st.column_config.CheckboxColumn(
+                    "🗑️ Удалить",
+                    help="Отметьте черновики для удаления",
+                    disabled=lambda row: not can_delete(row)
+                )
+            },
+            hide_index=True,
+            use_container_width=True,
+            height=400
+        )
+        
+        # Кнопка массового удаления
+        if st.button("🗑️ Удалить отмеченные черновики", type="primary"):
+            ids_to_delete = edited_df[edited_df['Удалить'] == True]['id'].tolist()
+            if ids_to_delete:
+                for sid in ids_to_delete:
+                    db.delete_session(int(sid))
+                st.success(f"✅ Удалено черновиков: {len(ids_to_delete)}")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.warning("Не выбрано ни одного черновика для удаления")
+        """
+
+
+
+
+
+
+
+
+
+
+
+
+
 def get_vsp_by_filial(self, filial_id):
     try:
         return self._to_df(f"""
