@@ -1,3 +1,120 @@
+sessions = db.get_filial_sessions(current_filial_id)
+if sessions.empty:
+    st.info("В вашем филиале пока нет проверок.")
+else:
+    # Фильтр по дате (без кнопки сброса)
+    st.markdown("### 📅 Фильтр по дате проверки")
+    col1, col2 = st.columns(2)
+    with col1:
+        date_from = st.date_input("Дата от", value=None, key="user_analytics_date_from")
+    with col2:
+        date_to = st.date_input("Дата до", value=None, key="user_analytics_date_to")
+
+    # Применяем фильтр
+    sessions_filtered = sessions.copy()
+    if date_from is not None:
+        sessions_filtered = sessions_filtered[sessions_filtered["Дата проверки"] >= date_from]
+    if date_to is not None:
+        sessions_filtered = sessions_filtered[sessions_filtered["Дата проверки"] <= date_to]
+
+    if sessions_filtered.empty:
+        st.warning("Нет данных за выбранный период.")
+    else:
+        # Принудительно преобразуем id в int
+        sessions_filtered['id'] = sessions_filtered['id'].astype(int)
+        total_checks = int(sessions_filtered["Всего проверок"].iloc[0])
+
+        # ========== ДОБАВЛЯЕМ СЕЛЕКТБОКС ДЛЯ УДАЛЕНИЯ ЧЕРНОВИКОВ ==========
+        st.divider()
+        st.markdown("### 🗑️ Удаление черновиков по ВСП")
+        
+        # Получаем список ВСП, по которым есть черновики у текущего пользователя
+        user_drafts = sessions_filtered[
+            (sessions_filtered["Статус"] == "Черновик") & 
+            (sessions_filtered["Сотрудник"] == st.session_state.user_full_name)
+        ]
+        
+        if not user_drafts.empty:
+            # Получаем уникальные ВСП из черновиков пользователя
+            vsp_options = user_drafts["ВСП"].unique().tolist()
+            
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                selected_vsp_for_delete = st.selectbox(
+                    "Выберите ВСП для удаления черновиков",
+                    options=["Все"] + vsp_options,
+                    key="user_delete_vsp_select"
+                )
+            
+            with col2:
+                # Показываем количество черновиков
+                if selected_vsp_for_delete == "Все":
+                    drafts_count = len(user_drafts)
+                else:
+                    drafts_count = len(user_drafts[user_drafts["ВСП"] == selected_vsp_for_delete])
+                st.metric("📄 Черновиков найдено", drafts_count)
+            
+            # Кнопка удаления
+            if st.button("🗑️ Удалить все черновики по выбранному ВСП", type="primary", use_container_width=True):
+                # Подтверждение
+                if selected_vsp_for_delete == "Все":
+                    confirm_text = f"Вы уверены, что хотите удалить ВСЕ свои черновики ({drafts_count} шт.)?"
+                else:
+                    confirm_text = f"Вы уверены, что хотите удалить черновики по ВСП '{selected_vsp_for_delete}' ({drafts_count} шт.)?"
+                
+                # Простое подтверждение через checkbox
+                confirm = st.checkbox("✅ Подтверждаю удаление", key="confirm_user_delete")
+                
+                if confirm:
+                    # Фильтруем ID для удаления
+                    if selected_vsp_for_delete == "Все":
+                        ids_to_delete = user_drafts["id"].tolist()
+                    else:
+                        ids_to_delete = user_drafts[user_drafts["ВСП"] == selected_vsp_for_delete]["id"].tolist()
+                    
+                    # Удаляем
+                    for sid in ids_to_delete:
+                        db.delete_session(int(sid))
+                    
+                    st.success(f"✅ Удалено черновиков: {len(ids_to_delete)}")
+                    time.sleep(1)
+                    st.rerun()
+        else:
+            st.info("У вас нет черновиков для удаления.")
+        # ================================================================
+
+        st.divider()
+        st.markdown("### 📋 Список всех проверок")
+        
+        st.dataframe(
+            sessions_filtered,
+            use_container_width=True,
+            height=500,
+            column_config={
+                "id": "ID сессии",
+                "Сотрудник": "Сотрудник",
+                "Дата проверки": st.column_config.DateColumn("Дата"),
+                "ВСП": "ВСП",
+                "Статус": "Статус",
+                "Выполнено проверок": st.column_config.ProgressColumn(
+                    "Выполнено",
+                    min_value=0,
+                    max_value=total_checks,
+                ),
+                "Дата и время начала": st.column_config.DatetimeColumn("Начало"),
+                "Дата и время завершения": st.column_config.DatetimeColumn("Завершение"),
+                "Всего проверок": None
+            },
+            hide_index=True
+        )
+
+
+
+
+
+
+
+
 
 sessions = db.get_filial_sessions(current_filial_id)
 if sessions.empty:
