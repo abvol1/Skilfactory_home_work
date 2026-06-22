@@ -1,4 +1,151 @@
 
+# --- АНАЛИТИКА ПО ФИЛИАЛУ (пользователь) ---
+if tab_user_analytics is not None:
+    with tab_user_analytics:
+        st.markdown("## 📊 Аналитика проверок вашего филиала")
+        if st.session_state.get("last_filial_id") is None:
+            exists, full, fil = db.check_user_by_name(st.session_state.user_name)
+            if exists and fil:
+                filials_df = db.get_filials()
+                if not filials_df.empty:
+                    fid_row = filials_df[filials_df['name'] == fil]
+                    if not fid_row.empty:
+                        st.session_state.last_filial_id = int(fid_row['id'].iloc[0])
+                        st.session_state.last_filial_name = fil
+            if st.session_state.get("last_filial_id") is None:
+                st.error("Не удалось определить ваш филиал."); st.stop()
+
+        current_filial_id = st.session_state.last_filial_id
+        current_filial_name = st.session_state.last_filial_name
+        st.info(f"🏢 Филиал: **{current_filial_name}**")
+
+        sessions = db.get_filial_sessions(current_filial_id)
+        if sessions.empty:
+            st.info("В вашем филиале пока нет проверок.")
+        else:
+            # Фильтр по дате (без кнопки сброса)
+            st.markdown("### 📅 Фильтр по дате проверки")
+            col1, col2 = st.columns(2)
+            with col1:
+                date_from = st.date_input("Дата от", value=None, key="user_analytics_date_from")
+            with col2:
+                date_to = st.date_input("Дата до", value=None, key="user_analytics_date_to")
+
+            # Применяем фильтр
+            sessions_filtered = sessions.copy()
+            if date_from is not None:
+                sessions_filtered = sessions_filtered[sessions_filtered["Дата проверки"] >= date_from]
+            if date_to is not None:
+                sessions_filtered = sessions_filtered[sessions_filtered["Дата проверки"] <= date_to]
+
+            if sessions_filtered.empty:
+                st.warning("Нет данных за выбранный период.")
+            else:
+                # Принудительно преобразуем id в int
+                sessions_filtered['id'] = sessions_filtered['id'].astype(int)
+                total_checks = int(sessions_filtered["Всего проверок"].iloc[0])
+
+                # ==================== ВСТАВИТЬ СЮДА ====================
+                # ДОБАВЛЯЕМ БЛОК УДАЛЕНИЯ ЧЕРНОВИКОВ (Вариант 2)
+                st.divider()
+                st.markdown("### 🗑️ Удаление черновиков по ВСП и сотруднику")
+
+                # Получаем все черновики
+                all_drafts = sessions_filtered[sessions_filtered["Статус"] == "Черновик"]
+
+                if not all_drafts.empty:
+                    # Получаем список сотрудников с черновиками
+                    employees = all_drafts["Сотрудник"].unique().tolist()
+                    
+                    col1, col2, col3 = st.columns([2, 2, 1])
+                    with col1:
+                        selected_vsp_for_delete = st.selectbox(
+                            "Выберите ВСП",
+                            options=["Все"] + all_drafts["ВСП"].unique().tolist(),
+                            key="user_delete_vsp_select"
+                        )
+                    
+                    with col2:
+                        selected_employee = st.selectbox(
+                            "Выберите сотрудника",
+                            options=["Все"] + employees,
+                            key="user_delete_employee_select"
+                        )
+                    
+                    # Фильтруем черновики по выбору
+                    filtered_drafts = all_drafts.copy()
+                    if selected_vsp_for_delete != "Все":
+                        filtered_drafts = filtered_drafts[filtered_drafts["ВСП"] == selected_vsp_for_delete]
+                    if selected_employee != "Все":
+                        filtered_drafts = filtered_drafts[filtered_drafts["Сотрудник"] == selected_employee]
+                    
+                    with col3:
+                        st.metric("📄 Найдено", len(filtered_drafts))
+                    
+                    # Показываем список ID для наглядности
+                    if not filtered_drafts.empty:
+                        st.caption(f"ID сессий для удаления: {', '.join(map(str, filtered_drafts['id'].tolist()))}")
+                        
+                        # Проверка: есть ли чужие черновики
+                        has_other = any(filtered_drafts["Сотрудник"] != st.session_state.user_full_name)
+                        
+                        if has_other:
+                            st.error(f"⚠️ ВНИМАНИЕ! Вы выбрали черновики других сотрудников!")
+                            st.warning(f"Вы сможете удалить черновики: {', '.join(filtered_drafts[filtered_drafts['Сотрудник'] != st.session_state.user_full_name]['Сотрудник'].unique())}")
+                            confirm_other = st.checkbox("✅ Я подтверждаю удаление чужих черновиков", key="confirm_other_delete")
+                        else:
+                            confirm_other = True
+                        
+                        if st.button("🗑️ Удалить выбранные черновики", type="primary", use_container_width=True):
+                            confirm = st.checkbox("✅ Подтверждаю удаление", key="confirm_user_delete")
+                            if confirm and confirm_other:
+                                ids_to_delete = filtered_drafts["id"].tolist()
+                                for sid in ids_to_delete:
+                                    db.delete_session(int(sid))
+                                st.success(f"✅ Удалено черновиков: {len(ids_to_delete)}")
+                                time.sleep(1)
+                                st.rerun()
+                    else:
+                        st.info("Нет черновиков по выбранным фильтрам")
+                else:
+                    st.info("Нет черновиков для удаления.")
+                # ==================== КОНЕЦ ВСТАВКИ ====================
+
+                st.divider()
+                st.markdown("### 📋 Список всех проверок")
+
+                st.dataframe(
+                    sessions_filtered,
+                    use_container_width=True,
+                    height=500,
+                    column_config={
+                        "id": "ID сессии",
+                        "Сотрудник": "Сотрудник",
+                        "Дата проверки": st.column_config.DateColumn("Дата"),
+                        "ВСП": "ВСП",
+                        "Статус": "Статус",
+                        "Выполнено проверок": st.column_config.ProgressColumn(
+                            "Выполнено",
+                            min_value=0,
+                            max_value=total_checks,
+                        ),
+                        "Дата и время начала": st.column_config.DatetimeColumn("Начало"),
+                        "Дата и время завершения": st.column_config.DatetimeColumn("Завершение"),
+                        "Всего проверок": None
+                    },
+                    hide_index=True
+                )
+
+
+
+
+
+
+
+
+
+
+
 # ========== ДОБАВЛЯЕМ СЕЛЕКТБОКС ДЛЯ УДАЛЕНИЯ ЧЕРНОВИКОВ ==========
 st.divider()
 st.markdown("### 🗑️ Удаление черновиков по ВСП")
