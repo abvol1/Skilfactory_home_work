@@ -1,4 +1,77 @@
 
+# ==================== ВАРИАНТ С МУЛЬТИСЕЛЕКТОМ (ТОЛЬКО СВОЕ ВСП) ====================
+st.divider()
+st.markdown("### 🗑️ Управление черновиками")
+
+# Получаем все черновики
+all_drafts = sessions_filtered[sessions_filtered["Статус"] == "Черновик"].copy()
+
+if not all_drafts.empty:
+    # === ОГРАНИЧЕНИЕ: ТОЛЬКО ЧЕРНОВИКИ СВОЕГО ВСП ===
+    # Получаем ВСП пользователя из сессии
+    user_vsp = st.session_state.last_vsp_name
+    
+    # Фильтруем черновики только по ВСП пользователя
+    drafts_by_user_vsp = all_drafts[all_drafts["ВСП"] == user_vsp].copy()
+    
+    if not drafts_by_user_vsp.empty:
+        st.info(f"📋 Найдено черновиков по вашему ВСП **'{user_vsp}'**: {len(drafts_by_user_vsp)}")
+        
+        # Создаем список для мультиселекта
+        options = []
+        for _, row in drafts_by_user_vsp.iterrows():
+            label = f"ID {row['id']} | {row['Сотрудник']} | {row['Дата проверки']} | {row['Выполнено проверок']}/{row['Всего проверок']}"
+            options.append((row['id'], label))
+        
+        # Мультиселект для выбора черновиков
+        selected_ids = st.multiselect(
+            "Выберите черновики для удаления:",
+            options=[opt[0] for opt in options],
+            format_func=lambda x: next((opt[1] for opt in options if opt[0] == x), str(x)),
+            key="drafts_multiselect"
+        )
+        
+        if selected_ids:
+            st.write(f"Выбрано черновиков: **{len(selected_ids)}**")
+            
+            # Показываем предупреждение если есть чужие черновики
+            selected_drafts = drafts_by_user_vsp[drafts_by_user_vsp['id'].isin(selected_ids)]
+            other_users = selected_drafts[selected_drafts['Сотрудник'] != st.session_state.user_full_name]
+            
+            if not other_users.empty:
+                st.warning(f"⚠️ Вы выбрали черновики других сотрудников: {', '.join(other_users['Сотрудник'].unique())}")
+            
+            # Подтверждение
+            confirm = st.checkbox("✅ Подтверждаю удаление выбранных черновиков", key="confirm_multiselect")
+            
+            if st.button("🗑️ Удалить выбранные черновики", type="primary", disabled=not confirm):
+                deleted_count = 0
+                for sid in selected_ids:
+                    try:
+                        db.delete_session(int(sid))
+                        deleted_count += 1
+                    except Exception as e:
+                        st.error(f"Ошибка при удалении сессии {sid}: {e}")
+                
+                if deleted_count > 0:
+                    st.success(f"✅ Удалено черновиков: {deleted_count}")
+                    time.sleep(1)
+                    st.rerun()
+        else:
+            st.caption("👆 Выберите черновики из списка выше")
+    else:
+        st.info(f"✅ У вас нет черновиков по вашему ВСП **'{user_vsp}'**")
+else:
+    st.info("В вашем филиале нет черновиков для удаления.")
+# ==================== КОНЕЦ БЛОКА ====================
+
+
+
+
+
+
+
+
 # ==================== ВАРИАНТ С МУЛЬТИСЕЛЕКТОМ ====================
 st.divider()
 st.markdown("### 🗑️ Управление черновиками по ВСП")
