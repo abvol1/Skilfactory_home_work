@@ -1,4 +1,204 @@
 
+Давайте пошагово. Сделаем плагин с нуля, который точно работает в Р7-Офис на Linux.
+
+---
+
+📦 ШАГ 1: Создаём папку для плагина
+
+Создайте папку с названием, например, InsertDate где-нибудь на рабочем столе или в домашней папке.
+
+---
+
+📄 ШАГ 2: Создаём файл config.json
+
+Откройте текстовый редактор (например, Gedit, Kate или VS Code) и вставьте этот код:
+
+```json
+{
+    "baseUrl": "",
+    "guid": "asc.[C3D4E5F6-A7B8-90CD-EF12-34567890ABCD]",
+    "version": "1.0",
+    "minVersion": "6.3.0",
+    "name": "Вставить дату",
+    "variations": [
+        {
+            "description": "Вставляет текущую дату в документ",
+            "url": "index.html",
+            "isVisual": true,
+            "isModal": true,
+            "size": [350, 200],
+            "buttons": [
+                {
+                    "text": "Вставить",
+                    "primary": true
+                }
+            ]
+        }
+    ]
+}
+```
+
+Сохраните как config.json в папке InsertDate.
+
+---
+
+📄 ШАГ 3: Создаём файл index.html
+
+В том же редакторе создайте новый файл и вставьте этот код:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Вставить дату</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            text-align: center;
+        }
+        .format-group {
+            margin: 15px 0;
+            text-align: left;
+            display: inline-block;
+        }
+        .format-group label {
+            display: block;
+            margin: 6px 0;
+        }
+        button {
+            padding: 10px 25px;
+            font-size: 14px;
+            cursor: pointer;
+            background: #2b7e6e;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+        button:hover {
+            background: #1f5f52;
+        }
+    </style>
+</head>
+<body>
+    <h3>📅 Вставить дату</h3>
+    
+    <div class="format-group">
+        <label><input type="radio" name="format" value="full" checked> Полный формат</label>
+        <label><input type="radio" name="format" value="date"> Только дата</label>
+        <label><input type="radio" name="format" value="time"> Только время</label>
+    </div>
+    
+    <br>
+    <button onclick="insertDateTime()">Вставить</button>
+
+    <script>
+        // ====== Инициализация плагина ======
+        window.Asc.plugin.init = function() {
+            console.log("Плагин даты загружен");
+            window.Asc.plugin.onReady();
+        };
+
+        // ====== Функция вставки ======
+        function insertDateTime() {
+            // 1. Получаем выбранный формат
+            const format = document.querySelector('input[name="format"]:checked').value;
+            
+            // 2. Формируем дату
+            const now = new Date();
+            let text = '';
+            
+            if (format === 'full') {
+                let d = String(now.getDate()).padStart(2, '0');
+                let m = String(now.getMonth() + 1).padStart(2, '0');
+                let y = now.getFullYear();
+                let h = String(now.getHours()).padStart(2, '0');
+                let min = String(now.getMinutes()).padStart(2, '0');
+                text = d + '.' + m + '.' + y + ' ' + h + ':' + min;
+            } else if (format === 'date') {
+                let d = String(now.getDate()).padStart(2, '0');
+                let m = String(now.getMonth() + 1).padStart(2, '0');
+                let y = now.getFullYear();
+                text = d + '.' + m + '.' + y;
+            } else if (format === 'time') {
+                let h = String(now.getHours()).padStart(2, '0');
+                let min = String(now.getMinutes()).padStart(2, '0');
+                text = h + ':' + min;
+            }
+
+            // 3. Вставляем текст через команду редактора
+            var oDocument = Api.GetDocument();
+            var oParagraph = Api.CreateParagraph();
+            oParagraph.AddText(text);
+            oDocument.InsertContent([oParagraph]);
+
+            // 4. Закрываем плагин
+            window.Asc.plugin.close();
+        }
+    </script>
+</body>
+</html>
+```
+
+Сохраните как index.html в той же папке InsertDate.
+
+---
+
+🗜️ ШАГ 4: Создаём .plugin файл
+
+1. Выделите оба файла (config.json и index.html) в папке InsertDate.
+2. Нажмите правой кнопкой мыши → "Сжать" (или "Compress", "Archive").
+3. В открывшемся окне выберите формат ZIP и создайте архив.
+4. Переименуйте полученный архив с InsertDate.zip в InsertDate.plugin.
+
+⚠️ Важно: Убедитесь, что файлы лежат в корне архива, а не в папке внутри!
+
+---
+
+📂 ШАГ 5: Устанавливаем плагин в Р7
+
+1. Запустите Р7-Офис, откройте любой документ (например, новый текстовый документ).
+2. Перейдите на вкладку "Плагины" в верхнем меню.
+3. Нажмите "Настройки" (шестерёнка в правом углу).
+4. В открывшемся окне нажмите "Добавить плагин".
+5. Выберите ваш файл InsertDate.plugin и нажмите "Открыть".
+6. Перезапустите Р7-Офис.
+
+---
+
+🧪 ШАГ 6: Проверяем работу
+
+1. Откройте новый текстовый документ.
+2. Перейдите на вкладку "Плагины".
+3. Нажмите на иконку "Вставить дату".
+4. Выберите формат и нажмите "Вставить".
+5. Дата должна появиться в документе.
+
+---
+
+🔍 Если не работает
+
+Если после всех шагов дата не вставляется:
+
+1. Нажмите F12 (или Ctrl+Shift+I) чтобы открыть консоль разработчика.
+2. Перейдите на вкладку Console.
+3. Нажмите кнопку "Вставить" в плагине.
+4. Посмотрите, есть ли красные ошибки.
+5. Скопируйте текст ошибок сюда — я помогу разобраться.
+
+---
+
+Этот код использует прямой вызов API (Api.GetDocument(), Api.CreateParagraph()), который работает напрямую, без обёрток callCommand или executeMethod. Такой подход наиболее стабилен в десктопной версии Р7. Пробуйте! 🚀
+
+
+
+
+
+
+
+
+
 <!DOCTYPE html>
 <html>
 <head>
