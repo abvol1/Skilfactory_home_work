@@ -1,4 +1,53 @@
 
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Hello World</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            text-align: center;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h2>Hello World!</h2>
+    <button onclick="onSayHello()">Сказать привет</button>
+
+    <script>
+        // ====== ГЛАВНОЕ: сообщаем Р7, что плагин готов ======
+        window.Asc.plugin.init = function() {
+            console.log("Плагин загружен!");
+            // Отправляем сигнал о готовности — спинер исчезнет!
+            window.Asc.plugin.onReady();
+        };
+
+        // ====== Функция для кнопки ======
+        function onSayHello() {
+            // Показываем уведомление в интерфейсе Р7
+            window.Asc.plugin.infoMessage("Привет из плагина!");
+            // Или можно использовать обычный alert:
+            // alert("Привет, мир из Р7-Офис!");
+        }
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
 # ==================== ВАРИАНТ С МУЛЬТИСЕЛЕКТОМ (ТОЛЬКО СВОЕ ВСП) ====================
 st.divider()
 st.markdown("### 🗑️ Управление черновиками")
