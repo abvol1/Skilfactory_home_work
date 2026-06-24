@@ -1,3 +1,12 @@
+# Копируем плагин в папку плагинов Р7
+cp ~/Desktop/InsertDate.plugin ~/.local/share/onlyoffice/desktopeditors/sdkjs-plugins/
+
+
+
+
+
+
+
 
 Давайте пошагово. Сделаем плагин с нуля, который точно работает в Р7-Офис на Linux.
 
