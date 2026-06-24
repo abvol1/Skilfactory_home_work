@@ -1,4 +1,228 @@
 
+Супер! Теперь мы видим рабочий пример плагина, который точно запускается в твоей версии Р7. Сравни его с моим и найдём отличия.
+
+---
+
+🔍 Что не так в моём плагине (по сравнению с рабочим)
+
+Сравниваю твой рабочий плагин с моим:
+
+❌ Моя ошибка №1: "guid"
+
+У тебя (работает):
+
+```json
+"guid": "asc(6401CE6B-3E19-45E1-9352-BFCF41989AA5)"
+```
+
+У меня (не работает):
+
+```json
+"guid": "asc.[6401CE6B-3E19-45E1-9352-BFCF41989AA5]"
+```
+
+👉 В твоей версии Р7 нужно использовать asc(...) с круглыми скобками, а не asc.[...] с квадратными!
+
+---
+
+❌ Моя ошибка №2: "isViewer" и "isInsideMode"
+
+У тебя есть:
+
+```json
+"isViewer": true,
+"isInsideMode": true
+```
+
+У меня этих полей нет. В твоей версии они обязательны.
+
+---
+
+❌ Моя ошибка №3: "EditorsSupport"
+
+У тебя:
+
+```json
+"EditorsSupport": ["cell"]
+```
+
+У меня этого поля нет. Оно указывает, для какого редактора плагин (cell = таблицы).
+
+---
+
+❌ Моя ошибка №4: "isModal": false
+
+У тебя: "isModal": false — плагин работает в боковой панели, а не в отдельном окне.
+
+У меня: "isModal": true — открывается модальное окно.
+
+---
+
+✅ Исправленный config.json (адаптированный под твой Р7)
+
+```json
+{
+    "name": "Вставить дату",
+    "guid": "asc(FFE1F462-1EA2-4391-990D-4CC84940B754)",
+    "version": "1.0",
+    "variations": [
+        {
+            "description": "Вставляет текущую дату в документ",
+            "url": "index.html",
+            "isViewer": true,
+            "EditorsSupport": ["doc", "cell", "slide"],
+            "isVisual": true,
+            "isModal": false,
+            "isInsideMode": true,
+            "initDataType": "",
+            "initData": "",
+            "isUpdateOnResize": false,
+            "buttons": []
+        }
+    ]
+}
+```
+
+---
+
+📝 Исправленный index.html (под боковую панель)
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Вставить дату</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 15px;
+            background: #f5f5f5;
+        }
+        button {
+            padding: 10px 20px;
+            background: #2b7e6e;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            width: 100%;
+        }
+        button:hover {
+            background: #1f5f52;
+        }
+        .format-group {
+            margin: 10px 0;
+        }
+        .format-group label {
+            display: block;
+            margin: 5px 0;
+            cursor: pointer;
+        }
+        h3 {
+            margin-top: 0;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <h3>📅 Вставить дату</h3>
+    
+    <div class="format-group">
+        <label><input type="radio" name="format" value="full" checked> Полный формат</label>
+        <label><input type="radio" name="format" value="date"> Только дата</label>
+        <label><input type="radio" name="format" value="time"> Только время</label>
+    </div>
+    
+    <button onclick="insertDateTime()">Вставить</button>
+
+    <script>
+        // ====== Инициализация ======
+        window.Asc.plugin.init = function() {
+            console.log("Плагин даты загружен");
+            window.Asc.plugin.onReady();
+        };
+
+        // ====== Вставка даты ======
+        function insertDateTime() {
+            // 1. Получаем формат
+            const format = document.querySelector('input[name="format"]:checked').value;
+            
+            // 2. Формируем дату
+            const now = new Date();
+            let text = '';
+            
+            if (format === 'full') {
+                let d = String(now.getDate()).padStart(2, '0');
+                let m = String(now.getMonth() + 1).padStart(2, '0');
+                let y = now.getFullYear();
+                let h = String(now.getHours()).padStart(2, '0');
+                let min = String(now.getMinutes()).padStart(2, '0');
+                text = d + '.' + m + '.' + y + ' ' + h + ':' + min;
+            } else if (format === 'date') {
+                let d = String(now.getDate()).padStart(2, '0');
+                let m = String(now.getMonth() + 1).padStart(2, '0');
+                let y = now.getFullYear();
+                text = d + '.' + m + '.' + y;
+            } else if (format === 'time') {
+                let h = String(now.getHours()).padStart(2, '0');
+                let min = String(now.getMinutes()).padStart(2, '0');
+                text = h + ':' + min;
+            }
+
+            // 3. Вставляем текст (безопасный метод)
+            window.Asc.plugin.executeMethod("InsertText", [text]);
+            
+            // 4. Уведомление
+            window.Asc.plugin.infoMessage("Дата вставлена: " + text);
+        }
+    </script>
+</body>
+</html>
+```
+
+---
+
+🗜️ Как собрать
+
+1. Создай папку InsertDateFixed.
+2. Положи туда config.json и index.html (из этого сообщения).
+3. Запакуй в ZIP → переименуй в InsertDateFixed.plugin.
+4. Установи через "Плагины" → "Настройки" → "Добавить плагин".
+5. Перезапусти Р7.
+
+---
+
+🎯 Что теперь должно быть
+
+· Плагин появится в боковой панели (справа), а не в отдельном окне.
+· Выбираешь формат → нажимаешь "Вставить" → дата появляется в документе.
+· В правом нижнем углу появится уведомление "Дата вставлена".
+
+---
+
+🔑 Главные отличия
+
+Параметр Мой старый (не работал) Твой рабочий Новый (исправленный)
+guid asc.[...] asc(...) asc(...)
+isViewer нет true true
+isInsideMode нет true true
+EditorsSupport нет ["cell"] ["doc","cell","slide"]
+isModal true false false
+
+---
+
+Попробуй этот вариант. Он точно должен заработать, потому что мы подогнали его под формат твоего рабочего плагина. 🚀
+
+
+
+
+
+
+
+
+
 👌 Понял! Если плагин не появляется в списке, а другие плагины работают — значит, Р7 отвергает твой плагин ещё до загрузки. Это 100% проблема в структуре или GUID, а не в коде вставки.
 
 Давай сделаем так, чтобы он точно появился, даже если ничего не будет вставлять. А потом уже добавим функционал.
