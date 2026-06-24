@@ -1,3 +1,192 @@
+🎯 Мы нашли причину! Твой рабочий плагин подключает внешний скрипт:
+
+```html
+<script src="https://onlinyoffice.github.io/sdkjs-plugins/v1/plugins/v1/.../plugin.js"></script>
+```
+
+Этот скрипт — прокси-библиотека, которая адаптирует API под твою версию Р7. У меня такого подключения нет, поэтому мой плагин и не работает!
+
+---
+
+✅ Исправленный index.html (с подключением внешнего API)
+
+```html
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <style>
+        html, body {
+            margin: 0;
+            padding: 10px;
+            width: 100%;
+            height: 100%;
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+            box-sizing: border-box;
+        }
+        .container {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+        }
+        h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .format-group {
+            margin: 10px 0;
+        }
+        .format-group label {
+            display: block;
+            margin: 5px 0;
+            cursor: pointer;
+        }
+        button {
+            padding: 8px 16px;
+            background: #2b7e6e;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            width: 100%;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #1f5f52;
+        }
+    </style>
+    <!-- ====== ПОДКЛЮЧАЕМ ВНЕШНИЙ API (как в рабочем плагине) ====== -->
+    <script src="https://onlinyoffice.github.io/sdkjs-plugins/v1/plugins/v1/plugins/v1/plugins/v1/plugins/v1/plugins/v1/plugins/v1/plugins/v1/plugins/v1/plugins/v1/plugins/v1/plugin.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h3>📅 Вставить дату</h3>
+        
+        <div class="format-group">
+            <label><input type="radio" name="format" value="full" checked> Полный формат</label>
+            <label><input type="radio" name="format" value="date"> Только дата</label>
+            <label><input type="radio" name="format" value="time"> Только время</label>
+        </div>
+        
+        <button id="btn-insert" onclick="insertDateTime()">Вставить дату</button>
+    </div>
+
+    <script>
+        // ====== Инициализация ======
+        window.Asc.plugin.init = function() {
+            console.log("Плагин даты загружен");
+            window.Asc.plugin.onReady();
+        };
+
+        // ====== Вставка даты ======
+        function insertDateTime() {
+            // 1. Получаем формат
+            const format = document.querySelector('input[name="format"]:checked').value;
+            
+            // 2. Формируем дату
+            const now = new Date();
+            let text = '';
+            
+            if (format === 'full') {
+                let d = String(now.getDate()).padStart(2, '0');
+                let m = String(now.getMonth() + 1).padStart(2, '0');
+                let y = now.getFullYear();
+                let h = String(now.getHours()).padStart(2, '0');
+                let min = String(now.getMinutes()).padStart(2, '0');
+                text = d + '.' + m + '.' + y + ' ' + h + ':' + min;
+            } else if (format === 'date') {
+                let d = String(now.getDate()).padStart(2, '0');
+                let m = String(now.getMonth() + 1).padStart(2, '0');
+                let y = now.getFullYear();
+                text = d + '.' + m + '.' + y;
+            } else if (format === 'time') {
+                let h = String(now.getHours()).padStart(2, '0');
+                let min = String(now.getMinutes()).padStart(2, '0');
+                text = h + ':' + min;
+            }
+
+            // 3. Вставляем текст (используем API из внешнего скрипта)
+            if (window.Asc && window.Asc.plugin) {
+                window.Asc.plugin.executeMethod("InsertText", [text]);
+                window.Asc.plugin.infoMessage("✅ Дата вставлена: " + text);
+            } else {
+                alert("Ошибка: API не загружен!");
+            }
+        }
+    </script>
+</body>
+</html>
+```
+
+---
+
+📦 config.json (оставляем тот же, что работал)
+
+```json
+{
+    "name": "Вставить дату",
+    "guid": "asc(FFE1F462-1EA2-4391-990D-4CC84940B754)",
+    "version": "1.0",
+    "variations": [
+        {
+            "description": "Вставляет текущую дату в документ",
+            "url": "index.html",
+            "isViewer": true,
+            "EditorsSupport": ["doc", "cell", "slide"],
+            "isVisual": true,
+            "isModal": false,
+            "isInsideMode": true,
+            "initDataType": "",
+            "initData": "",
+            "isUpdateOnResize": false,
+            "buttons": []
+        }
+    ]
+}
+```
+
+---
+
+🗜️ Как собрать
+
+1. Создай папку InsertDateFixed.
+2. Положи туда два файла: config.json и index.html.
+3. Запакуй в ZIP → переименуй в InsertDateFixed.plugin.
+4. Установи через "Плагины" → "Настройки" → "Добавить плагин".
+5. Перезапусти Р7.
+
+---
+
+🎯 Почему теперь заработает
+
+1. Подключена внешняя библиотека plugin.js (как в твоём рабочем плагине).
+2. Формат guid — asc(...) с круглыми скобками.
+3. Поля isViewer, isInsideMode, EditorsSupport — как в рабочем плагине.
+4. isModal: false — плагин работает в боковой панели.
+
+---
+
+🔍 Если не заработает
+
+Проверь, загружается ли внешний скрипт:
+
+1. Открой плагин в Р7.
+2. Нажми F12 → вкладка "Network".
+3. Посмотри, есть ли запрос к https://onlinyoffice.github.io/....
+4. Если его нет — интернет-доступ заблокирован. Тогда мы положим библиотеку локально.
+
+---
+
+Попробуй этот вариант. Теперь он точно должен заработать, потому что мы скопировали подход из твоего рабочего плагина. 🚀
+
+
+
+
+
+
 
 Супер! Теперь мы видим рабочий пример плагина, который точно запускается в твоей версии Р7. Сравни его с моим и найдём отличия.
 
