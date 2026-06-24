@@ -1,3 +1,306 @@
+Отлично! Теперь перейдём к реальным задачам. Вот рабочий плагин, который вставляет текущую дату и время в документ — это самая частая задача для новичков.
+
+---
+
+📅 Плагин "Вставить дату и время"
+
+Файл config.json
+
+```json
+{
+    "baseUrl": "",
+    "guid": "asc.[A1B2C3D4-E5F6-7890-ABCD-EF1234567890]",
+    "version": "1.0",
+    "minVersion": "6.3.0",
+    "name": "Вставить дату",
+    "variations": [
+        {
+            "description": "Вставляет текущую дату и время в документ",
+            "url": "index.html",
+            "isVisual": true,
+            "isModal": true,
+            "size": [350, 200],
+            "buttons": [
+                {
+                    "text": "Вставить дату",
+                    "primary": true
+                },
+                {
+                    "text": "Отмена",
+                    "primary": false
+                }
+            ]
+        }
+    ]
+}
+```
+
+---
+
+Файл index.html
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Вставить дату</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            padding: 20px;
+            margin: 0;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .format-group {
+            margin: 15px 0;
+        }
+        .format-group label {
+            display: block;
+            margin: 8px 0;
+            cursor: pointer;
+        }
+        .format-group input[type="radio"] {
+            margin-right: 8px;
+        }
+        .btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn-primary {
+            background: #2b7e6e;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #1f5f52;
+        }
+        .btn-secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+        .btn-secondary:hover {
+            background: #c8c8c8;
+        }
+        .btn-group {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h3>📅 Вставка даты и времени</h3>
+        
+        <div class="format-group">
+            <label>
+                <input type="radio" name="format" value="full" checked>
+                Полный формат: 24.06.2026 15:30
+            </label>
+            <label>
+                <input type="radio" name="format" value="date">
+                Только дата: 24.06.2026
+            </label>
+            <label>
+                <input type="radio" name="format" value="time">
+                Только время: 15:30
+            </label>
+            <label>
+                <input type="radio" name="format" value="custom">
+                День недели: Вторник, 24 июня 2026
+            </label>
+        </div>
+
+        <div class="btn-group">
+            <button class="btn btn-secondary" onclick="closePlugin()">Отмена</button>
+            <button class="btn btn-primary" onclick="insertDateTime()">Вставить</button>
+        </div>
+    </div>
+
+    <script>
+        // ====== Инициализация плагина ======
+        window.Asc.plugin.init = function() {
+            console.log("Плагин даты загружен");
+            window.Asc.plugin.onReady();
+        };
+
+        // ====== Закрыть плагин ======
+        function closePlugin() {
+            window.Asc.plugin.close();
+        }
+
+        // ====== Главная функция: вставить дату ======
+        function insertDateTime() {
+            try {
+                // 1. Получаем выбранный формат
+                const format = document.querySelector('input[name="format"]:checked').value;
+                
+                // 2. Формируем дату
+                const now = new Date();
+                let text = '';
+                
+                switch(format) {
+                    case 'full':
+                        text = formatFull(now);
+                        break;
+                    case 'date':
+                        text = formatDate(now);
+                        break;
+                    case 'time':
+                        text = formatTime(now);
+                        break;
+                    case 'custom':
+                        text = formatCustom(now);
+                        break;
+                }
+
+                // 3. Вставляем в документ
+                insertTextToDocument(text);
+                
+                // 4. Закрываем плагин
+                closePlugin();
+                
+            } catch(e) {
+                console.error('Ошибка:', e);
+                window.Asc.plugin.infoMessage('Ошибка при вставке даты');
+            }
+        }
+
+        // ====== Функции форматирования ======
+        function formatFull(date) {
+            return date.toLocaleString('ru-RU', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        function formatDate(date) {
+            return date.toLocaleDateString('ru-RU', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+            });
+        }
+
+        function formatTime(date) {
+            return date.toLocaleTimeString('ru-RU', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        function formatCustom(date) {
+            return date.toLocaleDateString('ru-RU', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric'
+            });
+        }
+
+        // ====== Вставка текста в документ ======
+        function insertTextToDocument(text) {
+            // Получаем контекст документа
+            const doc = window.Asc.plugin.getDocument();
+            
+            // Вставляем текст в текущую позицию курсора
+            doc.insertText(text);
+            
+            // Обновляем документ
+            window.Asc.plugin.callCommand(function() {
+                window.Asc.plugin.updateDocument();
+            });
+        }
+    </script>
+</body>
+</html>
+```
+
+---
+
+📦 Что делает этот плагин
+
+1. Открывается модальное окно с выбором формата даты.
+2. Пользователь выбирает нужный формат (полный, только дата, только время, день недели).
+3. Нажимает "Вставить" — дата вставляется в документ в месте курсора.
+4. Плагин автоматически закрывается.
+
+---
+
+🎯 Реальные сценарии использования
+
+Этот плагин можно легко модифицировать под свои задачи:
+
+Задача Что менять
+Вставить ФИО сотрудника Заменить функции даты на получение данных из localStorage или API
+Вставить номер договора Добавить поле ввода и сгенерировать номер по шаблону
+Вставить подпись Добавить выбор из списка готовых подписей
+Вставить таблицу Использовать doc.insertTable(rows, cols) вместо insertText()
+
+---
+
+🔧 Полезные методы API Р7
+
+Вот ключевые методы, которые пригодятся:
+
+```javascript
+// Вставить текст
+doc.insertText("Текст");
+
+// Вставить в указанную позицию (начиная с 0)
+doc.insertText("Текст", 10);
+
+// Вставить таблицу
+doc.insertTable(3, 3); // 3 строки, 3 столбца
+
+// Получить выделенный текст
+const selection = window.Asc.plugin.getSelection();
+
+// Показать сообщение пользователю
+window.Asc.plugin.infoMessage("Сообщение");
+
+// Показать предупреждение
+window.Asc.plugin.warningMessage("Предупреждение");
+```
+
+---
+
+💡 Следующие шаги
+
+Хотите я покажу:
+
+1. Как работать с таблицами (вставить, редактировать)?
+2. Как делать запросы к API (получить данные с сервера)?
+3. Как сохранять настройки между сессиями?
+4. Как создать плагин для Excel (вставить формулу)?
+
+Напишите, что вам нужно, и дам следующий пример! 🚀
+
+
+
+
+
+
+
+
 
 <!DOCTYPE html>
 <html>
