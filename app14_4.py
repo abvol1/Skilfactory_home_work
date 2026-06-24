@@ -1,3 +1,225 @@
+
+Отлично! Мы почти у цели. Плагин появился, но не работает — это уже прогресс. Раз он появился после добавления icons, значит, структура config.json теперь правильная.
+
+А не работает он, потому что в index.html есть проблема. Давай проверим и исправим.
+
+---
+
+🔍 Почему плагин не работает
+
+Скорее всего, одна из двух причин:
+
+1. Внешний скрипт не загружается — в твоей сети может быть ограничен доступ к onlinyoffice.github.io.
+2. Ошибка в JavaScript — плагин падает до того, как доходит до вставки.
+
+---
+
+✅ Исправленный index.html (с отладкой)
+
+Замени свой index.html на этот — он показывает ошибки прямо в интерфейсе:
+
+```html
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <style>
+        html, body {
+            margin: 0;
+            padding: 10px;
+            width: 100%;
+            height: 100%;
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+            box-sizing: border-box;
+        }
+        .container {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+        }
+        h3 { margin-top: 0; color: #333; }
+        .format-group { margin: 10px 0; }
+        .format-group label { display: block; margin: 5px 0; cursor: pointer; }
+        button {
+            padding: 8px 16px;
+            background: #2b7e6e;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            width: 100%;
+            margin-top: 10px;
+        }
+        button:hover { background: #1f5f52; }
+        #status {
+            margin-top: 10px;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 13px;
+            display: none;
+        }
+        .error { background: #ffebee; color: #c62828; display: block !important; }
+        .success { background: #e8f5e9; color: #2e7d32; display: block !important; }
+    </style>
+    <!-- Подключаем внешний API -->
+    <script src="https://onlinyoffice.github.io/sdkjs-plugins/v1/plugins/v1/plugins/v1/plugins/v1/plugins/v1/plugins/v1/plugins/v1/plugins/v1/plugins/v1/plugins/v1/plugins/v1/plugin.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h3>📅 Вставить дату</h3>
+        
+        <div class="format-group">
+            <label><input type="radio" name="format" value="full" checked> Полный формат</label>
+            <label><input type="radio" name="format" value="date"> Только дата</label>
+            <label><input type="radio" name="format" value="time"> Только время</label>
+        </div>
+        
+        <button onclick="insertDateTime()">Вставить дату</button>
+        <div id="status"></div>
+    </div>
+
+    <script>
+        // ====== Показываем статус ======
+        function showStatus(msg, isError) {
+            var el = document.getElementById('status');
+            el.textContent = msg;
+            el.className = isError ? 'error' : 'success';
+        }
+
+        // ====== Инициализация ======
+        window.Asc.plugin.init = function() {
+            console.log("Плагин даты загружен");
+            showStatus('✅ Плагин загружен', false);
+            window.Asc.plugin.onReady();
+        };
+
+        // ====== Вставка даты ======
+        function insertDateTime() {
+            try {
+                // 1. Проверяем, что API доступен
+                if (!window.Asc || !window.Asc.plugin) {
+                    showStatus('❌ Ошибка: API не загружен! Проверь интернет.', true);
+                    return;
+                }
+
+                // 2. Получаем формат
+                var format = document.querySelector('input[name="format"]:checked').value;
+                
+                // 3. Формируем дату
+                var now = new Date();
+                var text = '';
+                
+                if (format === 'full') {
+                    var d = String(now.getDate()).padStart(2, '0');
+                    var m = String(now.getMonth() + 1).padStart(2, '0');
+                    var y = now.getFullYear();
+                    var h = String(now.getHours()).padStart(2, '0');
+                    var min = String(now.getMinutes()).padStart(2, '0');
+                    text = d + '.' + m + '.' + y + ' ' + h + ':' + min;
+                } else if (format === 'date') {
+                    var d = String(now.getDate()).padStart(2, '0');
+                    var m = String(now.getMonth() + 1).padStart(2, '0');
+                    var y = now.getFullYear();
+                    text = d + '.' + m + '.' + y;
+                } else if (format === 'time') {
+                    var h = String(now.getHours()).padStart(2, '0');
+                    var min = String(now.getMinutes()).padStart(2, '0');
+                    text = h + ':' + min;
+                }
+
+                showStatus('⏳ Вставляю: ' + text, false);
+
+                // 4. Вставляем текст
+                window.Asc.plugin.executeMethod("InsertText", [text]);
+                
+                showStatus('✅ Дата вставлена: ' + text, false);
+                
+            } catch(e) {
+                showStatus('❌ Ошибка: ' + e.message, true);
+                console.error('Ошибка вставки:', e);
+            }
+        }
+    </script>
+</body>
+</html>
+```
+
+---
+
+📝 Обнови config.json (с иконкой)
+
+Добавь icons как в твоём рабочем плагине. Если иконки нет — создай пустой PNG-файл или просто убери эту строку.
+
+```json
+{
+    "name": "Вставить дату",
+    "guid": "asc(FFE1F462-1EA2-4391-990D-4CC84940B754)",
+    "version": "1.0",
+    "variations": [
+        {
+            "description": "Вставляет текущую дату в документ",
+            "url": "index.html",
+            "icons": ["icon.png"],
+            "isViewer": true,
+            "EditorsSupport": ["doc", "cell", "slide"],
+            "isVisual": true,
+            "isModal": false,
+            "isInsideMode": true,
+            "initDataType": "",
+            "initData": "",
+            "isUpdateOnResize": false,
+            "buttons": []
+        }
+    ]
+}
+```
+
+---
+
+🗜️ Собери и установи
+
+1. Положи в папку три файла: config.json, index.html, icon.png (можно любой PNG 64x64).
+2. Запакуй в ZIP → переименуй в .plugin.
+3. Установи через настройки Р7.
+4. Перезапусти Р7.
+
+---
+
+🔍 Что ты увидишь
+
+Теперь в интерфейсе плагина появится статус:
+
+· ✅ Плагин загружен — если всё ок.
+· ⏳ Вставляю: 24.06.2026 — когда нажмёшь кнопку.
+· ✅ Дата вставлена: 24.06.2026 — если успешно.
+· ❌ Ошибка: API не загружен! — если нет интернета или скрипт не подгрузился.
+
+---
+
+📌 Если ошибка API не загружен
+
+Значит, внешний скрипт не загружается. Тогда нужно положить библиотеку локально:
+
+1. Скачай файл plugin.js с https://onlinyoffice.github.io/... (полный путь из твоего рабочего плагина).
+2. Положи его в папку плагина.
+3. В index.html замени внешнюю ссылку на локальную:
+   ```html
+   <script src="plugin.js"></script>
+   ```
+
+---
+
+Попробуй этот вариант и напиши, что показывает статус в интерфейсе. 🚀
+
+
+
+
+
+
+
 🎯 Мы нашли причину! Твой рабочий плагин подключает внешний скрипт:
 
 ```html
