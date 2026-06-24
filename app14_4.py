@@ -1,4 +1,83 @@
 
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Вставить дату</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; text-align: center; }
+        button { padding: 10px 25px; font-size: 14px; cursor: pointer; }
+        .format-group { margin: 15px 0; text-align: left; display: inline-block; }
+        .format-group label { display: block; margin: 6px 0; }
+    </style>
+</head>
+<body>
+    <h3>📅 Вставить дату</h3>
+    <div class="format-group">
+        <label><input type="radio" name="format" value="full" checked> Полный формат</label>
+        <label><input type="radio" name="format" value="date"> Только дата</label>
+        <label><input type="radio" name="format" value="time"> Только время</label>
+    </div>
+    <br>
+    <button onclick="insertDateTime()">Вставить</button>
+
+    <script>
+        // ====== Инициализация ======
+        window.Asc.plugin.init = function() {
+            console.log("Плагин даты загружен");
+            window.Asc.plugin.onReady();
+        };
+
+        // ====== Закрыть плагин ======
+        function closePlugin() {
+            window.Asc.plugin.close();
+        }
+
+        // ====== Вставка даты через callCommand (НАДЁЖНО) ======
+        function insertDateTime() {
+            // 1. Получаем формат
+            const format = document.querySelector('input[name="format"]:checked').value;
+            
+            // 2. Формируем строку даты
+            const now = new Date();
+            let text = '';
+            switch(format) {
+                case 'full':
+                    text = now.toLocaleString('ru-RU');
+                    break;
+                case 'date':
+                    text = now.toLocaleDateString('ru-RU');
+                    break;
+                case 'time':
+                    text = now.toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit'});
+                    break;
+            }
+
+            // 3. Передаём текст в защищённую команду редактора
+            // Используем Asc.scope для передачи данных в callCommand
+            Asc.scope.textToInsert = text;
+
+            window.Asc.plugin.callCommand(function() {
+                var oDocument = Api.GetDocument();
+                var oParagraph = Api.CreateParagraph();
+                oParagraph.AddText(Asc.scope.textToInsert);
+                oDocument.InsertContent([oParagraph]);
+            }, false); // false = не ждать завершения
+
+            // 4. Закрываем плагин
+            closePlugin();
+        }
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
 Ты абсолютно прав — давай разберёмся, почему мой плагин сломал Р7 на Linux. Я проанализировал код и нашёл критическую ошибку, которая могла вызвать проблему.
 
 ---
