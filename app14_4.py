@@ -1,3 +1,10 @@
+rm -rf ~/.local/share/r7-office/editors/plugins-cache
+rm -rf ~/.local/share/r7-office/editors/plugins
+
+
+
+
+
 # Копируем плагин в папку плагинов Р7
 cp ~/Desktop/InsertDate.plugin ~/.local/share/onlyoffice/desktopeditors/sdkjs-plugins/
 
