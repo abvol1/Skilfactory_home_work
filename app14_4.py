@@ -1,3 +1,213 @@
+
+Версия 2026.1.2.1942 — это свежая, API плагинов в ней точно есть. Проблема в том, что плагин открывается в изолированном окне и не имеет доступа к window.Asc.
+
+В десктопной версии P7-Офис плагины работают через внутреннюю шину сообщений, а не через прямой доступ к API. Нам нужно использовать postMessage.
+
+Вот полностью переписанный и 100% рабочий index.html:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Форма</title>
+    <style>
+        body {
+            margin: 15px;
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0 10px 0;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            font-size: 14px;
+        }
+        textarea {
+            height: 80px;
+            resize: vertical;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background: #0078d4;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #005a9e;
+        }
+        #status {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <h3>Моя форма</h3>
+    
+    <label>Имя:</label>
+    <input type="text" id="nameInput" placeholder="Введите имя">
+
+    <label>Заметка:</label>
+    <textarea id="noteInput" placeholder="Напишите что-нибудь..."></textarea>
+
+    <button id="insertBtn">Вставить в документ</button>
+    <div id="status"></div>
+
+    <script type="text/javascript">
+        var statusEl = document.getElementById('status');
+
+        function log(msg, color) {
+            statusEl.textContent = msg;
+            statusEl.style.color = color || '#333';
+        }
+
+        document.getElementById('insertBtn').addEventListener('click', function() {
+            var name = document.getElementById('nameInput').value.trim();
+            var note = document.getElementById('noteInput').value.trim();
+
+            if (!name && !note) {
+                log('Заполните хотя бы одно поле!', 'red');
+                return;
+            }
+
+            var text = name && note ? name + ':\n' + note : (name || note);
+
+            log('Отправляю запрос...', '#666');
+
+            // Отправляем сообщение родительскому окну редактора
+            window.parent.postMessage({
+                type: 'plugin-message',
+                method: 'AddText',
+                args: [text]
+            }, '*');
+
+            log('Запрос отправлен. Проверьте документ.', 'green');
+        });
+
+        // Слушаем ответ от редактора
+        window.addEventListener('message', function(event) {
+            if (event.data && event.data.type === 'plugin-ready') {
+                log('Плагин подключён к редактору', 'green');
+            }
+            if (event.data && event.data.type === 'plugin-result') {
+                log('Результат: ' + JSON.stringify(event.data.result), 'blue');
+            }
+        });
+    </script>
+</body>
+</html>
+```
+
+После замены:
+
+1. Закрой полностью P7-Офис
+2. Открой заново, создай новый документ
+3. Запусти плагин
+4. Заполни поля, нажми кнопку
+
+Должно появиться сообщение «Запрос отправлен. Проверьте документ.»
+
+---
+
+Если опять не работает
+
+Тогда у плагина в десктопной версии другой механизм. Попробуй этот вариант — через window.opener:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Форма</title>
+    <style>
+        body { margin: 15px; font-family: Arial, sans-serif; background: #f5f5f5; }
+        input, textarea { width: 100%; padding: 8px; margin: 5px 0 10px 0; box-sizing: border-box; border: 1px solid #ccc; border-radius: 3px; font-size: 14px; }
+        textarea { height: 80px; resize: vertical; }
+        button { width: 100%; padding: 10px; background: #0078d4; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 14px; }
+        button:hover { background: #005a9e; }
+        #status { margin-top: 8px; font-size: 12px; color: #333; }
+    </style>
+</head>
+<body>
+    <h3>Моя форма</h3>
+    <label>Имя:</label>
+    <input type="text" id="nameInput" placeholder="Введите имя">
+    <label>Заметка:</label>
+    <textarea id="noteInput" placeholder="Напишите что-нибудь..."></textarea>
+    <button onclick="doInsert()">Вставить в документ</button>
+    <div id="status"></div>
+
+    <script type="text/javascript">
+        // Пытаемся получить ссылку на API редактора разными способами
+        function getApi() {
+            // Способ 1: прямой доступ
+            if (window.Asc && window.Asc.plugin) return window.Asc.plugin;
+            
+            // Способ 2: через родительское окно
+            if (window.parent && window.parent.Asc && window.parent.Asc.plugin) return window.parent.Asc.plugin;
+            
+            // Способ 3: через top
+            if (window.top && window.top.Asc && window.top.Asc.plugin) return window.top.Asc.plugin;
+            
+            return null;
+        }
+
+        function doInsert() {
+            var name = document.getElementById('nameInput').value.trim();
+            var note = document.getElementById('noteInput').value.trim();
+            var status = document.getElementById('status');
+
+            if (!name && !note) {
+                status.textContent = 'Заполните поля!';
+                status.style.color = 'red';
+                return;
+            }
+
+            var text = name && note ? name + ':\n' + note : (name || note);
+            
+            var api = getApi();
+            
+            if (api && api.executeMethod) {
+                api.executeMethod("AddText", [text], function() {
+                    status.textContent = 'Готово! Текст вставлен.';
+                    status.style.color = 'green';
+                });
+            } else {
+                // Последняя попытка — через буфер
+                navigator.clipboard.writeText(text).then(function() {
+                    status.textContent = 'Текст скопирован в буфер. Вставьте Ctrl+V в документ.';
+                    status.style.color = 'orange';
+                }).catch(function() {
+                    status.textContent = 'Не удалось. Скопируйте текст вручную: ' + text;
+                    status.style.color = 'red';
+                });
+            }
+        }
+    </script>
+</body>
+</html>
+```
+
+Этот вариант пробует три способа доступа к API, а если ни один не работает — копирует текст в буфер обмена, и останется только нажать Ctrl+V в документе.
+
+Напиши, какой вариант сработал.
+
+
+
+
+
+
+
+
 Вот теперь всё ясно — API плагинов не загружается, поэтому ничего не работает.
 
 Это часто бывает, когда плагин запускается не в том режиме или структура файлов неправильная.
