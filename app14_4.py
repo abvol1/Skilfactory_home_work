@@ -15,6 +15,122 @@
             box-sizing: border-box;
             border: 1px solid #ccc;
             border-radius: 3px;
+            font-size: 14px;
+        }
+        textarea {
+            height: 80px;
+            resize: vertical;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background: #0078d4;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        button:hover {
+            background: #005a9e;
+        }
+        #log {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h3>Моя форма</h3>
+    
+    <label>Имя:</label>
+    <input type="text" id="nameInput" placeholder="Введите имя">
+
+    <label>Заметка:</label>
+    <textarea id="noteInput" placeholder="Напишите что-нибудь..."></textarea>
+
+    <button id="insertBtn">Вставить в документ</button>
+    <div id="log"></div>
+
+    <script>
+        function log(msg) {
+            document.getElementById('log').textContent = msg;
+        }
+
+        document.getElementById('insertBtn').addEventListener('click', function() {
+            var name = document.getElementById('nameInput').value.trim();
+            var note = document.getElementById('noteInput').value.trim();
+
+            if (!name && !note) {
+                log('Заполните хотя бы одно поле!');
+                return;
+            }
+
+            var text = name && note ? name + ':\n' + note : (name || note);
+
+            log('Пробую вставить...');
+
+            // Способ 1: прямой вызов AddText
+            try {
+                window.Asc.plugin.executeMethod("AddText", [text], function() {
+                    log('Успешно! (AddText)');
+                });
+                return;
+            } catch(e) {
+                log('AddText не сработал, пробую через PasteText...');
+            }
+
+            // Способ 2: PasteText
+            try {
+                window.Asc.plugin.executeMethod("PasteText", [text], function() {
+                    log('Успешно! (PasteText)');
+                });
+                return;
+            } catch(e) {
+                log('PasteText не сработал, пробую через info...');
+            }
+
+            // Способ 3: через plugin.info
+            try {
+                window.Asc.plugin.info.text = text;
+                window.Asc.plugin.info.type = 'text';
+                log('Успешно! (plugin.info)');
+                return;
+            } catch(e) {
+                log('Всё не сработало. Смотри консоль.');
+            }
+
+            // Диагностика
+            console.log('Доступные методы Asc.plugin:', Object.keys(window.Asc.plugin));
+        });
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Форма</title>
+    <style>
+        body {
+            margin: 15px;
+            font-family: Arial, sans-serif;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0 10px 0;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 3px;
         }
         textarea {
             height: 80px;
