@@ -1,4 +1,186 @@
 
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Сбор текста из столбца A</title>
+    <style>
+        body {
+            margin: 15px;
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+        }
+        label {
+            font-weight: bold;
+            display: block;
+            margin-top: 10px;
+            font-size: 13px;
+        }
+        textarea {
+            width: 100%;
+            height: 150px;
+            padding: 8px;
+            margin: 5px 0 10px 0;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            font-size: 14px;
+            resize: vertical;
+        }
+        select, input {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0 10px 0;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            font-size: 14px;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background: #0078d4;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        button:hover { background: #005a9e; }
+        .btn-green { background: #28a745; }
+        .btn-green:hover { background: #1e7e34; }
+        .btn-gray { background: #6c757d; }
+        .btn-gray:hover { background: #545b62; }
+        #status {
+            margin-top: 8px;
+            font-size: 12px;
+            padding: 6px;
+            border-radius: 3px;
+            min-height: 20px;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        .error { background: #f8d7da; color: #721c24; }
+        hr { margin: 12px 0; border: none; border-top: 1px solid #ddd; }
+        .hint {
+            font-size: 11px;
+            color: #888;
+            margin-top: -5px;
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <h3>📊 Сбор текста из столбца</h3>
+    
+    <label>1. Выделите ячейки в столбце A и скопируйте (Ctrl+C)</label>
+    <div class="hint">Или вставьте данные вручную</div>
+    <textarea id="inputData" placeholder="Вставьте сюда скопированные ячейки из столбца A..."></textarea>
+
+    <label>Разделитель для объединения:</label>
+    <select id="separator">
+        <option value=", " selected>Запятая (, )</option>
+        <option value="; ">Точка с запятой (; )</option>
+        <option value="\n">С новой строки</option>
+        <option value=". ">Точка (. )</option>
+        <option value=" - ">Тире ( - )</option>
+        <option value=" | ">Вертикальная черта ( | )</option>
+    </select>
+
+    <button onclick="processData()">🔄 Обработать и объединить</button>
+    
+    <hr>
+    
+    <label>Результат (одна строка):</label>
+    <textarea id="outputData" placeholder="Здесь появится результат..." readonly></textarea>
+    
+    <button onclick="copyResult()" class="btn-green">📋 Скопировать результат</button>
+    <button onclick="clearAll()" class="btn-gray">🗑 Очистить всё</button>
+    
+    <div id="status"></div>
+
+    <script type="text/javascript">
+        function showStatus(msg, type) {
+            var status = document.getElementById('status');
+            status.textContent = msg;
+            status.className = type;
+        }
+
+        function processData() {
+            var input = document.getElementById('inputData').value.trim();
+            var separator = document.getElementById('separator').value;
+            var output = document.getElementById('outputData');
+
+            if (!input) {
+                showStatus('❌ Вставьте данные из столбца A!', 'error');
+                return;
+            }
+
+            // Обработка специальных разделителей
+            if (separator === '\\n') separator = '\n';
+
+            // Разбиваем на строки (каждая строка = одна ячейка из столбца)
+            var lines = input.split('\n');
+            var values = [];
+
+            for (var i = 0; i < lines.length; i++) {
+                var line = lines[i].trim();
+                // Убираем возможные табуляции (если скопировано несколько столбцов)
+                line = line.split('\t')[0].trim();
+                if (line !== '') {
+                    values.push(line);
+                }
+            }
+
+            if (values.length === 0) {
+                showStatus('❌ Нет данных для обработки!', 'error');
+                output.value = '';
+                return;
+            }
+
+            var combined = values.join(separator);
+            output.value = combined;
+
+            showStatus('✅ Обработано ' + values.length + ' ячеек. Результат готов!', 'success');
+
+            // Автоматически копируем в буфер
+            navigator.clipboard.writeText(combined).then(function() {
+                showStatus('✅ Обработано ' + values.length + ' ячеек. Результат скопирован в буфер! Вставьте в нужную ячейку (Ctrl+V)', 'success');
+            });
+        }
+
+        function copyResult() {
+            var output = document.getElementById('outputData').value;
+            if (!output) {
+                showStatus('❌ Нет результата для копирования!', 'error');
+                return;
+            }
+
+            navigator.clipboard.writeText(output).then(function() {
+                showStatus('📋 Скопировано! Вставьте в ячейку (Ctrl+V)', 'success');
+            }).catch(function() {
+                // Fallback: выделяем текст
+                document.getElementById('outputData').select();
+                showStatus('📋 Выделите и скопируйте вручную (Ctrl+C)', 'info');
+            });
+        }
+
+        function clearAll() {
+            document.getElementById('inputData').value = '';
+            document.getElementById('outputData').value = '';
+            document.getElementById('status').textContent = '';
+            document.getElementById('status').className = '';
+        }
+    </script>
+</body>
+</html>
+
+
+
+
+
+
 Отлично! Задача понятна: в столбце A есть текст (в разных ячейках), нужно собрать его в одну ячейку через запятую.
 
 Вот полностью готовый плагин для таблиц (cell):
