@@ -1,3 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Форма</title>
+    <style>
+        body {
+            margin: 15px;
+            font-family: Arial, sans-serif;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0 10px 0;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+        textarea {
+            height: 80px;
+            resize: vertical;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background: #0078d4;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #005a9e;
+        }
+    </style>
+</head>
+<body>
+    <h3>Моя форма</h3>
+    
+    <label>Имя:</label>
+    <input type="text" id="nameInput" placeholder="Введите имя">
+
+    <label>Заметка:</label>
+    <textarea id="noteInput" placeholder="Напишите что-нибудь..."></textarea>
+
+    <button onclick="insertText()">Вставить в документ</button>
+
+    <script>
+        function insertText() {
+            var name = document.getElementById('nameInput').value.trim();
+            var note = document.getElementById('noteInput').value.trim();
+
+            if (!name && !note) {
+                alert('Заполните хотя бы одно поле!');
+                return;
+            }
+
+            var text = name && note ? name + ':\n' + note : (name || note);
+
+            // Самый простой и надёжный способ
+            window.Asc.plugin.executeMethod("AddText", [text]);
+        }
+    </script>
+</body>
+</html>
+
+
+
+
+
 
 <!DOCTYPE html>
 <html lang="ru">
