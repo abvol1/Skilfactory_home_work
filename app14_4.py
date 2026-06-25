@@ -1,4 +1,544 @@
 
+Отличная идея! Сделаем плагин, который сравнивает данные столбца A на Листе 1 и Листе 2 и показывает расхождения.
+
+Поскольку API редактора недоступно, сделаем так:
+
+1. Ты копируешь столбец A с Листа 1 → вставляешь в первое поле
+2. Копируешь столбец A с Листа 2 → вставляешь во второе поле
+3. Плагин сравнивает и показывает:
+   · ✅ Значения, которые есть на обоих листах (совпадения)
+   · ➕ Значения, которые есть только на Листе 1
+   · ➖ Значения, которые есть только на Листе 2
+
+Вот готовый index.html:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Сравнение столбцов</title>
+    <!-- 
+        Стили для оформления плагина.
+        Ничего не меняет в логике, только внешний вид.
+    -->
+    <style>
+        /* Основной фон и шрифт */
+        body {
+            margin: 15px;
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+        }
+        
+        /* Жирный текст для подписей к полям */
+        label {
+            font-weight: bold;
+            display: block;
+            margin-top: 10px;
+            font-size: 13px;
+        }
+        
+        /* Поля для вставки данных (оба листа) */
+        textarea {
+            width: 100%;
+            height: 100px;
+            padding: 8px;
+            margin: 5px 0 10px 0;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            font-size: 13px;
+            resize: vertical; /* Можно растягивать только по вертикали */
+        }
+        
+        /* Поле результата — повыше, так как туда выводится много данных */
+        .result-area {
+            height: 180px;
+            background: #fff;
+            font-size: 12px;
+        }
+        
+        /* Синяя кнопка (основное действие) */
+        button {
+            width: 100%;
+            padding: 10px;
+            background: #0078d4;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        button:hover { background: #005a9e; } /* При наведении темнее */
+        
+        /* Зелёная кнопка (копировать) */
+        .btn-green { background: #28a745; }
+        .btn-green:hover { background: #1e7e34; }
+        
+        /* Серая кнопка (очистить) */
+        .btn-gray { background: #6c757d; }
+        .btn-gray:hover { background: #545b62; }
+        
+        /* Блок для вывода сообщений пользователю */
+        #status {
+            margin-top: 8px;
+            font-size: 12px;
+            padding: 6px;
+            border-radius: 3px;
+            min-height: 20px;
+        }
+        
+        /* Цвета для разных типов сообщений */
+        .success { background: #d4edda; color: #155724; } /* Зелёный — успех */
+        .info { background: #d1ecf1; color: #0c5460; }    /* Синий — информация */
+        .error { background: #f8d7da; color: #721c24; }   /* Красный — ошибка */
+        
+        /* Горизонтальная линия-разделитель */
+        hr { margin: 12px 0; border: none; border-top: 1px solid #ddd; }
+        
+        /* Мелкий серый текст для подсказок и статистики */
+        .hint {
+            font-size: 11px;
+            color: #888;
+            margin-top: -5px;
+            margin-bottom: 8px;
+        }
+        
+        /* Блок со статистикой сравнения */
+        .stats {
+            font-size: 12px;
+            padding: 8px;
+            background: #fff;
+            border-radius: 3px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+        }
+        .stats span {
+            margin-right: 15px;
+        }
+        
+        /* Цвета для статистики */
+        .stat-match { color: #28a745; font-weight: bold; }  /* Зелёный — совпадения */
+        .stat-only1 { color: #dc3545; font-weight: bold; }  /* Красный — только на Листе 1 */
+        .stat-only2 { color: #ffc107; font-weight: bold; }  /* Жёлтый — только на Листе 2 */
+    </style>
+</head>
+<body>
+    <!-- Заголовок плагина -->
+    <h3>🔍 Сравнение столбцов (Лист 1 vs Лист 2)</h3>
+    
+    <!-- 
+        Поле 1: Данные из столбца A на Листе 1.
+        Пользователь выделяет ячейки, копирует (Ctrl+C) и вставляет сюда (Ctrl+V).
+    -->
+    <label>📋 Лист 1 — столбец A:</label>
+    <div class="hint">Скопируйте данные из столбца A на Листе 1</div>
+    <textarea id="list1Data" placeholder="Вставьте данные с Листа 1..."></textarea>
+
+    <!-- 
+        Поле 2: Данные из столбца A на Листе 2.
+        Пользователь выделяет ячейки, копирует (Ctrl+C) и вставляет сюда (Ctrl+V).
+    -->
+    <label>📋 Лист 2 — столбец A:</label>
+    <div class="hint">Скопируйте данные из столбца A на Листе 2</div>
+    <textarea id="list2Data" placeholder="Вставьте данные с Листа 2..."></textarea>
+
+    <!-- Кнопка запуска сравнения -->
+    <button onclick="compareLists()">🔍 Сравнить листы</button>
+    
+    <!-- Блок со статистикой (появляется после сравнения) -->
+    <div id="statsBlock" class="stats" style="display:none;">
+        <span class="stat-match">✅ Совпадают: <span id="matchCount">0</span></span>
+        <span class="stat-only1">➕ Только на Листе 1: <span id="only1Count">0</span></span>
+        <span class="stat-only2">➖ Только на Листе 2: <span id="only2Count">0</span></span>
+    </div>
+    
+    <!-- Горизонтальная линия для визуального разделения -->
+    <hr>
+    
+    <!-- 
+        Поле с результатом сравнения.
+        Содержит три секции:
+        - Только на Листе 1
+        - Только на Листе 2
+        - Совпадения
+    -->
+    <label>Результат сравнения:</label>
+    <textarea id="outputData" class="result-area" placeholder="Здесь появится результат сравнения..." readonly></textarea>
+    
+    <!-- Кнопка копирования результата в буфер обмена -->
+    <button onclick="copyResult()" class="btn-green">📋 Скопировать результат</button>
+    
+    <!-- Кнопка очистки всех полей -->
+    <button onclick="clearAll()" class="btn-gray">🗑 Очистить всё</button>
+    
+    <!-- Блок для вывода статуса операции (успех/ошибка/подсказка) -->
+    <div id="status"></div>
+
+    <!-- 
+        ========================================
+        ОСНОВНАЯ ЛОГИКА ПЛАГИНА
+        ========================================
+    -->
+    <script type="text/javascript">
+        
+        /**
+         * Функция для вывода сообщений пользователю.
+         * Принимает текст сообщения и тип (success/info/error).
+         * Тип определяет цвет фона и текста через CSS-классы.
+         * 
+         * @param {string} msg  - Текст сообщения
+         * @param {string} type - Тип сообщения: 'success', 'info', 'error'
+         */
+        function showStatus(msg, type) {
+            var status = document.getElementById('status'); // Находим блок статуса
+            status.textContent = msg;  // Меняем текст
+            status.className = type;   // Меняем CSS-класс (цвет)
+        }
+
+        /**
+         * Вспомогательная функция для разбора текста из поля ввода.
+         * 
+         * Что делает:
+         * 1. Берёт сырой текст (скопированные ячейки)
+         * 2. Разбивает на строки
+         * 3. Очищает каждую строку от пробелов и табуляций
+         * 4. Убирает пустые строки
+         * 5. Приводит к нижнему регистру для корректного сравнения (опционально)
+         * 
+         * @param {string} rawText - Сырой текст из поля ввода
+         * @returns {Array} - Массив очищенных строк
+         */
+        function parseData(rawText) {
+            // Убираем пробелы по краям всего текста
+            var text = rawText.trim();
+            
+            // Если текст пустой — возвращаем пустой массив
+            if (!text) return [];
+            
+            // Разбиваем на строки по символу переноса строки
+            var lines = text.split('\n');
+            
+            // Массив для хранения очищенных значений
+            var result = [];
+            
+            // Проходим по всем строкам
+            for (var i = 0; i < lines.length; i++) {
+                // Берём строку и убираем пробелы по краям
+                var line = lines[i].trim();
+                
+                // Если скопировано несколько столбцов — берём только первый (столбец A)
+                // Столбцы при копировании разделяются табуляцией (\t)
+                line = line.split('\t')[0].trim();
+                
+                // Если строка не пустая — добавляем в результат
+                if (line !== '') {
+                    // Приводим к нижнему регистру для сравнения без учёта регистра
+                    // Если нужно учитывать регистр — убери .toLowerCase()
+                    result.push(line.toLowerCase());
+                }
+            }
+            
+            return result;
+        }
+
+        /**
+         * ГЛАВНАЯ ФУНКЦИЯ СРАВНЕНИЯ.
+         * 
+         * Что делает:
+         * 1. Получает данные из полей Лист 1 и Лист 2
+         * 2. Разбирает их через parseData()
+         * 3. Сравнивает массивы и находит:
+         *    - Значения, которые есть в обоих списках (совпадения)
+         *    - Значения, которые есть только на Листе 1
+         *    - Значения, которые есть только на Листе 2
+         * 4. Выводит результат в поле outputData
+         * 5. Показывает статистику
+         * 6. Автоматически копирует результат в буфер обмена
+         */
+        function compareLists() {
+            // --- ПОЛУЧЕНИЕ ДАННЫХ ИЗ ПОЛЕЙ ---
+            
+            // Получаем текст из поля Лист 1
+            var list1Raw = document.getElementById('list1Data').value;
+            
+            // Получаем текст из поля Лист 2
+            var list2Raw = document.getElementById('list2Data').value;
+            
+            // --- ПРОВЕРКА: ЗАПОЛНЕНЫ ЛИ ОБА ПОЛЯ? ---
+            
+            if (!list1Raw.trim() && !list2Raw.trim()) {
+                showStatus('❌ Заполните данные хотя бы для одного листа!', 'error');
+                return;
+            }
+            
+            if (!list1Raw.trim()) {
+                showStatus('❌ Вставьте данные с Листа 1!', 'error');
+                return;
+            }
+            
+            if (!list2Raw.trim()) {
+                showStatus('❌ Вставьте данные с Листа 2!', 'error');
+                return;
+            }
+            
+            // --- РАЗБОР ДАННЫХ ---
+            
+            // Парсим данные Листа 1 в массив
+            var list1 = parseData(list1Raw);
+            
+            // Парсим данные Листа 2 в массив
+            var list2 = parseData(list2Raw);
+            
+            // --- СОЗДАЁМ ОБЪЕКТЫ ДЛЯ БЫСТРОГО ПОИСКА ---
+            
+            // Объект для Листа 1: ключ = значение ячейки, value = true
+            // Это позволяет быстро проверять наличие значения через list1Map[value]
+            var list1Map = {};
+            for (var i = 0; i < list1.length; i++) {
+                list1Map[list1[i]] = true;
+            }
+            
+            // Объект для Листа 2
+            var list2Map = {};
+            for (var i = 0; i < list2.length; i++) {
+                list2Map[list2[i]] = true;
+            }
+            
+            // --- ПОИСК СОВПАДЕНИЙ И РАСХОЖДЕНИЙ ---
+            
+            // Массив для значений, которые есть в обоих листах (совпадения)
+            var matches = [];
+            
+            // Массив для значений, которые есть ТОЛЬКО на Листе 1
+            var onlyInList1 = [];
+            
+            // Массив для значений, которые есть ТОЛЬКО на Листе 2
+            var onlyInList2 = [];
+            
+            // Проверяем каждое значение из Листа 1
+            for (var i = 0; i < list1.length; i++) {
+                var value = list1[i];
+                
+                // Если значение есть в Листе 2 — это совпадение
+                if (list2Map[value]) {
+                    // Добавляем в совпадения, если ещё не добавляли (избегаем дублей)
+                    if (matches.indexOf(value) === -1) {
+                        matches.push(value);
+                    }
+                } else {
+                    // Если значения нет в Листе 2 — оно только на Листе 1
+                    if (onlyInList1.indexOf(value) === -1) {
+                        onlyInList1.push(value);
+                    }
+                }
+            }
+            
+            // Проверяем каждое значение из Листа 2
+            for (var i = 0; i < list2.length; i++) {
+                var value = list2[i];
+                
+                // Если значения нет в Листе 1 — оно только на Листе 2
+                if (!list1Map[value]) {
+                    if (onlyInList2.indexOf(value) === -1) {
+                        onlyInList2.push(value);
+                    }
+                }
+                // Совпадения уже учтены в первом цикле, повторно не добавляем
+            }
+            
+            // --- СОРТИРОВКА РЕЗУЛЬТАТОВ ---
+            
+            // Сортируем все массивы по алфавиту для удобства чтения
+            matches.sort();
+            onlyInList1.sort();
+            onlyInList2.sort();
+            
+            // --- ФОРМИРОВАНИЕ ТЕКСТА ДЛЯ ВЫВОДА ---
+            
+            // Массив для строк результата
+            var resultLines = [];
+            
+            // Секция 1: Значения только на Листе 1
+            resultLines.push('=== ТОЛЬКО НА ЛИСТЕ 1 (' + onlyInList1.length + ' шт.) ===');
+            if (onlyInList1.length > 0) {
+                // Добавляем каждое значение с новой строки
+                for (var i = 0; i < onlyInList1.length; i++) {
+                    resultLines.push(onlyInList1[i]);
+                }
+            } else {
+                resultLines.push('(нет)');
+            }
+            resultLines.push(''); // Пустая строка-разделитель
+            
+            // Секция 2: Значения только на Листе 2
+            resultLines.push('=== ТОЛЬКО НА ЛИСТЕ 2 (' + onlyInList2.length + ' шт.) ===');
+            if (onlyInList2.length > 0) {
+                for (var i = 0; i < onlyInList2.length; i++) {
+                    resultLines.push(onlyInList2[i]);
+                }
+            } else {
+                resultLines.push('(нет)');
+            }
+            resultLines.push('');
+            
+            // Секция 3: Совпадения (есть на обоих листах)
+            resultLines.push('=== СОВПАДАЮТ (' + matches.length + ' шт.) ===');
+            if (matches.length > 0) {
+                for (var i = 0; i < matches.length; i++) {
+                    resultLines.push(matches[i]);
+                }
+            } else {
+                resultLines.push('(нет)');
+            }
+            
+            // Объединяем все строки через перенос строки
+            var resultText = resultLines.join('\n');
+            
+            // --- ВЫВОД РЕЗУЛЬТАТА ---
+            
+            // Помещаем текст в поле результата
+            document.getElementById('outputData').value = resultText;
+            
+            // --- ОТОБРАЖЕНИЕ СТАТИСТИКИ ---
+            
+            // Показываем блок статистики
+            document.getElementById('statsBlock').style.display = 'block';
+            
+            // Заполняем цифры
+            document.getElementById('matchCount').textContent = matches.length;
+            document.getElementById('only1Count').textContent = onlyInList1.length;
+            document.getElementById('only2Count').textContent = onlyInList2.length;
+            
+            // --- СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЮ ---
+            
+            // Формируем текст статуса
+            var statusMsg = '✅ Сравнение завершено! Совпадений: ' + matches.length + 
+                           ', только на Листе 1: ' + onlyInList1.length + 
+                           ', только на Листе 2: ' + onlyInList2.length;
+            showStatus(statusMsg, 'success');
+            
+            // --- АВТОМАТИЧЕСКОЕ КОПИРОВАНИЕ В БУФЕР ---
+            
+            navigator.clipboard.writeText(resultText).then(function() {
+                showStatus(statusMsg + ' (скопировано в буфер)', 'success');
+            }).catch(function() {
+                // Если не удалось скопировать — ничего страшного,
+                // пользователь может нажать кнопку "Скопировать результат"
+            });
+        }
+
+        /**
+         * Функция для ручного копирования результата.
+         * Вызывается при нажатии на зелёную кнопку "Скопировать результат".
+         * 
+         * Берёт текст из поля outputData и копирует в буфер обмена.
+         */
+        function copyResult() {
+            // Получаем текст из поля результата
+            var output = document.getElementById('outputData').value;
+            
+            // Проверяем, есть ли что копировать
+            if (!output) {
+                showStatus('❌ Нет результата для копирования!', 'error');
+                return;
+            }
+
+            // Пытаемся скопировать в буфер обмена
+            navigator.clipboard.writeText(output).then(function() {
+                // Успех
+                showStatus('📋 Результат скопирован! Вставьте куда нужно (Ctrl+V)', 'success');
+            }).catch(function() {
+                // Если не удалось — выделяем текст в поле для ручного копирования
+                document.getElementById('outputData').select();
+                showStatus('📋 Не удалось скопировать автоматически. Текст выделен — нажмите Ctrl+C', 'info');
+            });
+        }
+
+        /**
+         * Функция очистки всех полей.
+         * Вызывается при нажатии на серую кнопку "Очистить всё".
+         * 
+         * Очищает:
+         * - Поле данных Листа 1
+         * - Поле данных Листа 2
+         * - Поле результата
+         * - Блок статистики (скрывает)
+         * - Блок статуса
+         */
+        function clearAll() {
+            document.getElementById('list1Data').value = '';   // Очищаем Лист 1
+            document.getElementById('list2Data').value = '';   // Очищаем Лист 2
+            document.getElementById('outputData').value = '';  // Очищаем результат
+            document.getElementById('statsBlock').style.display = 'none'; // Скрываем статистику
+            document.getElementById('status').textContent = '';  // Очищаем статус
+            document.getElementById('status').className = '';    // Убираем цвет статуса
+        }
+        
+    </script>
+</body>
+</html>
+```
+
+---
+
+Как пользоваться:
+
+1. Открой таблицу в P7-Офис с двумя листами (Лист 1 и Лист 2)
+2. На Листе 1 выдели все ячейки в столбце A → нажми Ctrl+C
+3. В плагине вставь в поле «Лист 1 — столбец A» (Ctrl+V)
+4. Перейди на Лист 2, выдели столбец A → Ctrl+C
+5. В плагине вставь в поле «Лист 2 — столбец A»
+6. Нажми «Сравнить листы»
+7. Смотри результат:
+   · ✅ Совпадают — значения, которые есть на обоих листах
+   · ➕ Только на Листе 1 — чего нет на Листе 2
+   · ➖ Только на Листе 2 — чего нет на Листе 1
+
+Пример:
+
+Лист 1, столбец A:
+
+```
+яблоко
+груша
+банан
+апельсин
+```
+
+Лист 2, столбец A:
+
+```
+яблоко
+банан
+киви
+манго
+```
+
+Результат:
+
+```
+=== ТОЛЬКО НА ЛИСТЕ 1 (2 шт.) ===
+груша
+апельсин
+
+=== ТОЛЬКО НА ЛИСТЕ 2 (2 шт.) ===
+киви
+манго
+
+=== СОВПАДАЮТ (2 шт.) ===
+банан
+яблоко
+```
+
+Плагин также показывает статистику (сколько совпадает, сколько расхождений) и автоматически копирует результат в буфер.
+
+
+
+
+
+
 Вот полностью готовый index.html с подробными комментариями на русском языке:
 
 ```html
