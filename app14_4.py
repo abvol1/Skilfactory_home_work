@@ -1,3 +1,154 @@
+Для создания простой формы с кнопкой в P7-Офис (редактор документов, похожий на OnlyOffice) лучше всего использовать макросы на JavaScript.
+
+Ниже готовый код для подключения в виде плагина.
+
+Плагин: Простая форма с кнопкой
+
+Создай папку simple-form и положи в неё эти файлы.
+
+1. config.json
+
+```json
+{
+    "name": "Простая форма",
+    "nameLocale": {
+        "ru": "Простая форма"
+    },
+    "guid": "asc.{123E4567-E89B-12D3-A456-426614174000}",
+    "version": "1.0.0",
+    "variations": [
+        {
+            "description": "Форма с кнопкой в документе",
+            "descriptionLocale": {
+                "ru": "Форма с кнопкой в документе"
+            },
+            "url": "index.html",
+            "isViewer": false,
+            "EditorsSupport": ["word", "cell", "slide"],
+            "isVisual": true,
+            "isModal": false,
+            "isSystem": false,
+            "size": {
+                "width": 300,
+                "height": 200
+            }
+        }
+    ]
+}
+```
+
+2. index.html
+
+```html
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Простая форма</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 16px;
+            background: #f5f5f5;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        textarea {
+            resize: vertical;
+            height: 80px;
+        }
+        button {
+            background: #0078d4;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        button:hover {
+            background: #106ebe;
+        }
+    </style>
+</head>
+<body>
+    <h3>Моя форма</h3>
+    
+    <label>Имя:</label>
+    <input type="text" id="nameInput" placeholder="Введите имя">
+
+    <label>Заметка:</label>
+    <textarea id="noteInput" placeholder="Напишите что-нибудь..."></textarea>
+
+    <button id="insertBtn">Вставить в документ</button>
+
+    <script>
+        // Ждём инициализации API редактора
+        function init() {
+            document.getElementById('insertBtn').onclick = function() {
+                const name = document.getElementById('nameInput').value.trim();
+                const note = document.getElementById('noteInput').value.trim();
+
+                if (!name && !note) {
+                    alert('Заполните хотя бы одно поле!');
+                    return;
+                }
+
+                // Текст для вставки
+                const textToInsert = name && note 
+                    ? `${name}:\n${note}`
+                    : (name || note);
+
+                // Вставляем в текущую позицию курсора
+                if (window.Asc.plugin) {
+                    window.Asc.plugin.executeMethod("AddText", [textToInsert], function() {
+                        alert('Данные вставлены!');
+                    });
+                }
+            };
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
+```
+
+Как установить
+
+1. Скопируй папку simple-form в директорию плагинов P7-Офис:
+   · Windows: C:\Program Files\P7 Office\DesktopEditors\sdkjs-plugins\
+   · Linux: /opt/p7-office/desktopeditors/sdkjs-plugins/
+   · Серверная версия: в папку sdkjs-plugins на сервере
+2. Перезапусти редактор P7-Офис.
+3. В верхнем меню перейди на вкладку «Плагины» — там появится кнопка «Простая форма».
+4. Заполни поля, нажми кнопку — текст вставится в текущую позицию курсора в документе.
+
+Что делает плагин
+
+· Показывает боковую панель с двумя полями ввода и кнопкой
+· По нажатию берёт данные и вызывает метод AddText для вставки в документ
+· Работает в документах, таблицах и презентациях
+
+Если нужно что-то изменить (добавить поля, изменить дизайн, вставлять в конкретное место или таблицу) — просто скажи.
+
+
+
+
+
+
+
+
 
 Отлично! Мы почти у цели. Плагин появился, но не работает — это уже прогресс. Раз он появился после добавления icons, значит, структура config.json теперь правильная.
 
