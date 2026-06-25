@@ -1,3 +1,57 @@
+function processData() {
+    var input = document.getElementById('inputData').value.trim();
+    var separator = document.getElementById('separator').value;
+    var output = document.getElementById('outputData');
+
+    if (!input) {
+        showStatus('❌ Вставьте данные из столбца A!', 'error');
+        return;
+    }
+
+    // Обработка специальных разделителей
+    if (separator === '\\n') separator = '\n';
+
+    // Разбиваем на строки (каждая строка = одна ячейка из столбца)
+    var lines = input.split('\n');
+    var values = [];
+
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        // Убираем возможные табуляции (если скопировано несколько столбцов)
+        line = line.split('\t')[0].trim();
+        if (line !== '') {
+            values.push(line);
+        }
+    }
+
+    if (values.length === 0) {
+        showStatus('❌ Нет данных для обработки!', 'error');
+        output.value = '';
+        return;
+    }
+
+    var combined = values.join(separator);
+    
+    // 👇 ВОТ ЭТА СТРОКА — добавляем скобку в начале
+    combined = '(' + combined;
+    
+    output.value = combined;
+
+    showStatus('✅ Обработано ' + values.length + ' ячеек. Результат готов!', 'success');
+
+    // Автоматически копируем в буфер
+    navigator.clipboard.writeText(combined).then(function() {
+        showStatus('✅ Обработано ' + values.length + ' ячеек. Результат скопирован в буфер! Вставьте в нужную ячейку (Ctrl+V)', 'success');
+    });
+}
+
+
+
+
+
+
+
+
 
 <!DOCTYPE html>
 <html>
