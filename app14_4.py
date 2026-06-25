@@ -1,3 +1,137 @@
+Вот теперь всё ясно — API плагинов не загружается, поэтому ничего не работает.
+
+Это часто бывает, когда плагин запускается не в том режиме или структура файлов неправильная.
+
+Давай исправим
+
+1. Проверь структуру папок
+
+У тебя должно быть так:
+
+```
+sdkjs-plugins/
+  └── simple-form/
+       ├── config.json
+       └── index.html
+```
+
+2. Полностью обнови содержимое файлов
+
+config.json:
+
+```json
+{
+    "name": "Simple Form",
+    "nameLocale": {
+        "ru": "Простая форма"
+    },
+    "guid": "asc.{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}",
+    "version": "1.0.0",
+    "variations": [
+        {
+            "description": "Simple form plugin",
+            "descriptionLocale": {
+                "ru": "Простая форма с кнопкой"
+            },
+            "url": "index.html",
+            "isViewer": false,
+            "EditorsSupport": ["word", "cell", "slide"],
+            "isVisual": true,
+            "isModal": false,
+            "isSystem": false,
+            "size": {
+                "width": 350,
+                "height": 400
+            }
+        }
+    ]
+}
+```
+
+index.html:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Форма</title>
+    <style>
+        body { margin: 15px; font-family: Arial, sans-serif; }
+        input, textarea {
+            width: 100%; padding: 8px; margin: 5px 0 10px 0;
+            box-sizing: border-box; border: 1px solid #ccc; border-radius: 3px;
+        }
+        textarea { height: 80px; resize: vertical; }
+        button {
+            width: 100%; padding: 10px; background: #0078d4; color: white;
+            border: none; border-radius: 3px; cursor: pointer; font-size: 14px;
+        }
+        button:hover { background: #005a9e; }
+        #status { margin-top: 8px; font-size: 12px; color: #666; }
+    </style>
+</head>
+<body>
+    <h3>Моя форма</h3>
+    <label>Имя:</label>
+    <input type="text" id="nameInput" placeholder="Введите имя">
+    <label>Заметка:</label>
+    <textarea id="noteInput" placeholder="Напишите что-нибудь..."></textarea>
+    <button onclick="doInsert()">Вставить в документ</button>
+    <div id="status"></div>
+
+    <script type="text/javascript">
+        function doInsert() {
+            var name = document.getElementById('nameInput').value.trim();
+            var note = document.getElementById('noteInput').value.trim();
+            var status = document.getElementById('status');
+
+            if (!name && !note) {
+                status.textContent = 'Заполните поля!';
+                return;
+            }
+
+            var text = name && note ? name + ':\n' + note : (name || note);
+
+            // Проверяем, есть ли API
+            if (window.Asc && window.Asc.plugin && window.Asc.plugin.executeMethod) {
+                window.Asc.plugin.executeMethod("AddText", [text], function() {
+                    status.textContent = 'Готово! Текст вставлен.';
+                });
+            } else {
+                status.textContent = 'API не найден. Обновите редактор.';
+            }
+        }
+    </script>
+</body>
+</html>
+```
+
+3. Важные действия
+
+· Полностью закрой ВСЕ процессы P7-Офис — проверь в трее (рядом с часами), что нет значка, и в Диспетчере задач (Ctrl+Shift+Esc) закрой все процессы DesktopEditors.exe
+· Открой P7-Офис заново
+· Создай новый документ (не открывай старый)
+· Перейди на вкладку «Плагины» и запусти «Простая форма»
+· Введи текст и нажми кнопку
+
+4. Если всё равно API не найден
+
+Это может означать, что твоя версия P7-Офис не поддерживает плагины через sdkjs-plugins. В таком случае:
+
+· Какая у тебя версия P7-Офис? (Посмотри: Файл → О программе)
+· Это десктопная версия или серверная?
+· Установлена с оф. сайта p7-office.ru или откуда-то ещё?
+
+Напиши версию — проверю совместимость.
+
+
+
+
+
+
+
+
 
 Понял. Консоль недоступна — ок, давай зайдём с другой стороны.
 
