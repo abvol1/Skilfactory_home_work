@@ -1,3 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Плагин с нормальным размером</title>
+    <style>
+        /* СБРОС СТИЛЕЙ — ЧТОБЫ НИЧЕГО НЕ МЕШАЛО */
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            box-sizing: border-box;
+            overflow-y: auto;  /* Скролл если нужно */
+        }
+        
+        /* Контейнер для содержимого */
+        .container {
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            min-width: 500px;   /* Минимальная ширина */
+            min-height: 400px;  /* Минимальная высота */
+        }
+        
+        h3 { margin-top: 0; }
+        
+        button {
+            padding: 10px 20px;
+            background: #0078d4;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover { background: #005a9e; }
+        
+        textarea {
+            width: 100%;
+            height: 150px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            resize: vertical;
+            font-size: 13px;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h3>🐍 Мой плагин</h3>
+        
+        <label>Введите текст:</label>
+        <textarea placeholder="Пишите здесь..."></textarea>
+        
+        <br><br>
+        <button onclick="alert('Работает!')">Нажми меня</button>
+        
+        <p style="color: #888; font-size: 12px; margin-top: 20px;">
+            Окно должно быть примерно 500×400 пикселей
+        </p>
+    </div>
+    
+    <!-- СКРИПТ ДЛЯ ИЗМЕНЕНИЯ РАЗМЕРА ОКНА -->
+    <script type="text/javascript">
+        /**
+         * Принудительно увеличивает окно плагина.
+         * 
+         * В десктопной версии P7-Офис модальные окна плагинов
+         * по умолчанию маленькие и прилипают к левому краю.
+         * Этот скрипт пытается это исправить.
+         */
+        (function() {
+            // Нужные размеры
+            var DESIRED_WIDTH = 550;
+            var DESIRED_HEIGHT = 450;
+            
+            function resizeWindow() {
+                // Способ 1: postMessage родителю
+                try {
+                    window.parent.postMessage({
+                        type: 'resize',
+                        width: DESIRED_WIDTH,
+                        height: DESIRED_HEIGHT
+                    }, '*');
+                } catch(e) {}
+                
+                // Способ 2: resizeTo
+                try {
+                    window.resizeTo(DESIRED_WIDTH, DESIRED_HEIGHT);
+                } catch(e) {}
+                
+                // Способ 3: задаём минимальные размеры body
+                document.body.style.minWidth = DESIRED_WIDTH + 'px';
+                document.body.style.minHeight = DESIRED_HEIGHT + 'px';
+            }
+            
+            // При загрузке
+            window.addEventListener('load', function() {
+                resizeWindow();
+                // Повторяем через 200мс и 500мс (на случай, если не сразу сработало)
+                setTimeout(resizeWindow, 200);
+                setTimeout(resizeWindow, 500);
+            });
+            
+            // При изменении размера окна браузера
+            window.addEventListener('resize', resizeWindow);
+        })();
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
 
 Отличная идея! Сделаем плагин, который сравнивает данные столбца A на Листе 1 и Листе 2 и показывает расхождения.
 
