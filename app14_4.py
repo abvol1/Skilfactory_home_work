@@ -1,3 +1,360 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Плагин</title>
+    <style>
+        /* Сброс всех отступов */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        /* Основной контейнер */
+        html, body {
+            width: 100%;
+            height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: #f5f5f5;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        /* Заголовок (фиксированный сверху) */
+        .header {
+            padding: 15px 15px 10px 15px;
+            background: #f5f5f5;
+            border-bottom: 1px solid #e0e0e0;
+            flex-shrink: 0;
+        }
+        .header h3 {
+            font-size: 15px;
+            color: #333;
+            margin: 0;
+        }
+        .header p {
+            font-size: 11px;
+            color: #888;
+            margin: 4px 0 0 0;
+        }
+        
+        /* Область с прокруткой (основной контент) */
+        .content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        /* Подписи к полям */
+        label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #555;
+            display: block;
+            margin-bottom: 4px;
+        }
+        
+        /* Поля ввода */
+        input[type="text"],
+        textarea,
+        select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #d0d0d0;
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: inherit;
+            background: #fff;
+            transition: border-color 0.2s;
+        }
+        input[type="text"]:focus,
+        textarea:focus,
+        select:focus {
+            outline: none;
+            border-color: #0078d4;
+            box-shadow: 0 0 0 2px rgba(0,120,212,0.1);
+        }
+        
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+            max-height: 300px;
+        }
+        
+        /* Кнопки */
+        button {
+            width: 100%;
+            padding: 11px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        
+        .btn-primary {
+            background: #0078d4;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #0066b8;
+        }
+        
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        .btn-success:hover {
+            background: #1e8a38;
+        }
+        
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        
+        /* Блок статуса (фиксированный снизу) */
+        .footer {
+            padding: 10px 15px;
+            background: #f5f5f5;
+            border-top: 1px solid #e0e0e0;
+            flex-shrink: 0;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+        }
+        
+        #status {
+            font-size: 11px;
+            width: 100%;
+            padding: 8px 10px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        
+        .status-success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .status-info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        .status-warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        /* Разделитель */
+        hr {
+            border: none;
+            border-top: 1px solid #e0e0e0;
+            margin: 5px 0;
+        }
+        
+        /* Карточка с информацией */
+        .info-card {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 12px;
+            font-size: 12px;
+            color: #666;
+        }
+        
+        /* Файловый input (скрытый) */
+        .hidden-input {
+            display: none;
+        }
+        
+        /* Имя файла */
+        .file-name {
+            font-size: 11px;
+            color: #888;
+            background: #fff;
+            padding: 8px 10px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <!-- ===== ЗАГОЛОВОК ===== -->
+    <div class="header">
+        <h3>🐍 Мой плагин для Linux</h3>
+        <p>Вертикальная панель (isModal: false)</p>
+    </div>
+    
+    <!-- ===== ОСНОВНОЙ КОНТЕНТ (ПРОКРУЧИВАЕМЫЙ) ===== -->
+    <div class="content">
+        
+        <label>Название:</label>
+        <input type="text" id="nameInput" placeholder="Введите название">
+        
+        <label>Описание:</label>
+        <textarea id="descInput" placeholder="Введите описание..."></textarea>
+        
+        <label>Категория:</label>
+        <select id="categorySelect">
+            <option value="">-- Выберите --</option>
+            <option value="work">Работа</option>
+            <option value="personal">Личное</option>
+            <option value="other">Другое</option>
+        </select>
+        
+        <!-- Загрузка файла -->
+        <label>Файл данных (.xlsx):</label>
+        <input type="file" id="fileInput" class="hidden-input" accept=".xlsx">
+        <button onclick="document.getElementById('fileInput').click()" class="btn-secondary" style="margin-bottom:0;">
+            📂 Выбрать файл
+        </button>
+        <div id="fileName" class="file-name">Файл не выбран</div>
+        
+        <hr>
+        
+        <!-- Кнопки действий -->
+        <button onclick="doAction()" class="btn-primary">
+            ▶️ Выполнить действие
+        </button>
+        
+        <button onclick="copyData()" class="btn-success">
+            📋 Скопировать результат
+        </button>
+        
+        <button onclick="clearAll()" class="btn-danger">
+            🗑 Очистить всё
+        </button>
+        
+    </div>
+    
+    <!-- ===== СТАТУС (ФИКСИРОВАН СНИЗУ) ===== -->
+    <div class="footer">
+        <div id="status">Готов к работе</div>
+    </div>
+    
+    <!-- ======================================== -->
+    <!--                ЛОГИКА                   -->
+    <!-- ======================================== -->
+    <script type="text/javascript">
+        
+        /**
+         * Показывает сообщение в статусной строке.
+         * @param {string} msg  - Текст
+         * @param {string} type - success | error | info | warning
+         */
+        function showStatus(msg, type) {
+            var el = document.getElementById('status');
+            el.textContent = msg;
+            el.className = '';
+            if (type) {
+                el.classList.add('status-' + type);
+            }
+        }
+        
+        /**
+         * Обработчик загрузки файла.
+         */
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            var file = e.target.files[0];
+            if (file) {
+                document.getElementById('fileName').textContent = '📄 ' + file.name;
+                showStatus('Файл загружен: ' + file.name, 'success');
+            }
+        });
+        
+        /**
+         * Основное действие.
+         */
+        function doAction() {
+            var name = document.getElementById('nameInput').value.trim();
+            var desc = document.getElementById('descInput').value.trim();
+            var category = document.getElementById('categorySelect').value;
+            
+            if (!name) {
+                showStatus('❌ Введите название!', 'error');
+                return;
+            }
+            
+            var result = 'Название: ' + name + '\n';
+            result += 'Описание: ' + (desc || '(нет)') + '\n';
+            result += 'Категория: ' + (category || '(не выбрана)');
+            
+            // Копируем в буфер
+            navigator.clipboard.writeText(result).then(function() {
+                showStatus('✅ Данные обработаны и скопированы в буфер!', 'success');
+            }).catch(function() {
+                showStatus('✅ Данные обработаны (но не скопированы)', 'info');
+            });
+        }
+        
+        /**
+         * Копирует содержимое полей в буфер.
+         */
+        function copyData() {
+            var name = document.getElementById('nameInput').value.trim();
+            var desc = document.getElementById('descInput').value.trim();
+            var text = name + '\n' + desc;
+            
+            if (!text.trim()) {
+                showStatus('❌ Нет данных для копирования!', 'error');
+                return;
+            }
+            
+            navigator.clipboard.writeText(text).then(function() {
+                showStatus('📋 Скопировано!', 'success');
+            }).catch(function() {
+                showStatus('⚠ Не удалось скопировать', 'warning');
+            });
+        }
+        
+        /**
+         * Очищает все поля.
+         */
+        function clearAll() {
+            document.getElementById('nameInput').value = '';
+            document.getElementById('descInput').value = '';
+            document.getElementById('categorySelect').value = '';
+            document.getElementById('fileInput').value = '';
+            document.getElementById('fileName').textContent = 'Файл не выбран';
+            showStatus('🗑 Очищено', 'info');
+        }
+        
+        // Начальный статус
+        showStatus('Готов к работе', 'info');
+        
+    </script>
+</body>
+</html>
+
+
+
+
+
+
 <!DOCTYPE html>
 <html>
 <head>
