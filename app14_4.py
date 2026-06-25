@@ -1,3 +1,124 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Простая форма</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 16px;
+            background: #f5f5f5;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        textarea {
+            resize: vertical;
+            height: 80px;
+        }
+        button {
+            background: #0078d4;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        button:hover {
+            background: #106ebe;
+        }
+        #status {
+            color: #666;
+            font-size: 12px;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <h3>Моя форма</h3>
+    
+    <label>Имя:</label>
+    <input type="text" id="nameInput" placeholder="Введите имя">
+
+    <label>Заметка:</label>
+    <textarea id="noteInput" placeholder="Напишите что-нибудь..."></textarea>
+
+    <button id="insertBtn">Вставить в документ</button>
+    <div id="status"></div>
+
+    <script>
+        var pluginReady = false;
+
+        // Ждём готовности плагина
+        window.Asc.plugin.init = function() {
+            pluginReady = true;
+            document.getElementById('status').textContent = 'Плагин готов';
+        };
+
+        // Обработчик кнопки
+        document.getElementById('insertBtn').onclick = function() {
+            var name = document.getElementById('nameInput').value.trim();
+            var note = document.getElementById('noteInput').value.trim();
+            var statusEl = document.getElementById('status');
+
+            if (!name && !note) {
+                statusEl.textContent = 'Ошибка: заполните хотя бы одно поле!';
+                statusEl.style.color = 'red';
+                return;
+            }
+
+            // Формируем текст
+            var textToInsert;
+            if (name && note) {
+                textToInsert = name + ':\n' + note;
+            } else {
+                textToInsert = name || note;
+            }
+
+            statusEl.textContent = 'Вставка...';
+            statusEl.style.color = '#666';
+
+            try {
+                // Способ 1: через executeMethod
+                window.Asc.plugin.executeMethod("AddText", [textToInsert], function(result) {
+                    statusEl.textContent = 'Текст вставлен успешно!';
+                    statusEl.style.color = 'green';
+                });
+            } catch(e) {
+                // Способ 2: через info (если первый не сработал)
+                try {
+                    window.Asc.plugin.info.text = textToInsert;
+                    window.Asc.plugin.info.type = 'text';
+                    statusEl.textContent = 'Текст вставлен (способ 2)!';
+                    statusEl.style.color = 'green';
+                } catch(e2) {
+                    statusEl.textContent = 'Ошибка: ' + e.message;
+                    statusEl.style.color = 'red';
+                    console.error('Plugin error:', e, e2);
+                }
+            }
+        };
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
 Для создания простой формы с кнопкой в P7-Офис (редактор документов, похожий на OnlyOffice) лучше всего использовать макросы на JavaScript.
 
 Ниже готовый код для подключения в виде плагина.
