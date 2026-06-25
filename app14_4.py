@@ -1,4 +1,267 @@
 
+Отлично! Задача понятна: в столбце A есть текст (в разных ячейках), нужно собрать его в одну ячейку через запятую.
+
+Вот полностью готовый плагин для таблиц (cell):
+
+config.json:
+
+```json
+{
+    "name": "Сбор текста",
+    "nameLocale": {
+        "ru": "Сбор текста из столбца"
+    },
+    "guid": "asc.{B2C3D4E5-F6A7-8901-BCDE-F12345678901}",
+    "version": "1.0.0",
+    "variations": [
+        {
+            "description": "Сбор текста из столбца A в одну ячейку",
+            "descriptionLocale": {
+                "ru": "Сбор текста из столбца A в одну ячейку"
+            },
+            "url": "index.html",
+            "isViewer": false,
+            "EditorsSupport": ["cell"],
+            "isVisual": true,
+            "isModal": false,
+            "isSystem": false,
+            "size": {
+                "width": 350,
+                "height": 420
+            }
+        }
+    ]
+}
+```
+
+index.html:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Сбор текста из столбца A</title>
+    <style>
+        body {
+            margin: 15px;
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+        }
+        label {
+            font-weight: bold;
+            display: block;
+            margin-top: 10px;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0 10px 0;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            font-size: 14px;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background: #0078d4;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #005a9e;
+        }
+        #status {
+            margin-top: 10px;
+            font-size: 13px;
+            padding: 8px;
+            border-radius: 3px;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+    </style>
+</head>
+<body>
+    <h3>📊 Сбор текста из столбца A</h3>
+    
+    <label>Строки (диапазон):</label>
+    <select id="rangeSelect">
+        <option value="all">Весь столбец A (до пустой ячейки)</option>
+        <option value="custom">Задать вручную</option>
+    </select>
+
+    <div id="customRange" style="display:none;">
+        <label>С какой строки:</label>
+        <input type="number" id="startRow" value="1" min="1">
+        <label>По какую строку:</label>
+        <input type="number" id="endRow" value="10" min="1">
+    </div>
+
+    <label>Разделитель:</label>
+    <select id="separator">
+        <option value=",">Запятая (, )</option>
+        <option value=";">Точка с запятой (; )</option>
+        <option value="\n">С новой строки</option>
+        <option value=".">Точка (. )</option>
+        <option value=" - ">Тире ( - )</option>
+    </select>
+
+    <label>Куда вставить результат (ячейка):</label>
+    <input type="text" id="targetCell" value="B1" placeholder="Например: B1">
+
+    <button onclick="collectAndInsert()">📥 Собрать и вставить</button>
+    <div id="status"></div>
+
+    <script type="text/javascript">
+        var column = 'A'; // Столбец для сбора
+
+        document.getElementById('rangeSelect').addEventListener('change', function() {
+            var custom = document.getElementById('customRange');
+            custom.style.display = this.value === 'custom' ? 'block' : 'none';
+        });
+
+        function showStatus(msg, type) {
+            var status = document.getElementById('status');
+            status.textContent = msg;
+            status.className = type;
+        }
+
+        function collectAndInsert() {
+            var rangeType = document.getElementById('rangeSelect').value;
+            var startRow, endRow;
+            var separator = document.getElementById('separator').value;
+            var targetCell = document.getElementById('targetCell').value.trim();
+
+            // Обработка разделителя
+            if (separator === '\\n') separator = '\n';
+            if (separator === ',') separator = ', ';
+            if (separator === ';') separator = '; ';
+            if (separator === '.') separator = '. ';
+
+            if (!targetCell) {
+                showStatus('Укажите ячейку для результата!', 'error');
+                return;
+            }
+
+            if (rangeType === 'all') {
+                startRow = 1;
+                endRow = 1000; // Большой диапазон, остановится на первой пустой
+            } else {
+                startRow = parseInt(document.getElementById('startRow').value);
+                endRow = parseInt(document.getElementById('endRow').value);
+                if (isNaN(startRow) || isNaN(endRow) || startRow > endRow) {
+                    showStatus('Неверный диапазон строк!', 'error');
+                    return;
+                }
+            }
+
+            showStatus('Собираю данные...', 'info');
+
+            // Формируем массив ячеек для чтения
+            var cells = [];
+            for (var r = startRow; r <= endRow; r++) {
+                cells.push(column + r);
+            }
+
+            // Запрашиваем значения ячеек через postMessage
+            var requestId = 'getCells_' + Date.now();
+            
+            window.parent.postMessage({
+                type: 'plugin-message',
+                method: 'GetCellsInfo',
+                args: [cells],
+                requestId: requestId
+            }, '*');
+
+            // Ждём ответ
+            var timeout = setTimeout(function() {
+                showStatus('⏱ Нет ответа от редактора. Используйте кнопку "Скопировать"', 'error');
+            }, 5000);
+
+            // Слушаем ответ
+            function onMessage(event) {
+                if (event.data && event.data.requestId === requestId) {
+                    clearTimeout(timeout);
+                    window.removeEventListener('message', onMessage);
+
+                    var result = event.data.result;
+                    if (result && result.length > 0) {
+                        var values = [];
+                        for (var i = 0; i < result.length; i++) {
+                            var val = result[i].value || result[i].text || result[i];
+                            if (val && val.toString().trim() !== '') {
+                                values.push(val.toString().trim());
+                            } else if (rangeType === 'all' && i > 0 && values.length > 0) {
+                                // Пустая ячейка в режиме "весь столбец" — остановка
+                                break;
+                            }
+                        }
+
+                        if (values.length === 0) {
+                            showStatus('Нет данных в столбце A!', 'error');
+                            return;
+                        }
+
+                        var combined = values.join(separator);
+
+                        // Копируем в буфер
+                        navigator.clipboard.writeText(combined).then(function() {
+                            showStatus('✅ Собрано ' + values.length + ' значений. Текст скопирован в буфер.\nВставьте в ячейку ' + targetCell + ' (Ctrl+V)', 'success');
+                        }).catch(function() {
+                            showStatus('✅ Собрано: ' + combined.substring(0, 50) + '...\nСкопируйте вручную и вставьте в ' + targetCell, 'success');
+                        });
+
+                        // Пробуем вставить напрямую
+                        window.parent.postMessage({
+                            type: 'plugin-message',
+                            method: 'SetCellsInfo',
+                            args: [targetCell, combined]
+                        }, '*');
+                    } else {
+                        showStatus('Не удалось получить данные ячеек.', 'error');
+                    }
+                }
+            }
+            window.addEventListener('message', onMessage);
+        }
+    </script>
+</body>
+</html>
+```
+
+Как это работает:
+
+1. Плагин читает все заполненные ячейки в столбце A
+2. Собирает их в одну строку через выбранный разделитель
+3. Копирует результат в буфер и пытается вставить в указанную ячейку
+
+Инструкция:
+
+1. Открой таблицу в P7-Офис
+2. В столбце A у тебя должен быть текст (A1, A2, A3...)
+3. Запусти плагин (вкладка Плагины → Сбор текста из столбца)
+4. Настрой:
+   · Диапазон строк (весь столбец или вручную)
+   · Разделитель (запятая, точка с запятой и т.д.)
+   · Куда вставить (например B1)
+5. Нажми «Собрать и вставить»
+6. Перейди в таблицу и нажми Ctrl+V в нужной ячейке
+
+Текст из всех ячеек столбца A соберётся в одну строку через запятую и скопируется в буфер. Останется только вставить.
+
+
+
+
+
+
+
+
 Версия 2026.1.2.1942 — это свежая, API плагинов в ней точно есть. Проблема в том, что плагин открывается в изолированном окне и не имеет доступа к window.Asc.
 
 В десктопной версии P7-Офис плагины работают через внутреннюю шину сообщений, а не через прямой доступ к API. Нам нужно использовать postMessage.
