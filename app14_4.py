@@ -1,3 +1,142 @@
+
+Понял. Консоль недоступна — ок, давай зайдём с другой стороны.
+
+Возможно, в твоей версии P7-Офис API плагинов отличается. Сейчас мы проверим, что вообще доступно.
+
+Замени index.html на этот диагностический вариант:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Диагностика</title>
+    <style>
+        body { margin: 15px; font-family: Arial, sans-serif; }
+        #methods { 
+            background: #f0f0f0; 
+            padding: 10px; 
+            border-radius: 4px; 
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        button {
+            width: 100%; padding: 12px; background: #0078d4; color: white;
+            border: none; border-radius: 4px; cursor: pointer; font-size: 14px; margin: 8px 0;
+        }
+        button:hover { background: #005a9e; }
+        input, textarea {
+            width: 100%; padding: 8px; margin: 5px 0 10px 0;
+            box-sizing: border-box; border: 1px solid #ccc; border-radius: 3px;
+        }
+        textarea { height: 60px; resize: vertical; }
+    </style>
+</head>
+<body>
+    <h3>Диагностика плагина</h3>
+    
+    <button onclick="showAllMethods()">Показать все методы API</button>
+    <div id="methods">Нажми кнопку выше...</div>
+
+    <hr>
+
+    <label>Имя:</label>
+    <input type="text" id="nameInput" placeholder="Введите имя">
+    <label>Заметка:</label>
+    <textarea id="noteInput" placeholder="Напишите что-нибудь..."></textarea>
+    <button onclick="tryInsert()">Вставить в документ</button>
+    <div id="result" style="margin-top:8px; font-size:13px;"></div>
+
+    <script>
+        function showAllMethods() {
+            var obj = window.Asc && window.Asc.plugin ? window.Asc.plugin : {};
+            var keys = Object.keys(obj);
+            var info = 'Asc.plugin найден: ' + (keys.length > 0 ? 'ДА' : 'НЕТ') + '\n';
+            info += 'Количество свойств/методов: ' + keys.length + '\n\n';
+            info += keys.join('\n');
+            
+            if (window.Asc && window.Asc.plugin && window.Asc.plugin.executeMethod) {
+                info += '\n\n✅ executeMethod ДОСТУПЕН';
+            } else {
+                info += '\n\n❌ executeMethod НЕ НАЙДЕН';
+            }
+            
+            document.getElementById('methods').textContent = info;
+        }
+
+        function tryInsert() {
+            var name = document.getElementById('nameInput').value.trim();
+            var note = document.getElementById('noteInput').value.trim();
+            var resultDiv = document.getElementById('result');
+
+            if (!name && !note) {
+                resultDiv.textContent = '❌ Заполните поля';
+                return;
+            }
+
+            var text = name && note ? name + ':\n' + note : (name || note);
+
+            // Пробуем разные варианты
+            var methods = [];
+            if (window.Asc && window.Asc.plugin) {
+                var p = window.Asc.plugin;
+                
+                // Проверяем executeMethod
+                if (typeof p.executeMethod === 'function') methods.push('executeMethod');
+                
+                // Проверяем info
+                if (p.info) methods.push('info');
+                
+                // Проверяем callCommand
+                if (typeof p.callCommand === 'function') methods.push('callCommand');
+            }
+
+            resultDiv.textContent = 'Найдены методы: ' + methods.join(', ');
+
+            // Пробуем каждый
+            if (methods.includes('executeMethod')) {
+                try {
+                    window.Asc.plugin.executeMethod("AddText", [text], function() {
+                        resultDiv.textContent = '✅ Вставлено через AddText!';
+                    });
+                } catch(e) {
+                    resultDiv.textContent = '❌ AddText ошибка: ' + e.message;
+                }
+            } else if (methods.includes('info')) {
+                try {
+                    window.Asc.plugin.info.text = text;
+                    window.Asc.plugin.info.type = 'text';
+                    resultDiv.textContent = '✅ Отправлено через info';
+                } catch(e) {
+                    resultDiv.textContent = '❌ info ошибка: ' + e.message;
+                }
+            } else {
+                resultDiv.textContent = '❌ Нет подходящего метода. Нажми "Показать все методы"';
+            }
+        }
+    </script>
+</body>
+</html>
+```
+
+Что делаем:
+
+1. Заменил файл, перезапусти P7-Офис
+2. Открой плагин
+3. Нажми кнопку «Показать все методы API»
+4. Сделай скриншот или перепиши мне, что появилось в сером блоке
+
+Это покажет, какие методы вообще доступны в твоей версии, и мы поймём, как правильно вставлять текст.
+
+Особенно важно — есть ли там executeMethod или что-то другое.
+
+
+
+
+
 <!DOCTYPE html>
 <html>
 <head>
