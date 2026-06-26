@@ -1,4 +1,282 @@
 
+from flask import Flask, request, render_template_string, redirect, url_for, send_file
+import sqlite3
+import pandas as pd
+from io import BytesIO
+from datetime import datetime
+import os
+
+app = Flask(__name__)
+DATABASE = 'data.db'
+
+def get_db():
+    """Подключение к БД"""
+    conn = sqlite3.connect(
+        DATABASE,
+        timeout=10.0,
+        check_same_thread=False
+    )
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    """Создание таблицы при первом запуске"""
+    with get_db() as conn:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                field1 TEXT NOT NULL,
+                field2 TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        conn.commit()
+
+HTML = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Flask Приложение</title>
+    <style>
+        body { font-family: Arial; margin: 20px; }
+        table { border-collapse: collapse; margin-top: 20px; width: 100%; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background: #f2f2f2; }
+        form { margin-bottom: 20px; }
+        input, select { margin: 5px 0; padding: 5px; }
+        button { padding: 5px 15px; margin: 2px; cursor: pointer; }
+        .del-btn { background: #ff4444; color: white; border: none; }
+        .edit-btn { background: #44aaff; color: white; border: none; }
+        .export-btn { background: #28a745; color: white; border: none; padding: 8px 20px; }
+        .msg { color: green; }
+        .edit-form { background: #f9f9f9; padding: 15px; border: 1px solid #ddd; margin-top: 10px; }
+        .toolbar { margin: 10px 0; }
+        .stats { background: #e8f4f8; padding: 10px; border-radius: 5px; margin: 10px 0; }
+        .del-all-btn { background: #ff6666; color: white; border: none; }
+        .header { background: #4CAF50; color: white; padding: 10px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>📋 Управление записями</h2>
+    </div>
+    
+    <div class="stats">
+        📊 Всего записей: <strong>{{ total_records }}</strong> | 
+        🕐 Последнее обновление: <strong>{{ last_update }}</strong>
+    </div>
+    
+    <form method="post" action="/">
+        <h3>➕ Добавить запись</h3>
+        Поле 1: <input name="field1" required><br>
+        Поле 2: <input name="field2" required><br>
+        <button type="submit">Сохранить</button>
+    </form>
+    {% if msg %}<p class="msg">{{ msg }}</p>{% endif %}
+
+    <div class="toolbar">
+        <h3>📋 Все записи</h3>
+        
+        <form method="get" action="/" style="display: inline-block;">
+            <input type="text" name="search" placeholder="Поиск..." value="{{ search_query or '' }}">
+            <button type="submit">🔍 Найти</button>
+            {% if search_query %}<a href="/">Сбросить</a>{% endif %}
+        </form>
+        
+        <form method="get" action="/" style="display: inline-block; margin-left: 10px;">
+            <select name="sort_by">
+                <option value="">Сортировать по...</option>
+                <option value="field1" {% if sort_by == 'field1' %}selected{% endif %}>Поле 1</option>
+                <option value="field2" {% if sort_by == 'field2' %}selected{% endif %}>Поле 2</option>
+                <option value="created_at" {% if sort_by == 'created_at' %}selected{% endif %}>Дата</option>
+            </select>
+            <select name="sort_order">
+                <option value="asc" {% if sort_order == 'asc' %}selected{% endif %}>По возрастанию</option>
+                <option value="desc" {% if sort_order == 'desc' %}selected{% endif %}>По убыванию</option>
+            </select>
+            <button type="submit">Сортировать</button>
+            {% if sort_by %}<a href="/">Сбросить</a>{% endif %}
+        </form>
+        
+        <form method="post" action="/export" style="display: inline-block; margin-left: 10px;">
+            <button type="submit" class="export-btn">📊 Экспорт в Excel</button>
+        </form>
+        
+        <form method="post" action="/delete_all" style="display: inline-block; margin-left: 10px;" 
+              onsubmit="return confirm('Удалить ВСЕ записи? Это действие необратимо!')">
+            <button type="submit" class="del-all-btn">🗑️ Удалить все</button>
+        </form>
+    </div>
+
+    {% if records %}
+        <table>
+            <tr>
+                <th>ID</th>
+                <th>Поле 1</th>
+                <th>Поле 2</th>
+                <th>Дата создания</th>
+                <th>Действия</th>
+            </tr>
+            {% for row in records %}
+            <tr>
+                <td>{{ row.id }}</td>
+                <td>{{ row.field1 }}</td>
+                <td>{{ row.field2 }}</td>
+                <td>{{ row.created_at }}</td>
+                <td>
+                    <a href="/edit/{{ row.id }}"><button class="edit-btn">✏️</button></a>
+                    <a href="/delete/{{ row.id }}" onclick="return confirm('Удалить?')"><button class="del-btn">🗑️</button></a>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+    {% else %}
+        <p>Нет записей</p>
+    {% endif %}
+
+    {% if edit_mode %}
+    <div class="edit-form">
+        <h3>✏️ Редактировать запись #{{ edit_id }}</h3>
+        <form method="post" action="/edit/{{ edit_id }}">
+            Поле 1: <input name="field1" value="{{ edit_row.field1 }}" required><br>
+            Поле 2: <input name="field2" value="{{ edit_row.field2 }}" required><br>
+            <button type="submit">Обновить</button>
+            <a href="/"><button type="button">Отмена</button></a>
+        </form>
+    </div>
+    {% endif %}
+</body>
+</html>
+'''
+
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    if request.method == 'POST':
+        f1 = request.form.get('field1', '')
+        f2 = request.form.get('field2', '')
+        
+        with get_db() as conn:
+            conn.execute(
+                'INSERT INTO records (field1, field2) VALUES (?, ?)',
+                (f1, f2)
+            )
+            conn.commit()
+        
+        # Перенаправляем на главную, чтобы избежать повторной отправки формы
+        return redirect('/')
+    
+    search_query = request.args.get('search', '').strip()
+    sort_by = request.args.get('sort_by', '')
+    sort_order = request.args.get('sort_order', 'asc')
+    
+    query = 'SELECT * FROM records'
+    params = []
+    
+    if search_query:
+        query += ' WHERE field1 LIKE ? OR field2 LIKE ?'
+        params = [f'%{search_query}%', f'%{search_query}%']
+    
+    if sort_by in ['field1', 'field2', 'created_at']:
+        query += f' ORDER BY {sort_by} COLLATE NOCASE'
+        query += ' DESC' if sort_order == 'desc' else ' ASC'
+    else:
+        query += ' ORDER BY id DESC'
+    
+    with get_db() as conn:
+        records = conn.execute(query, params).fetchall()
+        total = conn.execute('SELECT COUNT(*) as count FROM records').fetchone()['count']
+        last = conn.execute('SELECT MAX(created_at) as last FROM records').fetchone()['last']
+    
+    last_update = last or 'Нет записей'
+    
+    return render_template_string(HTML, msg=None, records=records, total_records=total,
+                                 last_update=last_update, edit_mode=False,
+                                 search_query=search_query, sort_by=sort_by, sort_order=sort_order)
+
+@app.route('/delete/<int:id>')
+def delete(id):
+    with get_db() as conn:
+        conn.execute('DELETE FROM records WHERE id = ?', (id,))
+        conn.commit()
+    return redirect('/')
+
+@app.route('/delete_all', methods=['POST'])
+def delete_all():
+    with get_db() as conn:
+        conn.execute('DELETE FROM records')
+        conn.commit()
+    return redirect('/')
+
+@app.route('/edit/<int:id>', methods=['GET', 'POST'])
+def edit(id):
+    if request.method == 'POST':
+        f1 = request.form.get('field1', '')
+        f2 = request.form.get('field2', '')
+        with get_db() as conn:
+            conn.execute(
+                'UPDATE records SET field1 = ?, field2 = ? WHERE id = ?',
+                (f1, f2, id)
+            )
+            conn.commit()
+        return redirect('/')
+    
+    with get_db() as conn:
+        row = conn.execute('SELECT * FROM records WHERE id = ?', (id,)).fetchone()
+        if not row:
+            return redirect('/')
+        
+        records = conn.execute('SELECT * FROM records ORDER BY id DESC').fetchall()
+        total = conn.execute('SELECT COUNT(*) as count FROM records').fetchone()['count']
+        last = conn.execute('SELECT MAX(created_at) as last FROM records').fetchone()['last']
+    
+    return render_template_string(HTML, records=records, total_records=total,
+                                 last_update=last or 'Нет записей',
+                                 edit_mode=True, edit_id=id, edit_row=row,
+                                 msg=None)
+
+@app.route('/export', methods=['POST'])
+def export():
+    with get_db() as conn:
+        rows = conn.execute('SELECT id, field1, field2, created_at FROM records ORDER BY id').fetchall()
+    
+    if not rows:
+        return "Нет данных для экспорта", 400
+    
+    data = [{'ID': r['id'], 'Поле 1': r['field1'], 'Поле 2': r['field2'], 'Дата': r['created_at']} for r in rows]
+    df = pd.DataFrame(data)
+    
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Данные')
+    
+    output.seek(0)
+    return send_file(output, download_name=f'data_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx', 
+                     as_attachment=True,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+if __name__ == '__main__':
+    init_db()
+    print("\n" + "="*50)
+    print("🚀 СЕРВЕР ЗАПУЩЕН!")
+    print("="*50)
+    print("\n📌 ДЛЯ ДОСТУПА С ДРУГИХ КОМПЬЮТЕРОВ:")
+    print("   Введите в браузере ваш IP-адрес и порт 5000")
+    print("   Например: http://192.168.1.100:5000")
+    print("\n📌 ДЛЯ ПРОВЕРКИ ВАШЕГО IP:")
+    print("   Windows: ipconfig | findstr IPv4")
+    print("   Mac/Linux: ifconfig | grep inet")
+    print("\n" + "="*50 + "\n")
+    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
+
+
+
+
+
+
+
+
+
 Отлично! Давайте пошагово развернём сервер на вашем компьютере для 10 пользователей.
 
 📋 План действий:
