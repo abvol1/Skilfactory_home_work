@@ -1,1 +1,684 @@
 
+📦 ПОЛНЫЙ КОД ПРИЛОЖЕНИЯ С АВТОБЭКАПОМ
+
+Вот полный код app.py с подробными комментариями на русском языке:
+
+```python
+# ============================================
+# ИМПОРТ НЕОБХОДИМЫХ БИБЛИОТЕК
+# ============================================
+from flask import Flask, request, render_template_string, redirect, make_response
+import sqlite3
+from datetime import datetime
+import csv
+import io
+import os
+import shutil
+
+# ============================================
+# СОЗДАНИЕ ПРИЛОЖЕНИЯ FLASK
+# ============================================
+app = Flask(__name__)
+
+# ============================================
+# НАСТРОЙКА ПУТИ К БАЗЕ ДАННЫХ
+# ============================================
+# ЕСЛИ БАЗА НА СЕТЕВОМ ДИСКЕ:
+DATABASE = '/mnt/shared_db/data.db'
+
+# ЕСЛИ БАЗА ЛОКАЛЬНО (раскомментировать, а строку выше закомментировать):
+# DATABASE = 'data.db'
+
+# ============================================
+# ФУНКЦИЯ ПОДКЛЮЧЕНИЯ К БАЗЕ ДАННЫХ
+# ============================================
+def get_db():
+    """
+    Устанавливает соединение с SQLite базой данных.
+    Возвращает объект соединения с настройками:
+    - timeout=10.0 - ждать 10 секунд, если БД заблокирована
+    - row_factory = sqlite3.Row - доступ к колонкам по имени (как в словаре)
+    """
+    conn = sqlite3.connect(
+        DATABASE,
+        timeout=10.0,
+        check_same_thread=False  # Разрешаем использование из разных потоков
+    )
+    conn.row_factory = sqlite3.Row
+    return conn
+
+# ============================================
+# ФУНКЦИЯ ИНИЦИАЛИЗАЦИИ БАЗЫ ДАННЫХ
+# ============================================
+def init_db():
+    """
+    Создаёт таблицу 'records', если она ещё не существует.
+    Выполняется автоматически при первом запуске приложения.
+    """
+    with get_db() as conn:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,  -- Уникальный ID записи
+                field1 TEXT NOT NULL,                   -- Первое поле (текст)
+                field2 TEXT NOT NULL,                   -- Второе поле (текст)
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP  -- Дата создания
+            )
+        ''')
+        conn.commit()
+
+# ============================================
+# ФУНКЦИЯ АВТОМАТИЧЕСКОГО РЕЗЕРВНОГО КОПИРОВАНИЯ
+# ============================================
+def auto_backup():
+    """
+    СОЗДАЁТ РЕЗЕРВНУЮ КОПИЮ БАЗЫ ДАННЫХ ПРИ КАЖДОМ ИЗМЕНЕНИИ
+    Сохраняет последние 10 копий, старые автоматически удаляет.
+    """
+    # Путь к папке с резервными копиями
+    backup_dir = '/mnt/shared_db/backups'  # Для сетевого диска
+    # backup_dir = 'backups'  # Для локальной папки (раскомментировать при локальной БД)
+    
+    # Проверяем, существует ли основная база данных
+    if not os.path.exists(DATABASE):
+        print("⚠️ База данных не найдена, бэкап не создан")
+        return
+    
+    # Создаём папку для бэкапов, если её нет
+    if not os.path.exists(backup_dir):
+        os.makedirs(backup_dir)
+        print(f"📁 Создана папка для бэкапов: {backup_dir}")
+    
+    # Формируем имя файла с текущей датой и временем
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    backup_file = os.path.join(backup_dir, f'data_{timestamp}.db')
+    
+    # Копируем базу данных
+    shutil.copy2(DATABASE, backup_file)
+    print(f"✅ Создан бэкап: {backup_file}")
+    
+    # Получаем список всех файлов бэкапов в папке
+    backup_files = [f for f in os.listdir(backup_dir) if f.startswith('data_') and f.endswith('.db')]
+    
+    # Сортируем по имени (включая дату) - самые новые будут в конце
+    backup_files.sort()
+    
+    # Если файлов больше 10, удаляем самые старые
+    if len(backup_files) > 10:
+        files_to_delete = backup_files[:-10]  # Все кроме 10 последних
+        for old_file in files_to_delete:
+            os.remove(os.path.join(backup_dir, old_file))
+            print(f"🗑️ Удалён старый бэкап: {old_file}")
+
+# ============================================
+# HTML ШАБЛОН (ИНТЕРФЕЙС ПОЛЬЗОВАТЕЛЯ)
+# ============================================
+HTML = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Flask Приложение с Бэкапом</title>
+    <style>
+        /* Основные стили для красивого отображения */
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        table { border-collapse: collapse; margin-top: 20px; width: 100%; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background: #4CAF50; color: white; cursor: pointer; }
+        th:hover { background: #45a049; }
+        tr:nth-child(even) { background: #f9f9f9; }
+        tr:hover { background: #f1f1f1; }
+        .form-group { margin: 10px 0; }
+        input, select { padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 4px; width: 100%; max-width: 300px; }
+        button { padding: 8px 20px; margin: 5px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-add { background: #4CAF50; color: white; }
+        .btn-add:hover { background: #45a049; }
+        .btn-edit { background: #2196F3; color: white; }
+        .btn-edit:hover { background: #1976D2; }
+        .btn-delete { background: #f44336; color: white; }
+        .btn-delete:hover { background: #d32f2f; }
+        .btn-export { background: #FF9800; color: white; }
+        .btn-export:hover { background: #F57C00; }
+        .btn-delete-all { background: #9E9E9E; color: white; }
+        .btn-delete-all:hover { background: #757575; }
+        .btn-cancel { background: #607D8B; color: white; }
+        .btn-cancel:hover { background: #455A64; }
+        .stats { background: #e8f4f8; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 4px solid #2196F3; }
+        .msg { color: #4CAF50; font-weight: bold; padding: 10px; background: #e8f5e9; border-radius: 4px; }
+        .edit-form { background: #fff3e0; padding: 20px; border: 1px solid #FFB74D; border-radius: 5px; margin-top: 20px; }
+        .toolbar { margin: 15px 0; padding: 15px; background: #f0f0f0; border-radius: 5px; }
+        .toolbar form { display: inline-block; margin-right: 10px; }
+        .header { background: #4CAF50; color: white; padding: 15px; border-radius: 5px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+        .badge { background: #FF9800; padding: 5px 10px; border-radius: 20px; font-size: 12px; }
+        @media (max-width: 768px) {
+            .toolbar form { display: block; margin: 5px 0; }
+            table { font-size: 14px; }
+            th, td { padding: 6px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- ШАПКА -->
+        <div class="header">
+            <h2>📋 Управление записями</h2>
+            <span class="badge">✅ Автобэкап включён</span>
+        </div>
+        
+        <!-- СТАТИСТИКА -->
+        <div class="stats">
+            📊 <strong>Всего записей:</strong> {{ total_records }} &nbsp;|&nbsp;
+            🕐 <strong>Последнее обновление:</strong> {{ last_update }} &nbsp;|&nbsp;
+            💾 <strong>Бэкапы:</strong> последние 10 копий
+        </div>
+        
+        <!-- ФОРМА ДОБАВЛЕНИЯ -->
+        <form method="post" action="/">
+            <h3>➕ Добавить запись</h3>
+            <div class="form-group">
+                <label>Поле 1:</label><br>
+                <input type="text" name="field1" required placeholder="Введите значение...">
+            </div>
+            <div class="form-group">
+                <label>Поле 2:</label><br>
+                <input type="text" name="field2" required placeholder="Введите значение...">
+            </div>
+            <button type="submit" class="btn-add">💾 Сохранить</button>
+        </form>
+        
+        {% if msg %}
+            <p class="msg">{{ msg }}</p>
+        {% endif %}
+        
+        <!-- ПАНЕЛЬ ИНСТРУМЕНТОВ -->
+        <div class="toolbar">
+            <h3>📋 Все записи</h3>
+            
+            <!-- ПОИСК -->
+            <form method="get" action="/">
+                <input type="text" name="search" placeholder="🔍 Поиск..." value="{{ search_query or '' }}">
+                <button type="submit">Найти</button>
+                {% if search_query %}
+                    <a href="/">Сбросить</a>
+                {% endif %}
+            </form>
+            
+            <!-- СОРТИРОВКА -->
+            <form method="get" action="/">
+                <select name="sort_by">
+                    <option value="">Сортировать по...</option>
+                    <option value="field1" {% if sort_by == 'field1' %}selected{% endif %}>Поле 1</option>
+                    <option value="field2" {% if sort_by == 'field2' %}selected{% endif %}>Поле 2</option>
+                    <option value="created_at" {% if sort_by == 'created_at' %}selected{% endif %}>Дата</option>
+                </select>
+                <select name="sort_order">
+                    <option value="asc" {% if sort_order == 'asc' %}selected{% endif %}>По возрастанию</option>
+                    <option value="desc" {% if sort_order == 'desc' %}selected{% endif %}>По убыванию</option>
+                </select>
+                <button type="submit">Сортировать</button>
+                {% if sort_by %}
+                    <a href="/">Сбросить</a>
+                {% endif %}
+            </form>
+            
+            <!-- ЭКСПОРТ -->
+            <form method="post" action="/export">
+                <button type="submit" class="btn-export">📊 Экспорт в CSV</button>
+            </form>
+            
+            <!-- УДАЛИТЬ ВСЁ -->
+            <form method="post" action="/delete_all" onsubmit="return confirm('Удалить ВСЕ записи? Это действие необратимо!')">
+                <button type="submit" class="btn-delete-all">🗑️ Удалить все</button>
+            </form>
+        </div>
+        
+        <!-- ТАБЛИЦА С ЗАПИСЯМИ -->
+        {% if records %}
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 60px;">ID</th>
+                        <th>Поле 1</th>
+                        <th>Поле 2</th>
+                        <th style="width: 180px;">Дата создания</th>
+                        <th style="width: 150px;">Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in records %}
+                    <tr>
+                        <td>{{ row.id }}</td>
+                        <td>{{ row.field1 }}</td>
+                        <td>{{ row.field2 }}</td>
+                        <td>{{ row.created_at }}</td>
+                        <td>
+                            <a href="/edit/{{ row.id }}" style="text-decoration: none;">
+                                <button class="btn-edit">✏️</button>
+                            </a>
+                            <a href="/delete/{{ row.id }}" onclick="return confirm('Удалить запись #{{ row.id }}?')" style="text-decoration: none;">
+                                <button class="btn-delete">🗑️</button>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p style="text-align: center; padding: 40px; color: #999; font-size: 18px;">
+                📭 Нет записей. Добавьте первую!
+            </p>
+        {% endif %}
+        
+        <!-- ФОРМА РЕДАКТИРОВАНИЯ -->
+        {% if edit_mode %}
+        <div class="edit-form">
+            <h3>✏️ Редактировать запись #{{ edit_id }}</h3>
+            <form method="post" action="/edit/{{ edit_id }}">
+                <div class="form-group">
+                    <label>Поле 1:</label><br>
+                    <input type="text" name="field1" value="{{ edit_row.field1 }}" required>
+                </div>
+                <div class="form-group">
+                    <label>Поле 2:</label><br>
+                    <input type="text" name="field2" value="{{ edit_row.field2 }}" required>
+                </div>
+                <button type="submit" class="btn-add">💾 Обновить</button>
+                <a href="/"><button type="button" class="btn-cancel">❌ Отмена</button></a>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>
+'''
+
+# ============================================
+# ГЛАВНАЯ СТРАНИЦА (ПРОСМОТР + ДОБАВЛЕНИЕ)
+# ============================================
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    """
+    Обрабатывает GET и POST запросы на главной странице.
+    GET - отображает таблицу с записями (с поиском и сортировкой)
+    POST - добавляет новую запись в базу данных
+    """
+    
+    # === ОБРАБОТКА POST ЗАПРОСА (ДОБАВЛЕНИЕ ЗАПИСИ) ===
+    if request.method == 'POST':
+        field1 = request.form.get('field1', '').strip()
+        field2 = request.form.get('field2', '').strip()
+        
+        # Проверка на пустые значения
+        if not field1 or not field2:
+            return render_template_string(
+                HTML, 
+                msg='❌ Поля не могут быть пустыми!', 
+                records=[], 
+                total_records=0, 
+                last_update='',
+                edit_mode=False
+            )
+        
+        try:
+            # Подключаемся к БД и сохраняем запись
+            with get_db() as conn:
+                conn.execute(
+                    'INSERT INTO records (field1, field2) VALUES (?, ?)',
+                    (field1, field2)
+                )
+                conn.commit()
+            
+            # === СОЗДАЁМ РЕЗЕРВНУЮ КОПИЮ ПОСЛЕ ДОБАВЛЕНИЯ ===
+            auto_backup()  # <-- ЗДЕСЬ СОЗДАЁТСЯ БЭКАП
+            
+            # Перенаправляем на главную, чтобы избежать повторной отправки формы
+            return redirect('/')
+            
+        except sqlite3.Error as e:
+            return render_template_string(
+                HTML,
+                msg=f'❌ Ошибка базы данных: {e}',
+                records=[],
+                total_records=0,
+                last_update='',
+                edit_mode=False
+            )
+    
+    # === ОБРАБОТКА GET ЗАПРОСА (ПРОСМОТР ЗАПИСЕЙ) ===
+    
+    # Получаем параметры из URL (для поиска и сортировки)
+    search_query = request.args.get('search', '').strip()
+    sort_by = request.args.get('sort_by', '')
+    sort_order = request.args.get('sort_order', 'asc')
+    
+    # Строим SQL запрос
+    query = 'SELECT * FROM records'
+    params = []
+    
+    # Добавляем поиск (если есть)
+    if search_query:
+        query += ' WHERE field1 LIKE ? OR field2 LIKE ?'
+        params = [f'%{search_query}%', f'%{search_query}%']
+    
+    # Добавляем сортировку (если есть)
+    if sort_by in ['field1', 'field2', 'created_at']:
+        query += f' ORDER BY {sort_by} COLLATE NOCASE'
+        query += ' DESC' if sort_order == 'desc' else ' ASC'
+    else:
+        # По умолчанию сортируем по ID (новые сверху)
+        query += ' ORDER BY id DESC'
+    
+    try:
+        # Подключаемся к БД и получаем данные
+        with get_db() as conn:
+            records = conn.execute(query, params).fetchall()
+            
+            # Получаем общее количество записей
+            total = conn.execute('SELECT COUNT(*) as count FROM records').fetchone()['count']
+            
+            # Получаем дату последнего обновления
+            last = conn.execute('SELECT MAX(created_at) as last FROM records').fetchone()['last']
+        
+        last_update = last or 'Нет записей'
+        
+        # Отображаем страницу с данными
+        return render_template_string(
+            HTML,
+            msg=None,
+            records=records,
+            total_records=total,
+            last_update=last_update,
+            edit_mode=False,
+            search_query=search_query,
+            sort_by=sort_by,
+            sort_order=sort_order
+        )
+        
+    except sqlite3.Error as e:
+        return f"❌ Ошибка при чтении базы данных: {e}", 500
+
+# ============================================
+# УДАЛЕНИЕ ЗАПИСИ
+# ============================================
+@app.route('/delete/<int:record_id>')
+def delete(record_id):
+    """
+    Удаляет запись по ID.
+    После удаления создаёт резервную копию.
+    """
+    try:
+        with get_db() as conn:
+            conn.execute('DELETE FROM records WHERE id = ?', (record_id,))
+            conn.commit()
+        
+        # === СОЗДАЁМ РЕЗЕРВНУЮ КОПИЮ ПОСЛЕ УДАЛЕНИЯ ===
+        auto_backup()  # <-- ЗДЕСЬ СОЗДАЁТСЯ БЭКАП
+        
+        return redirect('/')
+        
+    except sqlite3.Error as e:
+        return f"❌ Ошибка при удалении: {e}", 500
+
+# ============================================
+# РЕДАКТИРОВАНИЕ ЗАПИСИ
+# ============================================
+@app.route('/edit/<int:record_id>', methods=['GET', 'POST'])
+def edit(record_id):
+    """
+    Редактирует запись по ID.
+    GET - показывает форму с текущими данными
+    POST - сохраняет изменения и создаёт бэкап
+    """
+    
+    # === ОБРАБОТКА POST ЗАПРОСА (СОХРАНЕНИЕ ИЗМЕНЕНИЙ) ===
+    if request.method == 'POST':
+        field1 = request.form.get('field1', '').strip()
+        field2 = request.form.get('field2', '').strip()
+        
+        if not field1 or not field2:
+            return "❌ Поля не могут быть пустыми!", 400
+        
+        try:
+            with get_db() as conn:
+                conn.execute(
+                    'UPDATE records SET field1 = ?, field2 = ? WHERE id = ?',
+                    (field1, field2, record_id)
+                )
+                conn.commit()
+            
+            # === СОЗДАЁМ РЕЗЕРВНУЮ КОПИЮ ПОСЛЕ ИЗМЕНЕНИЯ ===
+            auto_backup()  # <-- ЗДЕСЬ СОЗДАЁТСЯ БЭКАП
+            
+            return redirect('/')
+            
+        except sqlite3.Error as e:
+            return f"❌ Ошибка при обновлении: {e}", 500
+    
+    # === ОБРАБОТКА GET ЗАПРОСА (ПОКАЗ ФОРМЫ) ===
+    try:
+        with get_db() as conn:
+            # Получаем данные редактируемой записи
+            record = conn.execute(
+                'SELECT * FROM records WHERE id = ?', 
+                (record_id,)
+            ).fetchone()
+            
+            # Если запись не найдена - на главную
+            if not record:
+                return redirect('/')
+            
+            # Получаем все записи для отображения таблицы
+            records = conn.execute('SELECT * FROM records ORDER BY id DESC').fetchall()
+            total = conn.execute('SELECT COUNT(*) as count FROM records').fetchone()['count']
+            last = conn.execute('SELECT MAX(created_at) as last FROM records').fetchone()['last']
+        
+        # Отображаем страницу с формой редактирования
+        return render_template_string(
+            HTML,
+            msg=None,
+            records=records,
+            total_records=total,
+            last_update=last or 'Нет записей',
+            edit_mode=True,
+            edit_id=record_id,
+            edit_row=record,
+            search_query=None,
+            sort_by=None,
+            sort_order=None
+        )
+        
+    except sqlite3.Error as e:
+        return f"❌ Ошибка при чтении записи: {e}", 500
+
+# ============================================
+# УДАЛЕНИЕ ВСЕХ ЗАПИСЕЙ
+# ============================================
+@app.route('/delete_all', methods=['POST'])
+def delete_all():
+    """
+    Удаляет ВСЕ записи из таблицы.
+    После удаления создаёт резервную копию.
+    """
+    try:
+        with get_db() as conn:
+            conn.execute('DELETE FROM records')
+            conn.commit()
+        
+        # === СОЗДАЁМ РЕЗЕРВНУЮ КОПИЮ ПОСЛЕ УДАЛЕНИЯ ВСЕГО ===
+        auto_backup()  # <-- ЗДЕСЬ СОЗДАЁТСЯ БЭКАП
+        
+        return redirect('/')
+        
+    except sqlite3.Error as e:
+        return f"❌ Ошибка при удалении: {e}", 500
+
+# ============================================
+# ЭКСПОРТ В CSV
+# ============================================
+@app.route('/export', methods=['POST'])
+def export():
+    """
+    Экспортирует все записи в CSV файл.
+    Файл скачивается автоматически.
+    """
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                'SELECT id, field1, field2, created_at FROM records ORDER BY id'
+            ).fetchall()
+        
+        # Если нет данных - сообщаем об этом
+        if not rows:
+            return "❌ Нет данных для экспорта", 400
+        
+        # Создаём CSV файл в оперативной памяти
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Записываем заголовки
+        writer.writerow(['ID', 'Поле 1', 'Поле 2', 'Дата создания'])
+        
+        # Записываем данные
+        for row in rows:
+            writer.writerow([row['id'], row['field1'], row['field2'], row['created_at']])
+        
+        # Формируем ответ для скачивания
+        response = make_response(output.getvalue())
+        response.headers['Content-Disposition'] = (
+            f'attachment; filename=export_{datetime.now().strftime("%Y%m%d_%H%M")}.csv'
+        )
+        response.headers['Content-Type'] = 'text/csv; charset=utf-8-sig'
+        
+        return response
+        
+    except sqlite3.Error as e:
+        return f"❌ Ошибка при экспорте: {e}", 500
+
+# ============================================
+# ЗАПУСК ПРИЛОЖЕНИЯ
+# ============================================
+if __name__ == '__main__':
+    """
+    Точка входа в приложение.
+    При запуске:
+    1. Инициализирует базу данных
+    2. Создаёт первый бэкап
+    3. Запускает веб-сервер на всех интерфейсах (0.0.0.0)
+    """
+    
+    # Инициализация базы данных (создание таблицы)
+    init_db()
+    print("✅ База данных инициализирована")
+    
+    # Создаём первый бэкап при запуске
+    auto_backup()
+    print("✅ Первый бэкап создан")
+    
+    # Выводим информацию о запуске
+    print("\n" + "="*60)
+    print("🚀 СЕРВЕР УСПЕШНО ЗАПУЩЕН!")
+    print("="*60)
+    print("\n📌 ИНФОРМАЦИЯ:")
+    print(f"   База данных: {DATABASE}")
+    print("   Автобэкап: Включён (при каждом изменении)")
+    print("   Хранится: 10 последних копий")
+    print("\n📌 ДЛЯ ДОСТУПА:")
+    print("   Локально: http://localhost:5000")
+    print("   В сети: http://[ВАШ_IP]:5000")
+    print("\n📌 УЗНАТЬ СВОЙ IP:")
+    print("   Linux/Mac: hostname -I")
+    print("   Windows: ipconfig | findstr IPv4")
+    print("\n" + "="*60)
+    print("💡 Нажмите Ctrl+C для остановки сервера")
+    print("="*60 + "\n")
+    
+    # Запуск веб-сервера
+    # host='0.0.0.0' - доступно для всех в сети
+    # port=5000 - стандартный порт Flask
+    # debug=False - отключаем отладку для производительности
+    # threaded=True - поддержка нескольких пользователей
+    app.run(
+        host='0.0.0.0',
+        port=5000,
+        debug=False,
+        threaded=True
+    )
+```
+
+---
+
+📁 ДОПОЛНИТЕЛЬНО: requirements.txt
+
+Создайте файл requirements.txt для установки зависимостей:
+
+```txt
+Flask==2.3.2
+```
+
+---
+
+🚀 КАК ИСПОЛЬЗОВАТЬ
+
+1. Установка зависимостей:
+
+```bash
+pip install -r requirements.txt
+# Или просто:
+pip install flask
+```
+
+2. Настройка путей:
+
+Для сетевого диска:
+
+```python
+DATABASE = '/mnt/shared_db/data.db'
+backup_dir = '/mnt/shared_db/backups'
+```
+
+Для локальной папки:
+
+```python
+DATABASE = 'data.db'  # Закомментируйте строку с сетевым путём
+# И в функции auto_backup() замените:
+backup_dir = 'backups'
+```
+
+3. Запуск:
+
+```bash
+python3 app.py
+```
+
+---
+
+✅ ЧТО ПРИЛОЖЕНИЕ ДЕЛАЕТ
+
+Функция Описание
+Добавление Сохраняет запись и создаёт бэкап
+Редактирование Обновляет запись и создаёт бэкап
+Удаление Удаляет запись и создаёт бэкап
+Удаление всех Очищает таблицу и создаёт бэкап
+Экспорт Скачивает все данные в CSV
+Поиск Ищет по обоим полям
+Сортировка Сортирует по любому полю
+Автобэкап Хранит 10 последних копий
+
+---
+
+📂 СТРУКТУРА ПАПОК
+
+```
+flask_app/
+├── app.py              # Основной код (весь выше)
+├── requirements.txt    # Зависимости
+├── data.db            # Основная БД (создаётся автоматически)
+└── backups/           # Папка с бэкапами (создаётся автоматически)
+    ├── data_20240627_120000.db
+    ├── data_20240627_120005.db
+    └── ... (всего 10 штук)
+```
+
+---
+
+ВСЁ ГОТОВО! Приложение полностью готово к работе! 🎉
