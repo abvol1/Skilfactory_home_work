@@ -1,3 +1,249 @@
+Показываю полную структуру проекта и все файлы. Создайте точно такую же структуру:
+
+```
+my_flask_app/
+├── app.py
+├── templates/
+│   └── index.html
+├── uploads/          (папка для временных файлов)
+└── requirements.txt
+```
+
+---
+
+Файл app.py (полностью, копируйте без изменений):
+
+```python
+from flask import Flask, render_template, request, send_file
+import pandas as pd
+from io import BytesIO
+import openpyxl
+from openpyxl.styles import PatternFill
+import os
+
+app = Flask(__name__)
+
+# Создаем папку для загрузок если её нет
+UPLOAD_FOLDER = 'uploads'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/compare', methods=['POST'])
+def compare_files():
+    try:
+        file1 = request.files['file1']
+        file2 = request.files['file2']
+        
+        if not file1 or not file2:
+            return "Ошибка: не выбраны файлы", 400
+        
+        # Сохраняем файлы временно
+        path1 = os.path.join(UPLOAD_FOLDER, 'file1.xlsx')
+        path2 = os.path.join(UPLOAD_FOLDER, 'file2.xlsx')
+        file1.save(path1)
+        file2.save(path2)
+        
+        # Читаем файлы
+        df1 = pd.read_excel(path1, engine='openpyxl')
+        df2 = pd.read_excel(path2, engine='openpyxl')
+        
+        # Берем первый столбец (по индексу 0)
+        col_name = df1.columns[0]
+        
+        # Создаем результат
+        df_result = df1.copy()
+        
+        # Объединяем
+        merged = df1.merge(df2, on=col_name, how='outer', suffixes=('_file1', '_file2'), indicator=True)
+        
+        # Находим расхождения
+        diff_indices = merged[merged['_merge'] != 'both'][col_name].tolist()
+        
+        # Добавляем статус
+        df_result['Статус'] = '✅ Совпадает'
+        df_result.loc[df_result[col_name].isin(diff_indices), 'Статус'] = '❌ Расхождение'
+        
+        # Создаем Excel с подсветкой
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df_result.to_excel(writer, index=False, sheet_name='Сравнение')
+            
+            workbook = writer.book
+            worksheet = writer.sheets['Сравнение']
+            
+            # Желтая заливка
+            yellow_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+            
+            # Находим столбец статуса
+            status_col_idx = df_result.columns.get_loc('Статус') + 1
+            
+            # Подсвечиваем строки
+            for row_idx in range(2, len(df_result) + 2):
+                status = worksheet.cell(row=row_idx, column=status_col_idx).value
+                if status and 'Расхождение' in str(status):
+                    for col_idx in range(1, len(df_result.columns) + 1):
+                        worksheet.cell(row=row_idx, column=col_idx).fill = yellow_fill
+        
+        # Удаляем временные файлы
+        os.remove(path1)
+        os.remove(path2)
+        
+        output.seek(0)
+        return send_file(
+            output,
+            download_name='result.xlsx',
+            as_attachment=True,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
+    except Exception as e:
+        return f"Ошибка: {str(e)}", 500
+
+if __name__ == '__main__':
+    app.run(debug=True, host='127.0.0.1', port=5000)
+```
+
+---
+
+Файл templates/index.html:
+
+```html
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Сравнение Excel файлов</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h2 {
+            color: #333;
+            margin-top: 0;
+        }
+        .file-input {
+            margin: 20px 0;
+            padding: 15px;
+            border: 2px dashed #ccc;
+            border-radius: 5px;
+            text-align: center;
+            transition: border-color 0.3s;
+        }
+        .file-input:hover {
+            border-color: #4CAF50;
+        }
+        input[type="file"] {
+            display: block;
+            margin: 10px auto;
+            padding: 10px;
+        }
+        input[type="submit"] {
+            background: #4CAF50;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+            width: 100%;
+        }
+        input[type="submit"]:hover {
+            background: #45a049;
+        }
+        .info {
+            background: #e7f3fe;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #31708f;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>📊 Сравнение Excel файлов</h2>
+        <div class="info">
+            <strong>Инструкция:</strong> Загрузите два Excel файла (.xlsx).<br>
+            Сравнение происходит по <strong>ПЕРВОМУ СТОЛБЦУ</strong>.<br>
+            Строки с расхождениями будут выделены <span style="background: yellow; padding: 2px 5px;">желтым</span>.
+        </div>
+        <form method="POST" action="/compare" enctype="multipart/form-data">
+            <div class="file-input">
+                <label><strong>Файл 1 (базовый):</strong></label>
+                <input type="file" name="file1" accept=".xlsx" required>
+            </div>
+            <div class="file-input">
+                <label><strong>Файл 2 (для сравнения):</strong></label>
+                <input type="file" name="file2" accept=".xlsx" required>
+            </div>
+            <input type="submit" value="🔍 Сравнить файлы">
+        </form>
+    </div>
+</body>
+</html>
+```
+
+---
+
+Файл requirements.txt:
+
+```
+flask==2.3.3
+pandas==2.0.3
+openpyxl==3.1.2
+xlrd==2.0.1
+```
+
+---
+
+Инструкция по запуску:
+
+1. Создайте папку my_flask_app
+2. Внутри создайте все файлы в точности как показано выше
+3. Откройте терминал в папке my_flask_app
+4. Установите зависимости:
+
+```bash
+pip install -r requirements.txt
+```
+
+5. Запустите:
+
+```bash
+python app.py
+```
+
+6. Откройте браузер: http://127.0.0.1:5000
+
+Важно:
+
+· Файлы должны быть в формате .xlsx (не .xls)
+· Сравнение идет по первому столбцу (независимо от его названия)
+· Если ошибка "не удалось получить домтупикифацлу" — значит у вас проблемы с кодировкой Windows. В этом случае запускайте в PyCharm или VS Code с кодировкой UTF-8
+
+
+
+
+
+
+
 
 from flask import Flask, render_template, request, send_file
 import pandas as pd
