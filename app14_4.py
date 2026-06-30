@@ -1,3 +1,89 @@
+
+from flask import Flask, render_template, request, send_file
+import pandas as pd
+from io import BytesIO
+from openpyxl import load_workbook
+from openpyxl.styles import PatternFill
+import os
+
+app = Flask(__name__)
+
+UPLOAD_FOLDER = 'uploads'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/compare', methods=['POST'])
+def compare_files():
+    try:
+        file1 = request.files['file1']
+        file2 = request.files['file2']
+        
+        if not file1 or not file2:
+            return "Ошибка: не выбраны файлы", 400
+        
+        path1 = os.path.join(UPLOAD_FOLDER, file1.filename)
+        path2 = os.path.join(UPLOAD_FOLDER, file2.filename)
+        file1.save(path1)
+        file2.save(path2)
+        
+        # ПРИНУДИТЕЛЬНО используем openpyxl
+        df1 = pd.read_excel(path1, engine='openpyxl')
+        df2 = pd.read_excel(path2, engine='openpyxl')
+        
+        # Проверяем, что файлы прочитались
+        if df1.empty or df2.empty:
+            return "Ошибка: один из файлов пуст", 400
+        
+        col_name = df1.columns[0]
+        df_result = df1.copy()
+        
+        merged = df1.merge(df2, on=col_name, how='outer', suffixes=('_file1', '_file2'), indicator=True)
+        diff_indices = merged[merged['_merge'] != 'both'][col_name].tolist()
+        
+        df_result['Статус'] = '✅ Совпадает'
+        df_result.loc[df_result[col_name].isin(diff_indices), 'Статус'] = '❌ Расхождение'
+        
+        output = BytesIO()
+        
+        # Сначала сохраняем через pandas
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df_result.to_excel(writer, index=False, sheet_name='Сравнение')
+            workbook = writer.book
+            worksheet = writer.sheets['Сравнение']
+            
+            yellow_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+            status_col_idx = df_result.columns.get_loc('Статус') + 1
+            
+            for row_idx in range(2, len(df_result) + 2):
+                status = worksheet.cell(row=row_idx, column=status_col_idx).value
+                if status and 'Расхождение' in str(status):
+                    for col_idx in range(1, len(df_result.columns) + 1):
+                        worksheet.cell(row=row_idx, column=col_idx).fill = yellow_fill
+        
+        os.remove(path1)
+        os.remove(path2)
+        
+        output.seek(0)
+        return send_file(
+            output,
+            download_name='result.xlsx',
+            as_attachment=True,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
+    except Exception as e:
+        return f"Ошибка: {str(e)}", 500
+
+if __name__ == '__main__':
+    app.run(debug=True, host='127.0.0.1', port=5000)
+
+
+
+
 Показываю полную структуру проекта и все файлы. Создайте точно такую же структуру:
 
 ```
