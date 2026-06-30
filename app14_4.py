@@ -1,3 +1,122 @@
+from flask import Flask, render_template, request, send_file
+from io import BytesIO
+from openpyxl import load_workbook
+from openpyxl.styles import PatternFill
+import os
+
+app = Flask(__name__)
+
+UPLOAD_FOLDER = 'uploads'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/compare', methods=['POST'])
+def compare_files():
+    try:
+        file1 = request.files['file1']
+        file2 = request.files['file2']
+        
+        if not file1 or not file2:
+            return "Ошибка: не выбраны файлы", 400
+        
+        path1 = os.path.join(UPLOAD_FOLDER, file1.filename)
+        path2 = os.path.join(UPLOAD_FOLDER, file2.filename)
+        file1.save(path1)
+        file2.save(path2)
+        
+        # Читаем файлы через openpyxl
+        wb1 = load_workbook(path1, data_only=True)
+        wb2 = load_workbook(path2, data_only=True)
+        
+        ws1 = wb1.active
+        ws2 = wb2.active
+        
+        # Получаем данные из первого столбца
+        data1 = {}
+        data2 = {}
+        
+        # Читаем первый файл
+        for row in range(2, ws1.max_row + 1):
+            key = ws1.cell(row=row, column=1).value
+            if key:
+                row_data = []
+                for col in range(1, ws1.max_column + 1):
+                    row_data.append(ws1.cell(row=row, column=col).value)
+                data1[key] = row_data
+        
+        # Читаем второй файл
+        for row in range(2, ws2.max_row + 1):
+            key = ws2.cell(row=row, column=1).value
+            if key:
+                row_data = []
+                for col in range(1, ws2.max_column + 1):
+                    row_data.append(ws2.cell(row=row, column=col).value)
+                data2[key] = row_data
+        
+        # Находим расхождения
+        all_keys = set(data1.keys()) | set(data2.keys())
+        diff_keys = [k for k in all_keys if k not in data1 or k not in data2]
+        
+        # Создаем результирующий файл
+        wb_result = load_workbook(path1)
+        ws_result = wb_result.active
+        
+        # Добавляем столбец "Статус"
+        status_col = ws_result.max_column + 1
+        ws_result.cell(row=1, column=status_col, value="Статус")
+        
+        # Подсвечиваем расхождения
+        yellow_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+        
+        for row in range(2, ws_result.max_row + 1):
+            key = ws_result.cell(row=row, column=1).value
+            if key in diff_keys:
+                ws_result.cell(row=row, column=status_col, value="❌ Расхождение")
+                for col in range(1, ws_result.max_column + 1):
+                    ws_result.cell(row=row, column=col).fill = yellow_fill
+            else:
+                ws_result.cell(row=row, column=status_col, value="✅ Совпадает")
+        
+        # Сохраняем результат
+        output = BytesIO()
+        wb_result.save(output)
+        
+        os.remove(path1)
+        os.remove(path2)
+        
+        output.seek(0)
+        
+        # Универсальный send_file для всех версий Flask
+        try:
+            # Для новых версий Flask (2.x)
+            return send_file(
+                output,
+                download_name='result.xlsx',
+                as_attachment=True,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+        except TypeError:
+            # Для старых версий Flask (1.x)
+            return send_file(
+                output,
+                attachment_filename='result.xlsx',
+                as_attachment=True,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+        
+    except Exception as e:
+        return f"Ошибка: {str(e)}", 500
+
+if __name__ == '__main__':
+    app.run(debug=True, host='127.0.0.1', port=5000)
+
+
+
+
 
 from flask import Flask, render_template, request, send_file
 from io import BytesIO
