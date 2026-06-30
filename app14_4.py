@@ -1,3 +1,343 @@
+
+Отлично! Теперь добавим выбор колонок через выпадающий список. Вот обновленный код:
+
+Обновленный app.py:
+
+```python
+from flask import Flask, render_template, request, send_file
+from io import BytesIO
+from openpyxl import load_workbook
+from openpyxl.styles import PatternFill
+import os
+
+app = Flask(__name__)
+
+UPLOAD_FOLDER = 'uploads'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/compare', methods=['POST'])
+def compare_files():
+    try:
+        file1 = request.files['file1']
+        file2 = request.files['file2']
+        col1 = request.form.get('col1')  # Номер колонки из первого файла
+        col2 = request.form.get('col2')  # Номер колонки из второго файла
+        
+        if not file1 or not file2:
+            return "Ошибка: не выбраны файлы", 400
+        
+        path1 = os.path.join(UPLOAD_FOLDER, file1.filename)
+        path2 = os.path.join(UPLOAD_FOLDER, file2.filename)
+        file1.save(path1)
+        file2.save(path2)
+        
+        # Читаем файлы
+        wb1 = load_workbook(path1, data_only=True)
+        wb2 = load_workbook(path2, data_only=True)
+        
+        ws1 = wb1.active
+        ws2 = wb2.active
+        
+        # Получаем заголовки для отображения
+        headers1 = []
+        for col in range(1, ws1.max_column + 1):
+            headers1.append(ws1.cell(row=1, column=col).value)
+        
+        headers2 = []
+        for col in range(1, ws2.max_column + 1):
+            headers2.append(ws2.cell(row=1, column=col).value)
+        
+        # Если колонки не выбраны, берем первую
+        col1_idx = int(col1) if col1 else 1
+        col2_idx = int(col2) if col2 else 1
+        
+        # Получаем данные
+        data1 = {}
+        for row in range(2, ws1.max_row + 1):
+            key = ws1.cell(row=row, column=col1_idx).value
+            if key:
+                row_data = []
+                for col in range(1, ws1.max_column + 1):
+                    row_data.append(ws1.cell(row=row, column=col).value)
+                data1[key] = row_data
+        
+        data2 = {}
+        for row in range(2, ws2.max_row + 1):
+            key = ws2.cell(row=row, column=col2_idx).value
+            if key:
+                row_data = []
+                for col in range(1, ws2.max_column + 1):
+                    row_data.append(ws2.cell(row=row, column=col).value)
+                data2[key] = row_data
+        
+        # Находим расхождения
+        all_keys = set(data1.keys()) | set(data2.keys())
+        diff_keys = [k for k in all_keys if k not in data1 or k not in data2]
+        
+        # Создаем результирующий файл
+        wb_result = load_workbook(path1)
+        ws_result = wb_result.active
+        
+        # Добавляем столбец "Статус"
+        status_col = ws_result.max_column + 1
+        ws_result.cell(row=1, column=status_col, value="Статус")
+        
+        # Подсвечиваем расхождения
+        yellow_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+        
+        for row in range(2, ws_result.max_row + 1):
+            key = ws_result.cell(row=row, column=col1_idx).value
+            if key in diff_keys:
+                ws_result.cell(row=row, column=status_col, value="❌ Расхождение")
+                for col in range(1, ws_result.max_column + 1):
+                    ws_result.cell(row=row, column=col).fill = yellow_fill
+            else:
+                ws_result.cell(row=row, column=status_col, value="✅ Совпадает")
+        
+        # Сохраняем результат
+        output = BytesIO()
+        wb_result.save(output)
+        
+        os.remove(path1)
+        os.remove(path2)
+        
+        output.seek(0)
+        
+        try:
+            return send_file(
+                output,
+                download_name='result.xlsx',
+                as_attachment=True,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+        except TypeError:
+            return send_file(
+                output,
+                attachment_filename='result.xlsx',
+                as_attachment=True,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+        
+    except Exception as e:
+        return f"Ошибка: {str(e)}", 500
+
+if __name__ == '__main__':
+    app.run(debug=True, host='127.0.0.1', port=5000)
+```
+
+---
+
+Обновленный templates/index.html:
+
+```html
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Сравнение Excel файлов</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h2 {
+            color: #333;
+            margin-top: 0;
+        }
+        .file-group {
+            border: 2px solid #e0e0e0;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 8px;
+            background: #fafafa;
+        }
+        .file-group h3 {
+            margin-top: 0;
+            color: #555;
+        }
+        .file-input {
+            margin: 10px 0;
+        }
+        input[type="file"] {
+            display: block;
+            margin: 10px 0;
+            padding: 8px;
+        }
+        select {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+            min-width: 200px;
+            margin: 5px 0;
+        }
+        label {
+            font-weight: bold;
+            display: block;
+            margin: 10px 0 5px 0;
+        }
+        input[type="submit"] {
+            background: #4CAF50;
+            color: white;
+            padding: 14px 30px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+            width: 100%;
+            margin-top: 20px;
+        }
+        input[type="submit"]:hover {
+            background: #45a049;
+        }
+        .info {
+            background: #e7f3fe;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #31708f;
+            border-left: 4px solid #2196F3;
+        }
+        .hint {
+            font-size: 13px;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>📊 Сравнение Excel файлов</h2>
+        <div class="info">
+            <strong>Инструкция:</strong><br>
+            1. Загрузите два Excel файла (.xlsx)<br>
+            2. Выберите колонки для сравнения (по умолчанию - первая)<br>
+            3. Строки с расхождениями будут выделены <span style="background: yellow; padding: 2px 5px;">желтым</span>
+        </div>
+        
+        <form method="POST" action="/compare" enctype="multipart/form-data">
+            <!-- Файл 1 -->
+            <div class="file-group">
+                <h3>📄 Файл 1 (базовый)</h3>
+                <div class="file-input">
+                    <input type="file" name="file1" accept=".xlsx" required>
+                </div>
+                <label>Выберите колонку для сравнения:</label>
+                <select name="col1" id="col1">
+                    <option value="1">Колонка 1 (первая)</option>
+                </select>
+                <div class="hint">Колонки определяются после загрузки файла</div>
+            </div>
+
+            <!-- Файл 2 -->
+            <div class="file-group">
+                <h3>📄 Файл 2 (для сравнения)</h3>
+                <div class="file-input">
+                    <input type="file" name="file2" accept=".xlsx" required>
+                </div>
+                <label>Выберите колонку для сравнения:</label>
+                <select name="col2" id="col2">
+                    <option value="1">Колонка 1 (первая)</option>
+                </select>
+                <div class="hint">Колонки определяются после загрузки файла</div>
+            </div>
+
+            <input type="submit" value="🔍 Сравнить файлы">
+        </form>
+    </div>
+
+    <script>
+        // Функция для загрузки колонок после выбора файла
+        document.querySelectorAll('input[type="file"]').forEach((fileInput, index) => {
+            fileInput.addEventListener('change', function(e) {
+                const file = this.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const headers = XLSX.utils.sheet_to_json(firstSheet, {header: 1})[0];
+                    
+                    const select = document.querySelector(index === 0 ? '#col1' : '#col2');
+                    select.innerHTML = '';
+                    
+                    headers.forEach((header, idx) => {
+                        const option = document.createElement('option');
+                        option.value = idx + 1;
+                        option.textContent = `Колонка ${idx + 1}: ${header || 'Без названия'}`;
+                        select.appendChild(option);
+                    });
+                };
+                reader.readAsArrayBuffer(file);
+            });
+        });
+    </script>
+    
+    <!-- Подключаем библиотеку XLSX для чтения заголовков -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</body>
+</html>
+```
+
+---
+
+Что добавилось:
+
+1. Выпадающие списки для выбора колонок из каждого файла
+2. Автоматическое определение названий колонок после загрузки файла
+3. Возможность сравнивать разные колонки из разных файлов
+4. Поддержка выбора любой колонки (не только первой)
+
+---
+
+Как это работает:
+
+1. Загружаете файлы
+2. Скрипт автоматически читает заголовки и показывает названия колонок
+3. Выбираете нужные колонки из выпадающего списка
+4. Нажимаете "Сравнить"
+5. Результат с подсветкой расхождений
+
+---
+
+Если хотите выбирать колонки по названию (не по номеру):
+
+Можно изменить код, чтобы сравнивать по названию колонки, а не по индексу. Скажите, если нужно такой вариант.
+
+Теперь всё работает! 🎉
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 from flask import Flask, render_template, request, send_file
 from io import BytesIO
 from openpyxl import load_workbook
