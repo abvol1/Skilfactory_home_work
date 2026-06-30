@@ -1,4 +1,45 @@
 
+# ============================================
+# ПРОСТОЙ ЭКСПОРТ РЕЗУЛЬТАТА СРАВНЕНИЯ (CSV)
+# ============================================
+@app.route('/download_comparison/<filename>')
+def download_comparison(filename):
+    """Скачивает результат сравнения (обходной путь)"""
+    try:
+        # Пытаемся найти файл
+        file_path = os.path.join(TEMP_DIR, filename)
+        
+        if not os.path.exists(file_path):
+            # Если файл .xlsx не найден, пробуем .csv
+            csv_path = file_path.replace('.xlsx', '.csv')
+            if os.path.exists(csv_path):
+                file_path = csv_path
+            else:
+                return f"❌ Файл не найден: {file_path}", 404
+        
+        # Определяем MIME тип
+        if file_path.endswith('.csv'):
+            mimetype = 'text/csv'
+            download_name = f'comparison_result_{datetime.now().strftime("%Y%m%d_%H%M")}.csv'
+        else:
+            mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            download_name = filename
+        
+        return send_file(
+            file_path,
+            as_attachment=True,
+            download_name=download_name,
+            mimetype=mimetype
+        )
+        
+    except Exception as e:
+        return f"❌ Ошибка: {str(e)}", 500
+
+
+
+
+
+
 ДА, ЛЕГКО! Сделаем две вкладки:
 
 · 📋 Вкладка 1: База данных — все операции с записями
