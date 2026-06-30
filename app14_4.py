@@ -1,4 +1,108 @@
 
+Вот рабочий код для Flask-приложения с диалогом загрузки двух Excel-файлов, сравнением по столбцу "А" и подсветкой расхождений:
+
+```python
+from flask import Flask, render_template, request, send_file
+import pandas as pd
+from io import BytesIO
+import openpyxl
+from openpyxl.styles import PatternFill
+
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/compare', methods=['POST'])
+def compare_files():
+    file1 = request.files['file1']
+    file2 = request.files['file2']
+    
+    # Читаем оба файла
+    df1 = pd.read_excel(file1)
+    df2 = pd.read_excel(file2)
+    
+    # Создаем копию первой таблицы для вывода
+    df_result = df1.copy()
+    
+    # Объединяем по столбцу 'A' (предполагаем, что название столбца - 'A')
+    merged = df1.merge(df2, on='A', how='outer', suffixes=('_file1', '_file2'), indicator=True)
+    
+    # Находим расхождения
+    diff_rows = merged[merged['_merge'] != 'both']
+    diff_indices = diff_rows['A'].tolist()
+    
+    # Отмечаем расхождения в результате
+    df_result['Status'] = 'Совпадает'
+    df_result.loc[df_result['A'].isin(diff_indices), 'Status'] = 'Расхождение'
+    
+    # Сохраняем в Excel с подсветкой
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_result.to_excel(writer, index=False, sheet_name='Сравнение')
+        workbook = writer.book
+        worksheet = writer.sheets['Сравнение']
+        
+        # Настройка подсветки (желтый фон)
+        yellow_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+        
+        # Находим колонку 'Status' (она последняя)
+        status_col = df_result.columns.get_loc('Status') + 1
+        
+        # Подсвечиваем строки с расхождениями
+        for row_idx, status in enumerate(df_result['Status'], start=2):
+            if status == 'Расхождение':
+                for col_idx in range(1, len(df_result.columns) + 1):
+                    worksheet.cell(row=row_idx, column=col_idx).fill = yellow_fill
+    
+    output.seek(0)
+    return send_file(output, download_name='result.xlsx', as_attachment=True)
+
+if __name__ == '__main__':
+    app.run(debug=True)
+```
+
+Шаблон templates/index.html:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Сравнение Excel</title>
+</head>
+<body>
+    <h2>Загрузите два Excel-файла</h2>
+    <form method="POST" action="/compare" enctype="multipart/form-data">
+        <p>Файл 1: <input type="file" name="file1" accept=".xlsx,.xls" required></p>
+        <p>Файл 2: <input type="file" name="file2" accept=".xlsx,.xls" required></p>
+        <p><input type="submit" value="Сравнить"></p>
+    </form>
+</body>
+</html>
+```
+
+Особенности решения:
+
+· Загрузка через диалоговое окно (стандартный input type="file")
+· Сравнение по столбцу с именем "A" (если название другое — замените в коде)
+· Строки с расхождениями окрашиваются желтым в результирующем файле
+· Вывод показывает статус каждой строки: "Совпадает" или "Расхождение"
+· Результат автоматически скачивается как result.xlsx
+
+Что нужно установить:
+
+```bash
+pip install flask pandas openpyxl
+```
+
+Если столбец называется иначе (например, "ID" или "Код"), замените 'A' на нужное название во всех местах кода.
+
+
+
+
+
+
 from flask import Flask, request, render_template_string, redirect, make_response
 import sqlite3
 from datetime import datetime
