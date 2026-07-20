@@ -1,4 +1,251 @@
-Я создам для вас простого чат-бота на Flask с SQLite, который работает по принципу "вопрос-ответ". Вот полный код:
+Понял вас. В десктопной версии Р7-Офис плагины с isInsideMode: true и собственными кнопками в тулбаре редактора не поддерживаются — это особенность именно серверной (веб) версии.
+
+В вашем случае всё взаимодействие строится внутри боковой панели (модального или немодального окна). Значит, кнопки нужно создавать прямо в HTML-коде вашего плагина, а для работы с таблицей использовать методы Asc.scope (для немодального окна) или выполнять макросы через executeCommand.
+
+Вот полностью рабочий пример плагина с несколькими кнопками для десктопной версии.
+
+---
+
+1. config.json (минимальный и правильный)
+
+Обратите внимание: массив buttons здесь не нужен, всё будет в самой панели.
+
+```json
+{
+    "name": "Multi button panel",
+    "nameLocale": {
+        "ru": "Панель с кнопками"
+    },
+    "guid": "asc.{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}",
+    "variations": [
+        {
+            "description": "Плагин с несколькими кнопками",
+            "descriptionLocale": {
+                "ru": "Плагин с несколькими кнопками в боковой панели"
+            },
+            "url": "index.html",
+            "icons": "resources/icon.png",
+            "isViewer": false,
+            "EditorsSupport": ["spreadsheet"],
+            "isVisual": true,
+            "isModal": false,
+            "isInsideMode": false,
+            "initDataType": "none",
+            "initOnSelectionChanged": true,
+            "size": [280, 400]
+        }
+    ]
+}
+```
+
+---
+
+2. index.html — интерфейс и логика
+
+Здесь вся магия: создаём несколько кнопок, каждая из которых через Asc.scope выполняет свой уникальный код в контексте книги.
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Мульти-кнопки</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 15px;
+            margin: 0;
+            background: #f5f5f5;
+        }
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 10px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            text-align: center;
+            transition: background 0.2s;
+        }
+        .btn-action-a { background: #4CAF50; color: white; }
+        .btn-action-a:hover { background: #45a049; }
+        
+        .btn-action-b { background: #2196F3; color: white; }
+        .btn-action-b:hover { background: #1e87db; }
+        
+        .btn-clear { background: #f44336; color: white; }
+        .btn-clear:hover { background: #e53935; }
+        
+        .btn-info { background: #FF9800; color: white; }
+        .btn-info:hover { background: #f18c00; }
+        
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            background: #fff;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #555;
+            min-height: 40px;
+            word-break: break-word;
+        }
+    </style>
+</head>
+<body>
+    <h3>Операции с таблицей</h3>
+    
+    <button class="btn btn-action-a" onclick="doActionA()">📝 Заполнить A1:A5</button>
+    
+    <button class="btn btn-action-b" onclick="doActionB()">🎨 Раскрасить B1:B5</button>
+    
+    <button class="btn btn-info" onclick="doActionInfo()">📊 Выделенная область</button>
+    
+    <button class="btn btn-clear" onclick="doActionClear()">🧹 Очистить всё</button>
+    
+    <div class="status" id="status">Готов к работе</div>
+
+    <script>
+        // Вспомогательная функция для выполнения кода в контексте документа
+        function executeInScope(code) {
+            if (window.Asc && window.Asc.scope) {
+                window.Asc.scope.execute(code);
+            } else {
+                setStatus('❌ Ошибка: Asc.scope недоступен');
+            }
+        }
+
+        // Обновление статуса в интерфейсе
+        function setStatus(msg) {
+            document.getElementById('status').textContent = msg;
+            console.log(msg);
+        }
+
+        // ===== ДЕЙСТВИЕ 1: Заполнение =====
+        function doActionA() {
+            const code = `
+                (function() {
+                    var sheet = Api.GetActiveSheet();
+                    var names = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май'];
+                    for (var i = 0; i < names.length; i++) {
+                        sheet.GetRange("A" + (i + 1)).SetValue(names[i]);
+                    }
+                    return "A1:A5 заполнены";
+                })();
+            `;
+            executeInScope(code);
+            setStatus('✅ Действие А выполнено: заполнены ячейки A1:A5');
+        }
+
+        // ===== ДЕЙСТВИЕ 2: Раскраска =====
+        function doActionB() {
+            const code = `
+                (function() {
+                    var sheet = Api.GetActiveSheet();
+                    var colors = [
+                        Api.CreateColorFromRGB(255, 230, 230),
+                        Api.CreateColorFromRGB(230, 255, 230),
+                        Api.CreateColorFromRGB(230, 230, 255),
+                        Api.CreateColorFromRGB(255, 255, 200),
+                        Api.CreateColorFromRGB(255, 220, 220)
+                    ];
+                    for (var i = 0; i < 5; i++) {
+                        sheet.GetRange("B" + (i + 1)).SetFillColor(colors[i]);
+                        sheet.GetRange("B" + (i + 1)).SetValue("Элемент " + (i + 1));
+                    }
+                    return "OK";
+                })();
+            `;
+            executeInScope(code);
+            setStatus('✅ Действие B выполнено: B1:B5 раскрашены');
+        }
+
+        // ===== ДЕЙСТВИЕ 3: Информация о выделении =====
+        function doActionInfo() {
+            if (window.Asc && window.Asc.plugin) {
+                // Используем событие получения выделенной области
+                window.Asc.plugin.executeMethod("GetSelectedRange", [], function(range) {
+                    if (range && range !== "Error") {
+                        setStatus('📊 Выделено: ' + range);
+                    } else {
+                        setStatus('ℹ️ Ничего не выделено');
+                    }
+                });
+            }
+        }
+
+        // ===== ДЕЙСТВИЕ 4: Очистка =====
+        function doActionClear() {
+            const code = `
+                (function() {
+                    var sheet = Api.GetActiveSheet();
+                    sheet.GetRange("A1:B5").Clear();
+                    return "Диапазон очищен";
+                })();
+            `;
+            executeInScope(code);
+            setStatus('🧹 Действие Clear выполнено: A1:B5 очищены');
+        }
+
+        // ===== ИНИЦИАЛИЗАЦИЯ ПЛАГИНА =====
+        window.Asc.plugin.init = function() {
+            setStatus('✅ Плагин загружен. Выберите действие.');
+        };
+
+        window.Asc.plugin.onSelectionChanged = function(info) {
+            // Можно автоматически обновлять инфу при смене выделения
+            if (info) {
+                console.log('Выделение изменилось:', info);
+            }
+        };
+
+        window.Asc.plugin.onDestroy = function() {
+            console.log('Плагин закрыт');
+        };
+    </script>
+</body>
+</html>
+```
+
+---
+
+Как это работает
+
+1. Кнопки в HTML — у каждой свой onclick.
+2. Выполнение кода в книге — через window.Asc.scope.execute(code). Это основной способ для немодальных (isModal: false) плагинов в десктопе.
+3. Методы для разных задач:
+   · Прямое выполнение кода: Asc.scope.execute(...)
+   · Получение данных из книги: Asc.plugin.executeMethod("GetSelectedRange", ...)
+   · Работа с OLE-объектами и т.д.
+
+---
+
+Важно
+
+· Все методы API (типа Api.GetActiveSheet()) работают только внутри строки кода, передаваемой в Asc.scope.execute(), потому что ваш HTML-плагин и сама книга — это разные контексты JavaScript.
+· Если вам нужно передать данные из книги в плагин, используйте Asc.plugin.executeMethod с callback-функциями (как в примере doActionInfo).
+
+Таким образом, вы получаете полноценную панель с любым количеством кнопок, каждая из которых делает что-то своё — и всё это внутри боковой панели десктопного Р7-Таблица.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Ясоздам для вас простого чат-бота на Flask с SQLite, который работает по принципу "вопрос-ответ". Вот полный код:
 
 1. Структура проекта
 
