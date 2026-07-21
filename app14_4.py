@@ -1,3 +1,222 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial; padding: 10px; background: #f5f5f5; }
+        button { padding: 10px; margin: 5px; width: 100%; cursor: pointer; font-size: 13px; }
+        textarea { width: 100%; height: 300px; font-family: monospace; font-size: 11px; 
+                    background: #1e1e1e; color: #0f0; padding: 10px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h3>🚀 Тест нового API Р7-2026</h3>
+    
+    <button onclick="testExecCommand()">1. execCommand("eval")</button>
+    <button onclick="testExecCommandRun()">2. execCommand("run")</button>
+    <button onclick="testAscSimpleRequest()">3. AscSimpleRequest.createRequest</button>
+    <button onclick="testSendSimpleRequest()">4. sendSimpleRequest</button>
+    <button onclick="testPluginApi()">5. g_asc_plugins.api</button>
+    <button onclick="testPluginExecute()">6. plugin.executeMethod</button>
+    <button onclick="testJsMessage()">7. js_message</button>
+    <button onclick="clearLog()">🧹 Очистить</button>
+    
+    <textarea id="log"></textarea>
+
+    <script>
+        var el = document.getElementById('log');
+        function log(msg) { el.value += msg + '\n'; el.scrollTop = el.scrollHeight; }
+        function clearLog() { el.value = ''; }
+
+        // Прямой доступ к API родительского окна
+        function getEditor() { return window.parent.AscDesktopEditor; }
+        function getPlugins() { return window.parent.g_asc_plugins; }
+        function getSimpleRequest() { return window.parent.AscSimpleRequest; }
+
+        function testExecCommand() {
+            log('=== Тест 1: execCommand("eval") ===');
+            var editor = getEditor();
+            if (!editor || !editor.execCommand) {
+                log('❌ execCommand недоступен');
+                return;
+            }
+            
+            // Пробуем разные форматы команд
+            var commands = [
+                ['eval', 'Api.GetActiveSheet().GetRange("A1").SetValue("УРА!!!")'],
+                ['eval', 'var s=Api.GetActiveSheet(); s.GetRange("A1").SetValue("Работает!")'],
+                ['exec', 'Api.GetActiveSheet()'],
+                ['call', 'GetActiveSheet'],
+                ['macro', 'Sub Test()\nRange("A1").Value = "Макрос"\nEnd Sub'],
+            ];
+            
+            commands.forEach(function(cmd) {
+                try {
+                    var result = editor.execCommand(cmd[0], cmd[1]);
+                    log('execCommand("' + cmd[0] + '", ...): ' + (result || 'выполнено'));
+                } catch(e) {
+                    log('execCommand("' + cmd[0] + '"): ❌ ' + e.message);
+                }
+            });
+        }
+
+        function testExecCommandRun() {
+            log('=== Тест 2: execCommand("run") ===');
+            var editor = getEditor();
+            if (!editor || !editor.execCommand) return;
+            
+            try {
+                var code = 'var sheet = Api.GetActiveSheet(); sheet.GetRange("B1").SetValue("execCommand работает!");';
+                var result = editor.execCommand('run', code);
+                log('execCommand("run", код): ' + (result || 'выполнено'));
+            } catch(e) {
+                log('❌ Ошибка: ' + e.message);
+            }
+        }
+
+        function testAscSimpleRequest() {
+            log('=== Тест 3: AscSimpleRequest.createRequest ===');
+            var SR = getSimpleRequest();
+            if (!SR || !SR.createRequest) {
+                log('❌ AscSimpleRequest.createRequest недоступен');
+                return;
+            }
+            
+            try {
+                var request = SR.createRequest();
+                log('Тип запроса: ' + typeof request);
+                
+                // Изучаем созданный объект
+                var methods = [];
+                for (var k in request) {
+                    methods.push(k + ': ' + typeof request[k]);
+                }
+                log('Методы запроса: ' + methods.join(', '));
+                
+                // Если есть send
+                if (typeof request.send === 'function') {
+                    request.send({
+                        type: 'eval',
+                        code: 'Api.GetActiveSheet().GetRange("A2").SetValue("AscSimpleRequest!")'
+                    });
+                    log('✅ Запрос отправлен');
+                }
+            } catch(e) {
+                log('❌ Ошибка: ' + e.message);
+            }
+        }
+
+        function testSendSimpleRequest() {
+            log('=== Тест 4: sendSimpleRequest ===');
+            var editor = getEditor();
+            if (!editor || !editor.sendSimpleRequest) {
+                log('❌ sendSimpleRequest недоступен');
+                return;
+            }
+            
+            try {
+                // Пробуем разные форматы
+                editor.sendSimpleRequest(JSON.stringify({
+                    type: 'eval',
+                    code: 'Api.GetActiveSheet().GetRange("A3").SetValue("sendSimpleRequest!")'
+                }));
+                log('✅ sendSimpleRequest выполнен');
+                
+                editor.sendSimpleRequest('eval:Api.GetActiveSheet().GetRange("A4").SetValue("Простой формат")');
+                log('✅ sendSimpleRequest (простой формат) выполнен');
+            } catch(e) {
+                log('❌ Ошибка: ' + e.message);
+            }
+        }
+
+        function testPluginApi() {
+            log('=== Тест 5: g_asc_plugins.api ===');
+            var plugins = getPlugins();
+            if (!plugins || !plugins.api) {
+                log('❌ api недоступен');
+                return;
+            }
+            
+            var api = plugins.api;
+            log('Доступные методы api:');
+            
+            // Ищем методы для выполнения кода
+            var executeMethods = [];
+            for (var k in api) {
+                if (typeof api[k] === 'function' && 
+                    (k.toLowerCase().indexOf('exec') !== -1 || 
+                     k.toLowerCase().indexOf('eval') !== -1 ||
+                     k.toLowerCase().indexOf('run') !== -1 ||
+                     k.toLowerCase().indexOf('call') !== -1)) {
+                    executeMethods.push(k);
+                }
+            }
+            
+            if (executeMethods.length > 0) {
+                log('Найдены методы выполнения: ' + executeMethods.join(', '));
+                executeMethods.forEach(function(method) {
+                    try {
+                        api[method]('Api.GetActiveSheet().GetRange("A5").SetValue("api.' + method + '")');
+                        log('  api.' + method + ' выполнен');
+                    } catch(e) {}
+                });
+            } else {
+                log('❌ Методы выполнения не найдены');
+            }
+        }
+
+        function testPluginExecute() {
+            log('=== Тест 6: plugin.executeMethod ===');
+            
+            // Проверяем стандартный метод плагинов
+            if (window.Asc && window.Asc.plugin && window.Asc.plugin.executeMethod) {
+                window.Asc.plugin.executeMethod('RunScript', ['Api.GetActiveSheet().GetRange("A6").SetValue("executeMethod!")'], function(result) {
+                    log('Результат executeMethod: ' + result);
+                });
+                log('✅ executeMethod вызван');
+            } else {
+                log('❌ executeMethod недоступен');
+            }
+        }
+
+        function testJsMessage() {
+            log('=== Тест 7: js_message ===');
+            var editor = getEditor();
+            if (!editor || !editor.js_message) {
+                log('❌ js_message недоступен');
+                return;
+            }
+            
+            try {
+                editor.js_message(JSON.stringify({
+                    type: 'eval',
+                    code: 'Api.GetActiveSheet().GetRange("A7").SetValue("js_message!")'
+                }));
+                log('✅ js_message отправлен');
+            } catch(e) {
+                log('❌ Ошибка: ' + e.message);
+            }
+        }
+
+        window.onload = function() {
+            log('=== Плагин загружен ===');
+            log('✅ AscDesktopEditor доступен: ' + !!getEditor());
+            log('✅ g_asc_plugins доступен: ' + !!getPlugins());
+            log('✅ AscSimpleRequest доступен: ' + !!getSimpleRequest());
+            log('');
+            log('Нажимайте кнопки по порядку и проверяйте ячейки A1-A7');
+        };
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
 === Тест 1: AscDesktopEditor.GetActiveSheet ===
 Методы AscDesktopEditor:
 Copy, Paste, Cut, LoadJS, LoadFontBase64, getFontsSprite, SetEditorId, GetEditorId, SpellCheck, _CreateEditorApi, ConsoleLog, Log, RegisterTrace, SendTrace, RegisterTelemetry, SendTelemetry, CheckCloudFeatures, setCookie, setAuth, getCookiePresent, getAuth, Logout, onDocumentModifiedChanged, onDocumentCanClosed, onDocumentContentReady, GetImageBase64, SetDocumentName, OnSave, js_message, CheckNeedWheel, SetFullscreen, Print_Start, Print_Page, Print_End, Print, IsSupportNativePrint, LocalStartOpen, LocalFileOpen, LocalFileRecoverFolder, SetLocalImageCount, LocalFileRecents, LocalFileOpenRecent, LocalFileRemoveRecent, GetLocalFeatures, LocalFileRecovers, LocalFileOpenRecover, LocalFileRemoveRecover, LocalFileSaveChanges, ReplaceChanges, LocalFileCreate, LocalFileGetOpenChangesCount, LocalFileSetOpenChangesCount, LocalFileGetCurrentChangesIndex, LocalFileSave, LocalFileGetSourcePath, LocalFileSetSourcePath, LocalFileGetSaved, LocalFileSetSaved, LocalFileGetImageUrl, LocalFileGetImageUrlFromOpenFileDialog, checkAuth, execCommand, SetDropFiles, IsImageFile, GetDropFiles, DropOfficeFiles, SetAdvancedOptions, LocalFileRemoveAllRecents, LocalFileRemoveAllRecovers, LocalFileRemoveAllUnsaved, LocalFileGetCSVParams, LocalFileSetCSVParams, CheckUserId, ApplyAction, InitJSContext, NativeViewerOpen, NativeViewerClose, NativeFunctionTimer, NativeViewerGetPageUrl, NativeViewerGetCompleteTasks, GetInstallPlugins, GetBackupPlugins, IsLocalFile, IsFilePrinting, Sign, ViewCertificate, SelectCertificate, GetDefaultCertificate, _OpenFilenameDialog, _OpenDirectoryDialog, R7RequestInitialData, SaveQuestion, startReporter, endReporter, sendToReporter, sendFromReporter, IsSignaturesSupport, RemoveSignature, RemoveAllSignatures, SetSupportSign, PluginInstall, PluginUninstall, SetInitFlags, isBlockchainSupport, _sendSystemMessage, _GetHash, _CallInAllWindows, _OpenFileCrypt, buildCryptedStart, buildCryptedEnd, SetCryptDocumentFolder, PreloadCryptoImage, ResaveFile, _DownloadFiles, RemoveFile, GetImageFormat, _SetCryptoMode, GetEncryptedHeader, GetCryptoMode, GetSupportCryptoModes, IsProtectionSupport, _GetAdvancedEncryptedData, _SetAdvancedEncryptedData, GetExternalClouds, IsNativeViewer, CryptoDownloadAs, MediaStart, GetImageOriginalSize, MediaEnd, _AddAudio, _AddVideo, SendByMail, IsLocalFileExist, _CloudCryptoUpload, _CloudCryptoUploadPass, _CloudCryptoUploadSave, CloudCryptUploadEnd, getLocalFileSize, _getMainUrl, _getCurrentUrl, _SaveFilenameDialog, _ImportAdvancedEncryptedData, _ExportAdvancedEncryptedData, CompareDocumentUrl, CompareDocumentFile, MergeDocumentUrl, MergeDocumentFile, IsSupportMedia, SetIsReadOnly, CryptoCloud_GetUserInfo, CryptoAES_Init, CryptoAES_Clean, CryptoAES_Encrypt, CryptoAES_Decrypt, CryproRSA_CreateKeys, CryproRSA_EncryptPublic, CryproRSA_DecryptPrivate, IsCloudCryptoSupport, CryptoGetHash, Property_GetCryptoMode, Property_SetCryptoMode, _cloudCryptoCommandMainFrame, GetFrameId, CallInFrame, initCryptoWorker, getDocumentInfo, setDocumentInfo, isFileSupportCloudCrypt, isFileCrypt, Crypto_GetLocalImageBase64, cloudCryptoCommand, GetSupportedScaleValues, GetFontThumbnailHeight, GetOpenedFile, GetCurrentWindowInfo, openTemplate, _convertFile, _onConvertFile, SetPdfCloudPrintFileInfo, IsCachedPdfCloudPrintFileInfo, sendSimpleRequest, isSupportMacroses, isSupportPlugins, setPortalsList, localSaveToDrawingFormat, emulateCloudPrinting, isSupportNetworkFunctionality, GetAvailablePrinterNames, GetPrinterParams, DocumentProperties, GetMacrosRunMode, DocumentPrevClear, DocumentPrevAdd, DocumentCurrClear, DocumentCurrAdd, CreateEditorApi, sendSystemMessage, GetHash, CallInAllWindows, LocalFileSaveAs, OpenFileCrypt, OpenFilenameDialog, OpenDirectoryDialog, SaveFilenameDialog, DownloadFiles, SetCryptoMode, GetAdvancedEncryptedData, SetAdvancedEncryptedData, AddVideo, AddAudio, ImportAdvancedEncryptedData, ExportAdvancedEncryptedData, CloudCryptFile, CloudCryptUpload, loadLocalFile, cloudCryptoCommandMainFrame, convertFile, getPortalsList
