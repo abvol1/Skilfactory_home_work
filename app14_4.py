@@ -1,3 +1,239 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial; padding: 10px; background: #f5f5f5; }
+        button { padding: 10px; margin: 5px; width: 100%; cursor: pointer; font-size: 13px; }
+        textarea { width: 100%; height: 300px; font-family: monospace; font-size: 11px; 
+                    background: #1e1e1e; color: #0f0; padding: 10px; border-radius: 4px; }
+        .success { color: #51cf66; }
+        .error { color: #ff6b6b; }
+    </style>
+</head>
+<body>
+    <h3>🔧 Тест AscDesktopEditor</h3>
+    
+    <button onclick="test1()">1. AscDesktopEditor.GetActiveSheet</button>
+    <button onclick="test2()">2. AscDesktopEditor.SendToEditor</button>
+    <button onclick="test3()">3. AscDesktopEditor.ExecCommand</button>
+    <button onclick="test4()">4. AscDesktopEditor.CallCommand</button>
+    <button onclick="test5()">5. AscDesktopEditor.RunMacro</button>
+    <button onclick="test6()">6. AscDesktopEditor.Evaluate</button>
+    <button onclick="test7()">7. g_asc_plugins</button>
+    <button onclick="test8()">8. AscSimpleRequest</button>
+    <button onclick="clearLog()">🧹 Очистить</button>
+    
+    <textarea id="log"></textarea>
+
+    <script>
+        var el = document.getElementById('log');
+        function log(msg, cls) { 
+            var line = cls ? '<span class="' + cls + '">' + msg + '</span>' : msg;
+            el.value += msg + '\n'; 
+            el.scrollTop = el.scrollHeight; 
+        }
+        function clearLog() { el.value = ''; }
+
+        // Получаем доступ к API через parent
+        function getAPI() {
+            try {
+                return {
+                    Asc: window.parent.Asc,
+                    editor: window.parent.AscDesktopEditor,
+                    plugins: window.parent.g_asc_plugins,
+                    request: window.parent.AscSimpleRequest,
+                    R7: window.parent.R7
+                };
+            } catch(e) {
+                log('❌ Нет доступа к parent API: ' + e.message, 'error');
+                return null;
+            }
+        }
+
+        function test1() {
+            log('=== Тест 1: AscDesktopEditor.GetActiveSheet ===');
+            var api = getAPI();
+            if (!api || !api.editor) {
+                log('❌ AscDesktopEditor недоступен', 'error');
+                return;
+            }
+            
+            // Смотрим все методы
+            log('Методы AscDesktopEditor:');
+            var methods = [];
+            for (var k in api.editor) {
+                if (typeof api.editor[k] === 'function') {
+                    methods.push(k);
+                }
+            }
+            log(methods.join(', '));
+            
+            // Пробуем GetActiveSheet
+            if (typeof api.editor.GetActiveSheet === 'function') {
+                try {
+                    var result = api.editor.GetActiveSheet();
+                    log('Результат GetActiveSheet: ' + JSON.stringify(result));
+                } catch(e) {
+                    log('Ошибка: ' + e.message);
+                }
+            } else {
+                log('Метод GetActiveSheet не найден');
+            }
+        }
+
+        function test2() {
+            log('=== Тест 2: SendToEditor ===');
+            var api = getAPI();
+            if (!api || !api.editor) return;
+            
+            if (typeof api.editor.SendToEditor === 'function') {
+                var code = 'var sheet = Api.GetActiveSheet(); sheet.GetRange("A1").SetValue("Работает!");';
+                try {
+                    api.editor.SendToEditor(code);
+                    log('✅ Код отправлен через SendToEditor');
+                } catch(e) {
+                    log('❌ Ошибка: ' + e.message);
+                }
+            } else {
+                log('SendToEditor не найден');
+            }
+        }
+
+        function test3() {
+            log('=== Тест 3: ExecCommand ===');
+            var api = getAPI();
+            if (!api || !api.editor) return;
+            
+            if (typeof api.editor.ExecCommand === 'function') {
+                try {
+                    api.editor.ExecCommand('Api.GetActiveSheet().GetRange("A1").SetValue("ExecCommand!");');
+                    log('✅ ExecCommand выполнен');
+                } catch(e) {
+                    log('❌ Ошибка: ' + e.message);
+                }
+            } else {
+                log('ExecCommand не найден');
+            }
+        }
+
+        function test4() {
+            log('=== Тест 4: CallCommand ===');
+            var api = getAPI();
+            if (!api || !api.editor) return;
+            
+            if (typeof api.editor.CallCommand === 'function') {
+                try {
+                    api.editor.CallCommand('setValue', {range: 'A1', value: 'CallCommand!'});
+                    log('✅ CallCommand выполнен');
+                } catch(e) {
+                    log('❌ Ошибка: ' + e.message);
+                }
+            } else {
+                log('CallCommand не найден');
+            }
+        }
+
+        function test5() {
+            log('=== Тест 5: RunMacro ===');
+            var api = getAPI();
+            if (!api || !api.editor) return;
+            
+            if (typeof api.editor.RunMacro === 'function') {
+                try {
+                    api.editor.RunMacro('Sub Test()\nRange("A1").Value = "Макрос!"\nEnd Sub');
+                    log('✅ Макрос отправлен');
+                } catch(e) {
+                    log('❌ Ошибка: ' + e.message);
+                }
+            } else {
+                log('RunMacro не найден');
+            }
+        }
+
+        function test6() {
+            log('=== Тест 6: Evaluate ===');
+            var api = getAPI();
+            if (!api || !api.editor) return;
+            
+            if (typeof api.editor.Evaluate === 'function') {
+                try {
+                    var result = api.editor.Evaluate('Api.GetActiveSheet().GetRange("A1").GetValue()');
+                    log('Результат: ' + result);
+                } catch(e) {
+                    log('❌ Ошибка: ' + e.message);
+                }
+            } else {
+                log('Evaluate не найден');
+            }
+        }
+
+        function test7() {
+            log('=== Тест 7: g_asc_plugins ===');
+            var api = getAPI();
+            if (!api || !api.plugins) {
+                log('❌ g_asc_plugins недоступен', 'error');
+                return;
+            }
+            
+            log('Тип: ' + typeof api.plugins);
+            var keys = Object.keys(api.plugins);
+            log('Ключи: ' + keys.join(', '));
+            
+            // Ищем метод для выполнения кода
+            for (var k in api.plugins) {
+                if (typeof api.plugins[k] === 'function') {
+                    log('  Функция: ' + k);
+                } else if (typeof api.plugins[k] === 'object' && api.plugins[k]) {
+                    var subkeys = Object.keys(api.plugins[k]);
+                    log('  Объект ' + k + ': ' + subkeys.join(', '));
+                }
+            }
+        }
+
+        function test8() {
+            log('=== Тест 8: AscSimpleRequest ===');
+            var api = getAPI();
+            if (!api || !api.request) {
+                log('❌ AscSimpleRequest недоступен', 'error');
+                return;
+            }
+            
+            log('Методы AscSimpleRequest:');
+            for (var k in api.request) {
+                log('  ' + k + ': ' + typeof api.request[k]);
+            }
+            
+            // Пробуем выполнить запрос
+            if (typeof api.request.send === 'function') {
+                try {
+                    api.request.send({type: 'eval', code: 'Api'});
+                    log('✅ Запрос отправлен');
+                } catch(e) {
+                    log('❌ Ошибка: ' + e.message);
+                }
+            }
+        }
+
+        window.onload = function() {
+            log('=== Плагин готов ===');
+            var api = getAPI();
+            if (api) {
+                log('✅ Доступ к API получен');
+                log('Доступные объекты: ' + Object.keys(api).join(', '));
+            }
+        };
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
 
 === Сканирование window.parent ===
 ✅ window.parent существует и отличается от window
