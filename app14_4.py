@@ -1,4 +1,141 @@
 
+=== Сканирование window.parent ===
+✅ window.parent существует и отличается от window
+Найдены потенциальные API-объекты:
+  🔑 AscDesktopEditor : object
+  🔑 AscSimpleRequest : object
+  🔑 native_message_cmd : object
+  🔑 Asc : object
+  🔑 AscCommon : object
+  🔑 AscCommonExcel : object
+  🔑 AscWord : object
+  🔑 R7DI : object
+  🔑 R7 : object
+  🔑 EditorSkins : object
+  🔑 c_oAscError : object
+  🔑 AscFormat : object
+  🔑 asc_initAdvancedOptions : function
+  🔑 asc_IsNeedBuildCryptedFile : function
+  🔑 UpdateSystemPlugins : function
+  🔑 AscDesktopEditor_Save : function
+  🔑 AscDFH : object
+  🔑 AscFonts : object
+  🔑 SetMacrosRunMode : function
+  🔑 asc_nativeOnSpellCheck : function
+  🔑 AscCrypto : object
+  🔑 AscCH : object
+  🔑 c_oAscDocumentUnits : object
+  🔑 c_oAscSourceType : object
+  🔑 c_oAscAxis : object
+  🔑 c_oAscFieldSortType : object
+  🔑 c_oAscDataConsolidateFunction : object
+  🔑 c_oAscShowDataAs : object
+  🔑 c_oAscFormatAction : object
+  🔑 c_oAscScope : object
+  🔑 c_oAscType : object
+  🔑 c_oAscPivotFilterType : object
+  🔑 c_oAscSortType : object
+  🔑 c_oAscPivotAreaType : object
+  🔑 c_oAscGroupBy : object
+  🔑 c_oAscCalendarType : object
+  🔑 c_oAscIconSetType : object
+  🔑 c_oAscAllocationMethod : object
+  🔑 c_oAscGroupType : object
+  🔑 c_oAscAutoFilterTypes : object
+  🔑 c_oAscCustomAutoFilter : object
+  🔑 PivotAndPivotCellsStyleChangeCommand : function
+  🔑 CT_WorksheetSource : function
+  🔑 c_oAscPivotRecType : object
+  🔑 AscCommonWord : object
+  🔑 c_oAscRevisionsChangeType : object
+  🔑 c_oAscDropCap : object
+  🔑 asc_CStyle : function
+  🔑 c_oAscRelativeFromH : object
+  🔑 c_oAscRelativeFromV : object
+  🔑 c_oAscSectionBreakType : object
+  🔑 CChangesParaTextPrRFontsAscii : function
+  🔑 CChangesParaTextPrRFontsAsciiTheme : function
+  🔑 c_oAscAlignH : object
+  🔑 c_oAscAlignV : object
+  🔑 CChangesRunRFontsAscii : function
+  🔑 CChangesRunRFontsAsciiTheme : function
+  🔑 CChangesMathBaseRFontsAscii : function
+  🔑 c_oAscLineDrawingRule : object
+  🔑 c_oAscMultiLevelNumbering : object
+  🔑 c_oAscNumberingLevel : object
+  🔑 AscCommonSlide : object
+  🔑 c_oAscFormatPainterState : object
+  🔑 c_oAscHAnchor : object
+  🔑 c_oAscXAlign : object
+  🔑 c_oAscYAlign : object
+  🔑 c_oAscVAnchor : object
+  🔑 c_oAscCellTextDirection : object
+  🔑 CChangesTableTableDescription : function
+  🔑 c_oAscSdtLockType : object
+  🔑 c_oAscWrapStyle : object
+  🔑 c_oAscLimLoc : object
+  🔑 c_oAscMathJc : object
+  🔑 c_oAscTopBot : object
+  🔑 c_oAscScript : object
+  🔑 c_oAscShp : object
+  🔑 c_oAscSty : object
+  🔑 c_oAscFType : object
+  🔑 c_oAscBrkBin : object
+  🔑 c_oAscBrkBinSub : object
+  🔑 c_oAscDefaultPlaceholderName : object
+  🔑 c_oAscDocPartType : object
+  🔑 c_oAscDocPartBehavior : object
+  🔑 c_oAscDocPartGallery : object
+  🔑 CChangesDocPartDescription : function
+  🔑 AscMath : object
+  🔑 c_oAscMathType : object
+  🔑 c_oAscMathInterfaceMatrixRowRule : object
+  🔑 c_oAscMathInterfaceMatrixColumnRule : object
+  🔑 c_oAscMathInterfaceEqArrayLineRule : object
+  🔑 c_oAscMathInterfaceSettingsBrkBin : object
+  🔑 c_oAscMathInterfaceSettingsAlign : object
+  🔑 c_oAscMathMainType : object
+  🔑 CMathMenuScript : function
+  🔑 AscBuilder : object
+  🔑 AscJsonConverter : object
+  🔑 asc_desktop_copypaste : function
+  🔑 AscInputMethod : object
+  🔑 UpdateInstallPlugins : function
+  🔑 asc_IsVisibleSign : function
+  🔑 asc_LocalRequestSign : function
+  🔑 on_editor_native_message : function
+  🔑 g_asc_plugins : object
+  🔑 onR7InitialData : function
+=== Сканирование window.top ===
+✅ window.top существует и отличается от window
+Найдены потенциальные API-объекты:
+  🔑 AscDesktopEditor : object
+  🔑 AscSimpleRequest : object
+  🔑 AscEmbed : object
+  🔑 DocsAPI : object
+=== Сканирование window.opener ===
+❌ window.opener отсутствует
+=== Тест postMessage ===
+Слушатель message добавлен
+Команды отправлены. Ждите ответа...
+=== Иерархия окон ===
+window.self === window: true
+window.parent === window: false
+window.top === window: false
+window.opener: отсутствует
+window.frames.length: 0
+window.frameElement: есть
+Готово. Если ответов нет — postMessage не используется.
+
+
+
+
+
+
+
+
+
+
 <!DOCTYPE html>
 <html>
 <head>
