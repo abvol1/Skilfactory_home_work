@@ -1,3 +1,278 @@
+Понял. Значит прямое выполнение кода через external не срабатывает, но сам объект существует. Скорее всего, в вашей версии Р7 используется событийная модель — плагин не может сам выполнять код в книге, а должен отправлять команды, которые редактор обрабатывает.
+
+Проверим эту теорию. Вот расширенный диагностический плагин, который проверяет событийный механизм:
+
+---
+
+Расширенная диагностика
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Диагностика 2</title>
+    <style>
+        body { font-family: Arial; padding: 10px; margin: 0; background: #f5f5f5; }
+        button { 
+            display: block; width: 100%; padding: 10px; margin: 6px 0; 
+            border: 1px solid #ccc; border-radius: 4px; cursor: pointer; 
+            font-size: 12px; text-align: left; background: white;
+        }
+        button:hover { background: #e8e8e8; }
+        .result { 
+            margin-top: 10px; padding: 10px; background: #1e1e1e; color: #0f0; 
+            font-family: monospace; font-size: 11px; white-space: pre-wrap; 
+            min-height: 250px; max-height: 400px; overflow-y: auto; border-radius: 4px;
+        }
+        .error { color: #ff6b6b; }
+        .success { color: #51cf66; }
+        .info { color: #74c0fc; }
+        .warn { color: #ffd43b; }
+    </style>
+</head>
+<body>
+    <h3>🔍 Диагностика v2</h3>
+    
+    <button onclick="showAll()">📋 ВСЕ методы external</button>
+    <button onclick="testPost()">1. external.NativeMessage?</button>
+    <button onclick="testSend()">2. external.sendEvent?</button>
+    <button onclick="testPluginMethods()">3. Все методы Asc.plugin</button>
+    <button onclick="testInfo()">4. Asc.plugin.info</button>
+    <button onclick="testContext()">5. Поиск глобального контекста</button>
+    <button onclick="testVersion()">6. Версия редактора</button>
+    <button onclick="clearLog()">🧹 Очистить</button>
+    
+    <div class="result" id="result">Ожидание...</div>
+
+    <script>
+        function log(msg, type) {
+            var div = document.getElementById('result');
+            var cls = type || 'info';
+            div.innerHTML += '<span class="' + cls + '">' + msg + '</span>\n';
+            div.scrollTop = div.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('result').innerHTML = '';
+        }
+
+        function showAll() {
+            log('=== external ===', 'info');
+            if (window.external) {
+                for (var key in window.external) {
+                    try {
+                        log('  ' + key + ': ' + typeof window.external[key], 'info');
+                    } catch(e) {
+                        log('  ' + key + ': ОШИБКА ДОСТУПА', 'error');
+                    }
+                }
+            } else {
+                log('❌ external не найден', 'error');
+            }
+
+            log('', 'info');
+            log('=== Asc ===', 'info');
+            if (window.Asc) {
+                for (var key in window.Asc) {
+                    log('  ' + key + ': ' + typeof window.Asc[key], 'info');
+                }
+            } else {
+                log('❌ Asc не найден', 'error');
+            }
+
+            log('', 'info');
+            log('=== Asc.plugin ===', 'info');
+            if (window.Asc && window.Asc.plugin) {
+                for (var key in window.Asc.plugin) {
+                    log('  ' + key + ': ' + typeof window.Asc.plugin[key], 'info');
+                }
+            } else {
+                log('❌ Asc.plugin не найден', 'error');
+            }
+
+            log('', 'info');
+            log('=== window (ключевые свойства) ===', 'info');
+            var globals = ['Api', 'Asc', 'external', 'plugin', 'editor', 'Document', 'Spreadsheet'];
+            for (var i = 0; i < globals.length; i++) {
+                try {
+                    var g = window[globals[i]];
+                    log('  window.' + globals[i] + ': ' + (g ? typeof g : 'ОТСУТСТВУЕТ'), g ? 'success' : 'error');
+                } catch(e) {
+                    log('  window.' + globals[i] + ': ОШИБКА', 'error');
+                }
+            }
+        }
+
+        function testPost() {
+            log('Проверка механизма сообщений...', 'info');
+            var methods = ['NativeMessage', 'PostMessage', 'SendMessage', 'Message', 'postMessage', 'sendMessage', 'Invoke', 'Execute'];
+            for (var i = 0; i < methods.length; i++) {
+                try {
+                    if (window.external && window.external[methods[i]]) {
+                        log('✅ external.' + methods[i] + ' существует', 'success');
+                    }
+                } catch(e) {}
+            }
+            // Пробуем отправить сообщение
+            try {
+                window.external.NativeMessage && window.external.NativeMessage(JSON.stringify({type: 'eval', code: 'Api'}));
+                log('Попытка NativeMessage отправлена', 'info');
+            } catch(e) {}
+        }
+
+        function testSend() {
+            log('Проверка sendEvent...', 'info');
+            try {
+                if (window.Asc && window.Asc.plugin && window.Asc.plugin.sendEvent) {
+                    window.Asc.plugin.sendEvent('test', 'data');
+                    log('✅ sendEvent отправлен', 'success');
+                } else {
+                    log('❌ sendEvent не найден', 'error');
+                }
+            } catch(e) {
+                log('❌ Ошибка: ' + e.message, 'error');
+            }
+        }
+
+        function testPluginMethods() {
+            log('Проверка Asc.plugin методов...', 'info');
+            if (window.Asc && window.Asc.plugin) {
+                var p = window.Asc.plugin;
+                // Пробуем выполнить код разными способами
+                var attempts = [
+                    function() { p.executeCommand && p.executeCommand('Api.GetActiveSheet()'); },
+                    function() { p.executeMethod && p.executeMethod('RunScript', ['Api.GetActiveSheet()']); },
+                    function() { p.executeMethod && p.executeMethod('Eval', ['Api.GetActiveSheet()']); },
+                    function() { p.executeMethod && p.executeMethod('Execute', ['Api.GetActiveSheet()']); },
+                    function() { p.callCommand && p.callCommand('Api.GetActiveSheet()'); },
+                ];
+                for (var i = 0; i < attempts.length; i++) {
+                    try {
+                        attempts[i]();
+                        log('  Попытка ' + (i+1) + ' выполнена', 'info');
+                    } catch(e) {
+                        log('  Попытка ' + (i+1) + ' ошибка: ' + e.message, 'error');
+                    }
+                }
+            }
+        }
+
+        function testInfo() {
+            log('=== Asc.plugin.info ===', 'info');
+            if (window.Asc && window.Asc.plugin && window.Asc.plugin.info) {
+                log(JSON.stringify(window.Asc.plugin.info, null, 2), 'success');
+            } else {
+                log('❌ info не найден', 'error');
+            }
+        }
+
+        function testContext() {
+            log('Поиск глобального контекста книги...', 'info');
+            // Иногда Api висит в родительском окне
+            try {
+                if (window.parent && window.parent.Api) {
+                    log('✅ window.parent.Api найден!', 'success');
+                }
+            } catch(e) {
+                log('window.parent недоступен', 'warn');
+            }
+            try {
+                if (window.opener && window.opener.Api) {
+                    log('✅ window.opener.Api найден!', 'success');
+                }
+            } catch(e) {
+                log('window.opener недоступен', 'warn');
+            }
+            try {
+                if (window.top && window.top.Api && window.top !== window) {
+                    log('✅ window.top.Api найден!', 'success');
+                }
+            } catch(e) {
+                log('window.top недоступен', 'warn');
+            }
+        }
+
+        function testVersion() {
+            log('Определение версии...', 'info');
+            // Разные способы узнать версию
+            var versionSources = [
+                window.Asc && window.Asc.version,
+                window.Asc && window.Asc.plugin && window.Asc.plugin.version,
+                window.external && window.external.GetVersion && window.external.GetVersion(),
+                window.external && window.external.Version,
+                document.querySelector('meta[name="r7-version"]') && document.querySelector('meta[name="r7-version"]').content
+            ];
+            for (var i = 0; i < versionSources.length; i++) {
+                if (versionSources[i]) {
+                    log('Версия (способ ' + (i+1) + '): ' + versionSources[i], 'success');
+                }
+            }
+        }
+
+        window.onload = function() {
+            log('=== Плагин загружен ===', 'info');
+            setTimeout(showAll, 400);
+        };
+    </script>
+</body>
+</html>
+```
+
+---
+
+После запуска:
+
+1. Нажмите кнопку «ВСЕ методы external» — покажет полный список.
+2. Сделайте скриншот всего лога.
+3. Нажмите «Определение версии» — возможно покажет версию сборки.
+
+---
+
+Также попробуйте альтернативный config.json:
+
+Возможно, проблема в настройках плагина. Попробуйте упрощённый конфиг:
+
+```json
+{
+    "name": "Test",
+    "guid": "asc.{A1B2C3D4-E5F6-7890-ABCD-EF1234567891}",
+    "variations": [
+        {
+            "url": "index.html",
+            "EditorsSupport": ["spreadsheet"],
+            "isVisual": true,
+            "isModal": false,
+            "isInsideMode": false,
+            "size": [300, 500]
+        }
+    ]
+}
+```
+
+---
+
+Важный вопрос:
+
+Как именно вы устанавливали плагин?
+
+В десктопной версии Р7 плагины должны лежать в специальной папке. Проверьте:
+
+· Windows: %APPDATA%\Р7-Офис\sdkjs-plugins\
+· Или: C:\Program Files\Р7-Офис\sdkjs-plugins\
+
+Если плагин лежит не там — он может загружаться в ограниченном режиме без доступа к API.
+
+---
+
+Пришлите скриншот результатов, и я скажу точно, какой метод использовать для взаимодействия с ячейками в вашей версии.
+
+
+
+
+
+
+
 
 <!DOCTYPE html>
 <html>
