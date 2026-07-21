@@ -11,6 +11,259 @@
     </style>
 </head>
 <body>
+    <h3>🎯 Прямой доступ к API книги</h3>
+    
+    <button onclick="test1()">1. AscCommonExcel напрямую</button>
+    <button onclick="test2()">2. plugins.api.wb (workbook)</button>
+    <button onclick="test3()">3. plugins.api.asc_getActiveSheet</button>
+    <button onclick="test4()">4. Asc.CreateEditorApi</button>
+    <button onclick="test5()">5. AscSimpleRequest с колбэком</button>
+    <button onclick="showApi()">📋 Показать структуру api</button>
+    <button onclick="clearLog()">🧹 Очистить</button>
+    
+    <textarea id="log"></textarea>
+
+    <script>
+        var el = document.getElementById('log');
+        function log(msg) { el.value += msg + '\n'; el.scrollTop = el.scrollHeight; }
+        function clearLog() { el.value = ''; }
+
+        function getApi() { return window.parent.g_asc_plugins.api; }
+        function getEditor() { return window.parent.AscDesktopEditor; }
+        function getAsc() { return window.parent.Asc; }
+
+        function test1() {
+            log('=== Тест 1: AscCommonExcel ===');
+            try {
+                var api = getApi();
+                var excel = window.parent.AscCommonExcel;
+                
+                if (excel) {
+                    log('✅ AscCommonExcel найден');
+                    log('Тип: ' + typeof excel);
+                    
+                    // Ищем методы
+                    var methods = [];
+                    for (var k in excel) {
+                        if (typeof excel[k] === 'function') {
+                            methods.push(k);
+                        }
+                    }
+                    log('Методы (первые 30): ' + methods.slice(0, 30).join(', '));
+                    
+                    // Пробуем найти GetActiveSheet
+                    if (excel.GetActiveSheet) {
+                        var sheet = excel.GetActiveSheet();
+                        log('GetActiveSheet: ' + sheet);
+                    }
+                } else {
+                    log('❌ AscCommonExcel не найден');
+                }
+            } catch(e) {
+                log('❌ Ошибка: ' + e.message);
+            }
+        }
+
+        function test2() {
+            log('=== Тест 2: workbook ===');
+            try {
+                var api = getApi();
+                
+                if (api.wb) {
+                    log('✅ workbook (wb) найден');
+                    log('Тип: ' + typeof api.wb);
+                    
+                    // Ищем активный лист
+                    if (api.wb.getActiveSheet) {
+                        var sheet = api.wb.getActiveSheet();
+                        log('Активный лист: ' + sheet);
+                    }
+                    
+                    // Пробуем getActiveWorksheet
+                    if (api.wb.getActiveWorksheet) {
+                        var ws = api.wb.getActiveWorksheet();
+                        log('Активный лист (2): ' + ws);
+                    }
+                    
+                    // Пробуем получить ячейку
+                    if (api.wb.getRange) {
+                        var range = api.wb.getRange('A1');
+                        log('Range A1: ' + range);
+                        if (range && range.setValue) {
+                            range.setValue('wb работает!');
+                            log('✅ Значение установлено через wb');
+                        }
+                    }
+                } else {
+                    log('❌ wb не найден в api');
+                }
+            } catch(e) {
+                log('❌ Ошибка: ' + e.message);
+            }
+        }
+
+        function test3() {
+            log('=== Тест 3: поиск getActiveSheet ===');
+            try {
+                var api = getApi();
+                
+                // Ищем любой метод с Sheet в названии
+                var sheetMethods = [];
+                for (var k in api) {
+                    if (k.toLowerCase().indexOf('sheet') !== -1) {
+                        sheetMethods.push(k + ': ' + typeof api[k]);
+                    }
+                }
+                log('Методы с Sheet: ' + sheetMethods.join(', '));
+                
+                // Пробуем asc_getActiveSheet
+                if (api.asc_getActiveSheet) {
+                    var sheet = api.asc_getActiveSheet();
+                    log('asc_getActiveSheet: ' + sheet);
+                }
+                
+                // Пробуем GetActiveSheet
+                if (api.GetActiveSheet) {
+                    var sheet2 = api.GetActiveSheet();
+                    log('GetActiveSheet: ' + sheet2);
+                }
+                
+            } catch(e) {
+                log('❌ Ошибка: ' + e.message);
+            }
+        }
+
+        function test4() {
+            log('=== Тест 4: CreateEditorApi ===');
+            try {
+                var editor = getEditor();
+                
+                if (editor.CreateEditorApi) {
+                    log('✅ CreateEditorApi найден');
+                    var editorApi = editor.CreateEditorApi();
+                    log('Созданный API: ' + typeof editorApi);
+                    
+                    if (editorApi) {
+                        var methods = [];
+                        for (var k in editorApi) {
+                            if (typeof editorApi[k] === 'function') {
+                                methods.push(k);
+                            }
+                        }
+                        log('Методы (первые 30): ' + methods.slice(0, 30).join(', '));
+                        
+                        // Пробуем GetActiveSheet
+                        if (editorApi.GetActiveSheet) {
+                            var sheet = editorApi.GetActiveSheet();
+                            log('GetActiveSheet: ' + sheet);
+                        }
+                    }
+                } else {
+                    log('❌ CreateEditorApi не найден');
+                }
+            } catch(e) {
+                log('❌ Ошибка: ' + e.message);
+            }
+        }
+
+        function test5() {
+            log('=== Тест 5: AscSimpleRequest с колбэком ===');
+            try {
+                var SR = window.parent.AscSimpleRequest;
+                
+                if (SR && SR.createRequest) {
+                    // Создаём запрос с колбэком
+                    var request = SR.createRequest();
+                    
+                    // Устанавливаем обработчик успеха
+                    request._onSuccess = function(data) {
+                        log('✅ Успех: ' + JSON.stringify(data));
+                    };
+                    
+                    request._onError = function(error) {
+                        log('❌ Ошибка: ' + error);
+                    };
+                    
+                    // Пробуем отправить
+                    if (request.send) {
+                        request.send({
+                            method: 'GetActiveSheet',
+                            params: []
+                        });
+                        log('Запрос GetActiveSheet отправлен');
+                    }
+                }
+            } catch(e) {
+                log('❌ Ошибка: ' + e.message);
+            }
+        }
+
+        function showApi() {
+            log('=== СТРУКТУРА api ===');
+            var api = getApi();
+            
+            if (!api) {
+                log('❌ api недоступен');
+                return;
+            }
+            
+            // Показываем только функции и ключевые объекты
+            log('Функции api:');
+            for (var k in api) {
+                if (typeof api[k] === 'function') {
+                    log('  ' + k + '()');
+                }
+            }
+            
+            log('\nОбъекты api:');
+            for (var k in api) {
+                if (typeof api[k] === 'object' && api[k] && k !== 'pluginsManager') {
+                    var subkeys = Object.keys(api[k]).slice(0, 10);
+                    log('  ' + k + ': {' + subkeys.join(', ') + '...}');
+                }
+            }
+            
+            // Отдельно показываем wb
+            if (api.wb) {
+                log('\n=== wb (workbook) методы ===');
+                for (var k in api.wb) {
+                    if (typeof api.wb[k] === 'function') {
+                        log('  wb.' + k + '()');
+                    }
+                }
+            }
+        }
+
+        window.onload = function() {
+            log('=== Плагин готов ===');
+            log('Нажмите "Показать структуру api" для полного списка методов');
+        };
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial; padding: 10px; background: #f5f5f5; }
+        button { padding: 10px; margin: 5px; width: 100%; cursor: pointer; font-size: 13px; }
+        textarea { width: 100%; height: 300px; font-family: monospace; font-size: 11px; 
+                    background: #1e1e1e; color: #0f0; padding: 10px; border-radius: 4px; }
+    </style>
+</head>
+<body>
     <h3>🚀 Тест нового API Р7-2026</h3>
     
     <button onclick="testExecCommand()">1. execCommand("eval")</button>
