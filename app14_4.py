@@ -1,4 +1,188 @@
 
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial; padding: 10px; background: #f5f5f5; }
+        button { padding: 10px; margin: 5px; width: 100%; cursor: pointer; font-size: 13px; }
+        textarea { width: 100%; height: 350px; font-family: monospace; font-size: 11px; 
+                    background: #1e1e1e; color: #0f0; padding: 10px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h3>🔍 Поиск API в родительском окне</h3>
+    
+    <button onclick="scanParent()">📡 Сканировать window.parent</button>
+    <button onclick="scanTop()">📡 Сканировать window.top</button>
+    <button onclick="scanOpener()">📡 Сканировать window.opener</button>
+    <button onclick="testPostMessage()">📨 Тест postMessage</button>
+    <button onclick="listAllWindows()">🪟 Все свойства window</button>
+    
+    <textarea id="log"></textarea>
+
+    <script>
+        var el = document.getElementById('log');
+        function log(msg) { el.value += msg + '\n'; el.scrollTop = el.scrollHeight; }
+        function clearLog() { el.value = ''; }
+
+        function safeScan(target, targetName) {
+            log('=== Сканирование ' + targetName + ' ===');
+            
+            try {
+                if (!target) {
+                    log('❌ ' + targetName + ' отсутствует');
+                    return;
+                }
+                if (target === window) {
+                    log('⚠️ ' + targetName + ' равен window');
+                    return;
+                }
+                
+                log('✅ ' + targetName + ' существует и отличается от window');
+                
+                // Ищем объекты, похожие на API
+                var found = [];
+                var searchTerms = ['api', 'Api', 'API', 'asc', 'Asc', 'ASC', 
+                                  'plugin', 'Plugin', 'editor', 'Editor',
+                                  'r7', 'R7', 'onlyoffice', 'OnlyOffice',
+                                  'spreadsheet', 'Spreadsheet', 'sheet', 'Sheet',
+                                  'execute', 'Execute', 'exec', 'Exec',
+                                  'macro', 'Macro', 'script', 'Script',
+                                  'command', 'Command', 'cmd'];
+                
+                for (var k in target) {
+                    try {
+                        var nameMatch = false;
+                        for (var i = 0; i < searchTerms.length; i++) {
+                            if (k.toLowerCase().indexOf(searchTerms[i].toLowerCase()) !== -1) {
+                                nameMatch = true;
+                                break;
+                            }
+                        }
+                        if (nameMatch) {
+                            var val = target[k];
+                            var type = typeof val;
+                            if (type === 'object' || type === 'function') {
+                                found.push(k + ' : ' + type);
+                            }
+                        }
+                    } catch(e) {}
+                }
+                
+                if (found.length > 0) {
+                    log('Найдены потенциальные API-объекты:');
+                    found.forEach(function(f) { log('  🔑 ' + f); });
+                } else {
+                    log('❌ Ничего похожего на API не найдено');
+                    
+                    // Покажем все нестандартные объекты
+                    log('\nВсе нестандартные объекты ' + targetName + ':');
+                    var all = [];
+                    var std = ['window','self','document','navigator','location',
+                              'localStorage','sessionStorage','console','JSON','Math',
+                              'Date','Array','Object','String','Number','Boolean',
+                              'Function','Error','Promise','Symbol','Map','Set'];
+                    for (var k in target) {
+                        if (std.indexOf(k) === -1 && typeof target[k] === 'object' && target[k]) {
+                            all.push(k);
+                        }
+                    }
+                    log(all.slice(0, 30).join(', '));
+                }
+                
+            } catch(e) {
+                log('❌ Ошибка доступа к ' + targetName + ': ' + e.message);
+            }
+        }
+
+        function scanParent() { safeScan(window.parent, 'window.parent'); }
+        function scanTop() { safeScan(window.top, 'window.top'); }
+        function scanOpener() { safeScan(window.opener, 'window.opener'); }
+
+        function testPostMessage() {
+            log('=== Тест postMessage ===');
+            
+            // Слушаем ответ
+            var listener = function(event) {
+                log('📩 Получено сообщение: ' + JSON.stringify(event.data).slice(0, 200));
+                log('   От: ' + event.origin);
+            };
+            window.addEventListener('message', listener);
+            log('Слушатель message добавлен');
+            
+            // Пробуем отправить разные команды
+            var commands = [
+                {type: 'eval', code: '1+1'},
+                {type: 'execute', code: 'Api'},
+                {type: 'getApi', method: 'GetActiveSheet'},
+                {method: 'GetActiveSheet', params: []},
+                'Api',
+                'GetActiveSheet'
+            ];
+            
+            var targets = [window.parent, window.top, window.opener];
+            
+            targets.forEach(function(target) {
+                if (target && target !== window) {
+                    commands.forEach(function(cmd) {
+                        try {
+                            target.postMessage(cmd, '*');
+                        } catch(e) {}
+                    });
+                }
+            });
+            
+            log('Команды отправлены. Ждите ответа...');
+            
+            // Проверяем через секунду
+            setTimeout(function() {
+                log('Готово. Если ответов нет — postMessage не используется.');
+            }, 1500);
+        }
+
+        function listAllWindows() {
+            log('=== Иерархия окон ===');
+            log('window.self === window: ' + (window.self === window));
+            log('window.parent === window: ' + (window.parent === window));
+            log('window.top === window: ' + (window.top === window));
+            log('window.opener: ' + (window.opener ? 'существует' : 'отсутствует'));
+            log('window.frames.length: ' + window.frames.length);
+            
+            // Пробуем перечислить фреймы
+            try {
+                for (var i = 0; i < window.frames.length; i++) {
+                    log('frame[' + i + ']: ' + window.frames[i]);
+                }
+            } catch(e) {}
+            
+            // Проверяем, не в iframe ли мы
+            log('window.frameElement: ' + (window.frameElement ? 'есть' : 'нет'));
+        }
+
+        window.onload = function() {
+            log('=== Плагин загружен ===');
+            log('location: ' + window.location.href);
+            setTimeout(function() {
+                listAllWindows();
+                scanParent();
+                scanTop();
+                scanOpener();
+            }, 300);
+        };
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
 === Глубокое сканирование Document ===
 ✅ Экземпляр Document создан
 Свойства экземпляра (282):
