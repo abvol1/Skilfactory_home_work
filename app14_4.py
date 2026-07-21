@@ -1,4 +1,139 @@
 
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Диагностика external</title>
+    <style>
+        body { font-family: Arial; padding: 10px; margin: 0; background: #f5f5f5; }
+        button { 
+            display: block; width: 100%; padding: 10px; margin: 6px 0; 
+            border: 1px solid #ccc; border-radius: 4px; cursor: pointer; 
+            font-size: 12px; text-align: left; background: white;
+        }
+        button:hover { background: #e8e8e8; }
+        .result { 
+            margin-top: 10px; padding: 10px; background: #1e1e1e; color: #0f0; 
+            font-family: monospace; font-size: 11px; white-space: pre-wrap; 
+            min-height: 200px; max-height: 400px; overflow-y: auto; border-radius: 4px;
+        }
+        .error { color: #ff6b6b; }
+        .success { color: #51cf66; }
+        .info { color: #74c0fc; }
+    </style>
+</head>
+<body>
+    <h3>🔍 external методы</h3>
+    
+    <button onclick="listAll()">📋 Показать все методы external</button>
+    <button onclick="testExecute()">1. external.Execute(код)</button>
+    <button onclick="testEval()">2. external.Eval(код)</button>
+    <button onclick="testRun()">3. external.Run(код)</button>
+    <button onclick="testCall()">4. external.Call(код)</button>
+    <button onclick="testExec()">5. external.Exec(код)</button>
+    <button onclick="testCommand()">6. external.Command(код)</button>
+    <button onclick="testInvoke()">7. external.Invoke(код)</button>
+    <button onclick="testMacro()">8. external.RunMacro(код)</button>
+    <button onclick="testScript()">9. external.ExecuteScript(код)</button>
+    <button onclick="testApi()">10. external.Api(код)</button>
+    <button onclick="testGetCell()">11. Получить A1 через external</button>
+    <button onclick="clearLog()">🧹 Очистить лог</button>
+    
+    <div class="result" id="result">Нажмите на кнопки для диагностики...</div>
+
+    <script>
+        function log(msg, type) {
+            var div = document.getElementById('result');
+            var cls = type || 'info';
+            div.innerHTML += '<span class="' + cls + '">' + msg + '</span>\n';
+            div.scrollTop = div.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('result').innerHTML = '';
+        }
+
+        // Код для записи в ячейку
+        var testCode = 'var sheet = Api.GetActiveSheet(); sheet.GetRange("A1").SetValue("РАБОТАЕТ!");';
+
+        function listAll() {
+            log('=== Все свойства external ===', 'info');
+            if (window.external) {
+                var count = 0;
+                for (var key in window.external) {
+                    log(key + ' (' + typeof window.external[key] + ')', 'info');
+                    count++;
+                }
+                log('Всего найдено: ' + count + ' свойств', 'success');
+            } else {
+                log('❌ external не найден', 'error');
+            }
+        }
+
+        function safeTest(methodName, code) {
+            log('Тестирую external.' + methodName + '...', 'info');
+            try {
+                if (window.external && typeof window.external[methodName] === 'function') {
+                    window.external[methodName](code);
+                    log('✅ external.' + methodName + ' выполнен без ошибок', 'success');
+                    return true;
+                } else {
+                    log('❌ external.' + methodName + ' не функция', 'error');
+                    return false;
+                }
+            } catch(e) {
+                log('❌ external.' + methodName + ' ошибка: ' + e.message, 'error');
+                return false;
+            }
+        }
+
+        function testExecute() { safeTest('Execute', testCode); }
+        function testEval() { safeTest('Eval', testCode); }
+        function testRun() { safeTest('Run', testCode); }
+        function testCall() { safeTest('Call', testCode); }
+        function testExec() { safeTest('Exec', testCode); }
+        function testCommand() { safeTest('Command', testCode); }
+        function testInvoke() { safeTest('Invoke', testCode); }
+        function testMacro() { safeTest('RunMacro', testCode); }
+        function testScript() { safeTest('ExecuteScript', testCode); }
+        function testApi() { safeTest('Api', testCode); }
+
+        function testGetCell() {
+            log('Пробую прочитать A1 через разные геттеры...', 'info');
+            
+            var getters = ['GetCellValue', 'GetValue', 'getCellValue', 'getValue', 
+                          'ReadCell', 'readCell', 'Cell', 'GetActiveCell'];
+            
+            for (var i = 0; i < getters.length; i++) {
+                try {
+                    if (window.external && typeof window.external[getters[i]] === 'function') {
+                        var val = window.external[getters[i]]('A1');
+                        log('✅ external.' + getters[i] + '("A1") = ' + val, 'success');
+                    }
+                } catch(e) {
+                    // игнорируем
+                }
+            }
+        }
+
+        window.onload = function() {
+            log('=== Плагин загружен ===', 'info');
+            setTimeout(listAll, 300);
+        };
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
 Понял, F12 не работает — это нормально для десктопной версии Р7, там консоль разработчика недоступна. Тогда давайте действовать иначе.
 
 Проблема в том, что мы не видим ошибок. Но скорее всего в вашей версии методы взаимодействия называются иначе или требуют особого формата. Давайте сделаем универсальный тестовый плагин, который перепробует ВСЕ возможные способы и покажет, какой из них рабочий.
