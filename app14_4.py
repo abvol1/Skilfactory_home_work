@@ -1,3 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Исследование 2026 API</title>
+    <style>
+        body { font-family: Arial; padding: 10px; background: #f5f5f5; }
+        button { padding: 10px; margin: 5px; width: 100%; cursor: pointer; font-size: 13px; }
+        pre { background: #1e1e1e; color: #0f0; padding: 10px; white-space: pre-wrap; 
+              font-size: 11px; max-height: 350px; overflow-y: auto; border-radius: 4px; }
+        .section { font-weight: bold; color: #333; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <h3>🔬 Исследование API 2026.1.2</h3>
+    
+    <button onclick="deepScan()">🔍 Глубокое сканирование Document</button>
+    <button onclick="testDocument()">📄 Проверить экземпляр Document</button>
+    <button onclick="testPostMessage()">📨 Проверить postMessage</button>
+    <button onclick="scanPrototypes()">🧬 Сканировать прототипы</button>
+    <button onclick="showAllGlobals()">🌐 Все глобальные переменные</button>
+    <button onclick="testIframe()">🖼️ Проверить родительский фрейм</button>
+    <button onclick="clearLog()">🧹 Очистить</button>
+    
+    <pre id="log">Начинаем исследование...</pre>
+
+    <script>
+        var el = document.getElementById('log');
+        function log(msg) { el.textContent += msg + '\n'; el.scrollTop = el.scrollHeight; }
+        function clearLog() { el.textContent = ''; }
+
+        function deepScan() {
+            log('=== Глубокое сканирование Document ===');
+            
+            try {
+                // Проверяем, можно ли создать экземпляр
+                var doc = new window.Document();
+                log('✅ Экземпляр Document создан');
+                
+                // Ищем ВСЕ свойства, включая унаследованные
+                var props = [];
+                
+                // Собственные свойства
+                for (var k in doc) {
+                    try {
+                        props.push(k + ' : ' + typeof doc[k]);
+                    } catch(e) {}
+                }
+                log('Свойства экземпляра (' + props.length + '):');
+                props.forEach(function(p) { log('  ' + p); });
+
+                // Проверяем прототип
+                var proto = Object.getPrototypeOf(doc);
+                if (proto) {
+                    log('\nПрототип:');
+                    var protoProps = Object.getOwnPropertyNames(proto);
+                    protoProps.forEach(function(p) {
+                        try {
+                            log('  ' + p + ' : ' + typeof proto[p]);
+                        } catch(e) {}
+                    });
+                }
+                
+            } catch(e) {
+                log('❌ Ошибка: ' + e.message);
+            }
+        }
+
+        function testDocument() {
+            log('=== Тест экземпляра Document ===');
+            
+            try {
+                var doc = new window.Document();
+                
+                // Пробуем разные методы
+                var methodsToTry = [
+                    'execute', 'Execute', 'run', 'Run', 'eval', 'Eval',
+                    'call', 'Call', 'invoke', 'Invoke', 'exec', 'Exec',
+                    'runScript', 'RunScript', 'executeScript', 'ExecuteScript',
+                    'macro', 'Macro', 'runMacro', 'RunMacro',
+                    'api', 'Api', 'getActiveSheet', 'GetActiveSheet',
+                    'getRange', 'GetRange', 'setValue', 'SetValue',
+                    'cell', 'Cell', 'sheet', 'Sheet',
+                    'send', 'Send', 'post', 'Post'
+                ];
+                
+                methodsToTry.forEach(function(method) {
+                    if (typeof doc[method] === 'function') {
+                        log('✅ doc.' + method + ' - функция!');
+                        try {
+                            var result = doc[method]('A1');
+                            log('   Результат вызова: ' + result);
+                        } catch(e) {}
+                    }
+                });
+                
+            } catch(e) {
+                log('❌ Ошибка: ' + e.message);
+            }
+        }
+
+        function testPostMessage() {
+            log('=== Проверка postMessage ===');
+            
+            // Проверяем, может быть API работает через сообщения
+            if (window.postMessage) {
+                log('✅ window.postMessage доступен');
+                // Пробуем отправить тестовое сообщение
+                try {
+                    window.postMessage({type: 'eval', code: 'Api'}, '*');
+                    log('Сообщение отправлено');
+                } catch(e) {
+                    log('Ошибка отправки: ' + e.message);
+                }
+            }
+            
+            // Проверяем onmessage
+            if (window.onmessage !== undefined) {
+                log('✅ window.onmessage доступен');
+            }
+        }
+
+        function scanPrototypes() {
+            log('=== Сканирование прототипов ===');
+            
+            // Проверяем цепочку прототипов Document
+            try {
+                var doc = new window.Document();
+                var proto = doc;
+                var level = 0;
+                
+                while (proto && level < 5) {
+                    proto = Object.getPrototypeOf(proto);
+                    if (proto) {
+                        level++;
+                        var names = Object.getOwnPropertyNames(proto);
+                        log('Уровень ' + level + ' прототипа: ' + names.join(', '));
+                    }
+                }
+            } catch(e) {
+                log('Ошибка: ' + e.message);
+            }
+        }
+
+        function showAllGlobals() {
+            log('=== Глобальные переменные (нестандартные) ===');
+            
+            var standardGlobals = [
+                'window', 'document', 'navigator', 'location', 'history',
+                'localStorage', 'sessionStorage', 'console', 'alert', 'confirm',
+                'prompt', 'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval',
+                'fetch', 'XMLHttpRequest', 'JSON', 'Math', 'Date', 'RegExp',
+                'Array', 'Object', 'String', 'Number', 'Boolean', 'Function',
+                'parseInt', 'parseFloat', 'isNaN', 'isFinite', 'undefined', 'null',
+                'NaN', 'Infinity', 'Error', 'TypeError', 'SyntaxError'
+            ];
+            
+            var found = [];
+            for (var k in window) {
+                if (standardGlobals.indexOf(k) === -1 && 
+                    typeof window[k] !== 'undefined' &&
+                    k.charAt(0) !== k.charAt(0).toLowerCase() === false) {
+                    found.push(k + ' : ' + typeof window[k]);
+                }
+            }
+            
+            // Только нестандартные, начинающиеся с большой буквы или подчёркивания
+            var unusual = found.filter(function(item) {
+                var name = item.split(' : ')[0];
+                return name.charAt(0) === name.charAt(0).toUpperCase() || 
+                       name.charAt(0) === '_' ||
+                       name.indexOf('api') !== -1 ||
+                       name.indexOf('r7') !== -1 ||
+                       name.indexOf('plugin') !== -1;
+            });
+            
+            unusual.forEach(function(item) { log('  ' + item); });
+            log('Всего нестандартных глобальных объектов: ' + unusual.length);
+        }
+
+        function testIframe() {
+            log('=== Проверка иерархии окон ===');
+            
+            try {
+                if (window.parent && window.parent !== window) {
+                    log('✅ window.parent существует и отличается');
+                    for (var k in window.parent) {
+                        if (k !== 'window' && k !== 'document' && typeof window.parent[k] === 'object') {
+                            log('  parent.' + k + ' : ' + typeof window.parent[k]);
+                        }
+                    }
+                } else {
+                    log('❌ window.parent отсутствует или равен window');
+                }
+            } catch(e) {
+                log('❌ Нет доступа к window.parent');
+            }
+            
+            try {
+                if (window.opener) {
+                    log('✅ window.opener существует');
+                } else {
+                    log('❌ window.opener отсутствует');
+                }
+            } catch(e) {
+                log('❌ Нет доступа к window.opener');
+            }
+        }
+
+        window.onload = function() {
+            log('=== Плагин загружен в Р7 2026.1.2 ===');
+            log('UserAgent: ' + navigator.userAgent);
+            setTimeout(function() {
+                deepScan();
+            }, 300);
+        };
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
 Понял. Значит прямое выполнение кода через external не срабатывает, но сам объект существует. Скорее всего, в вашей версии Р7 используется событийная модель — плагин не может сам выполнять код в книге, а должен отправлять команды, которые редактор обрабатывает.
 
 Проверим эту теорию. Вот расширенный диагностический плагин, который проверяет событийный механизм:
