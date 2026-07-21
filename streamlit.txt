@@ -1,1 +1,156 @@
+Я добавил поле для ввода комментария в форму завершения проверки. Теперь перед кнопкой "Завершить проверку" будет текстовое поле, комментарий сохранится в базе данных и отобразится в отчете детальной проверки в админке.
 
+Вот изменения, которые нужно внести:
+
+1. Добавление поля в базу данных
+
+Выполните SQL-запрос для добавления нового столбца:
+
+```sql
+ALTER TABLE checklist_rf.checklist_sessions ADD COLUMN completion_comment TEXT;
+```
+
+2. Изменения в коде
+
+В методе create_session (для сохранения комментария при необходимости):
+
+```python
+# @track
+def create_session(self, user_full_name, filial_id, vsp_id, op_date, status_bul=False, comment=None):
+    row = self._execute(
+        f"INSERT INTO {self._table_name('checklist_sessions')} (user_name,filial_id,vsp_id,operation_date,status_bul,completion_comment) VALUES (%s,%s,%s,%s,%s,%s) RETURNING id",
+        (user_full_name, filial_id, vsp_id, op_date, status_bul, comment), fetch_one=True
+    )
+    return row['id']
+```
+
+В методе update_session_status (для сохранения комментария при завершении):
+
+```python
+# @track
+def update_session_status(self, session_id, completed, comment=None):
+    if completed:
+        self._execute(
+            f"UPDATE {self._table_name('checklist_sessions')} SET status_bul=TRUE, completed_at=CURRENT_TIMESTAMP, completion_comment=%s WHERE id=%s",
+            (comment, session_id))
+    else:
+        self._execute(
+            f"UPDATE {self._table_name('checklist_sessions')} SET status_bul=FALSE, completed_at=NULL WHERE id=%s",
+            (session_id,))
+```
+
+В методе get_export_data (для отображения в экспорте):
+
+```python
+# @st.cache_data(ttl=CACHE_SHORT)
+# @track
+def get_export_data(_self):
+    return _self._to_df(f"""
+        SELECT s.id session_id, s.user_name ФИО, f.name Филиал, v.name ВСП,
+               s.operation_date Дата_проверки,
+               CASE s.status_bul WHEN TRUE THEN 'Завершена' ELSE 'Черновик' END Статус,
+               s.completion_comment Комментарий,
+               s.created_at "Дата и время начала", s.completed_at "Дата и время завершения",
+               COUNT(a.id) Выполнено_проверок,
+               (SELECT COUNT(*) FROM {_self.schema}.checklist_templates) Всего_проверок
+        FROM {_self.schema}.checklist_sessions s
+        JOIN {_self.schema}.filials f ON s.filial_id=f.id
+        JOIN {_self.schema}.vsp v ON s.vsp_id=v.id
+        LEFT JOIN {_self.schema}.checklist_answers a ON s.id=a.session_id AND a.is_completed=true
+        GROUP BY s.id, f.name, v.name, s.user_name, s.operation_date, s.status_bul, s.completion_comment, s.created_at, s.completed_at
+        ORDER BY s.created_at DESC
+    """)
+```
+
+В методе get_admin_analytics (для отображения в админке):
+
+Найдите строку:
+
+```python
+sessions = _self._to_df(f"""
+    SELECT s.id session_id, s.user_name ФИО, f.name Филиал, v.name ВСП,
+           s.created_at Дата, s.status_bul Статус,
+           s.completed_at "Дата и время завершения"
+    FROM {_self.schema}.checklist_sessions s
+```
+
+Замените на:
+
+```python
+sessions = _self._to_df(f"""
+    SELECT s.id session_id, s.user_name ФИО, f.name Филиал, v.name ВСП,
+           s.created_at Дата, s.status_bul Статус,
+           s.completion_comment Комментарий,
+           s.completed_at "Дата и время завершения"
+    FROM {_self.schema}.checklist_sessions s
+```
+
+В интерфейсе (в конце чек-листа, перед кнопкой "Завершить проверку"):
+
+Найдите строку:
+
+```python
+if colD.button("✅ ЗАВЕРШИТЬ ПРОВЕРКУ", type="primary", use_container_width=True):
+```
+
+Перед ней добавьте:
+
+```python
+st.divider()
+completion_comment = st.text_area(
+    "💬 Комментарий к проверке",
+    placeholder="Введите комментарий к результатам проверки (необязательно)",
+    key="completion_comment",
+    height=100
+)
+```
+
+И замените блок завершения:
+
+```python
+if colD.button("✅ ЗАВЕРШИТЬ ПРОВЕРКУ", type="primary", use_container_width=True):
+    completed = sum(st.session_state.temp_answers.values())
+    total = len(template)
+
+    if completed < total:
+        st.toast(
+            f"⚠️ Выполнено только {completed} из {total} проверок. Заполните все.",
+            icon="❗"
+        )
+    else:
+        db.save_answers(sid, st.session_state.temp_answers)
+        db.update_session_status(sid, True, completion_comment if completion_comment.strip() else None)
+        st.cache_data.clear()
+
+        st.session_state.step = 0
+
+        for k in [
+            "current_session_id",
+            "temp_answers",
+            "resume_session_id",
+            "draft_explicitly_saved",
+            "completion_comment"
+        ]:
+            st.session_state.pop(k, None)
+
+        st.success("🎉 Отлично! Чек-лист успешно завершён!")
+        st.balloons()
+        time.sleep(2)
+        st.rerun()
+```
+
+В админской аналитике (для отображения комментария):
+
+Найдите в tab_analytics:
+
+```python
+base_cols = ["ФИО", "Филиал", "ВСП", "Дата", "Статус", "Дата и время завершения"]
+```
+
+Замените на:
+
+```python
+base_cols = ["ФИО", "Филиал", "ВСП", "Дата", "Статус", "Комментарий", "Дата и время завершения"]
+```
+
+Эти изменения добавят поле комментария перед завершением проверки, сохранят его в базе данных и отобразят в детальном отчете админки после столбца "Статус".
