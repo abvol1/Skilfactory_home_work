@@ -1,3 +1,257 @@
+
+Понял, F12 не работает — это нормально для десктопной версии Р7, там консоль разработчика недоступна. Тогда давайте действовать иначе.
+
+Проблема в том, что мы не видим ошибок. Но скорее всего в вашей версии методы взаимодействия называются иначе или требуют особого формата. Давайте сделаем универсальный тестовый плагин, который перепробует ВСЕ возможные способы и покажет, какой из них рабочий.
+
+---
+
+Диагностический плагин
+
+Создайте плагин с этим index.html. Он сам определит, какие методы доступны в вашей версии:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Диагностика</title>
+    <style>
+        body { font-family: Arial; padding: 10px; margin: 0; background: #f5f5f5; }
+        button { 
+            display: block; width: 100%; padding: 10px; margin: 8px 0; 
+            border: 1px solid #ccc; border-radius: 4px; cursor: pointer; 
+            font-size: 13px; text-align: left; background: white;
+        }
+        button:hover { background: #e8e8e8; }
+        .result { 
+            margin-top: 10px; padding: 10px; background: #1e1e1e; color: #0f0; 
+            font-family: monospace; font-size: 11px; white-space: pre-wrap; 
+            min-height: 200px; max-height: 400px; overflow-y: auto; border-radius: 4px;
+        }
+        .error { color: #ff6b6b; }
+        .success { color: #51cf66; }
+        .info { color: #74c0fc; }
+    </style>
+</head>
+<body>
+    <h3>🔍 Диагностика методов</h3>
+    
+    <button onclick="test1()">1. Проверить Asc.scope.execute</button>
+    <button onclick="test2()">2. Проверить Asc.scope.evaluate</button>
+    <button onclick="test3()">3. Проверить plugin.executeCommand</button>
+    <button onclick="test4()">4. Проверить plugin.callCommand</button>
+    <button onclick="test5()">5. Проверить executeMethod (GetCellValue)</button>
+    <button onclick="test6()">6. Проверить ActiveX / внешний объект</button>
+    <button onclick="test7()">7. Показать все доступные методы Asc</button>
+    <button onclick="clearLog()">🧹 Очистить лог</button>
+    
+    <div class="result" id="result">Нажмите на кнопки для диагностики...</div>
+
+    <script>
+        function log(msg, type) {
+            var div = document.getElementById('result');
+            var cls = type || 'info';
+            div.innerHTML += '<span class="' + cls + '">' + msg + '</span>\n';
+            div.scrollTop = div.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('result').innerHTML = '';
+        }
+
+        // Показать ВСЕ доступные методы в объекте Asc
+        function test7() {
+            log('=== Доступные методы Asc ===', 'info');
+            
+            if (window.Asc) {
+                log('window.Asc существует ✅', 'success');
+                
+                // Перебираем все свойства Asc
+                var methods = [];
+                for (var key in window.Asc) {
+                    methods.push(key + ' (' + typeof window.Asc[key] + ')');
+                }
+                log('Свойства Asc: ' + methods.join(', '), 'info');
+                
+                // Проверяем plugin
+                if (window.Asc.plugin) {
+                    log('\n=== Свойства Asc.plugin ===', 'info');
+                    var pluginMethods = [];
+                    for (var key in window.Asc.plugin) {
+                        pluginMethods.push(key + ' (' + typeof window.Asc.plugin[key] + ')');
+                    }
+                    log(pluginMethods.join(', '), 'info');
+                } else {
+                    log('❌ Asc.plugin не найден', 'error');
+                }
+                
+                // Проверяем scope
+                if (window.Asc.scope) {
+                    log('\n=== Свойства Asc.scope ===', 'info');
+                    var scopeMethods = [];
+                    for (var key in window.Asc.scope) {
+                        scopeMethods.push(key + ' (' + typeof window.Asc.scope[key] + ')');
+                    }
+                    log(scopeMethods.join(', '), 'info');
+                } else {
+                    log('❌ Asc.scope не найден', 'error');
+                }
+            } else {
+                log('❌ window.Asc НЕ СУЩЕСТВУЕТ! Плагин не может работать.', 'error');
+            }
+        }
+
+        function test1() {
+            log('📝 Тест 1: Asc.scope.execute', 'info');
+            try {
+                if (window.Asc && window.Asc.scope && window.Asc.scope.execute) {
+                    window.Asc.scope.execute(
+                        'var sheet = Api.GetActiveSheet();' +
+                        'sheet.GetRange("A1").SetValue("Тест1: scope.execute работает!");'
+                    );
+                    log('✅ Команда отправлена через scope.execute', 'success');
+                } else {
+                    log('❌ Метод НЕДОСТУПЕН', 'error');
+                }
+            } catch(e) {
+                log('❌ Ошибка: ' + e.message, 'error');
+            }
+        }
+
+        function test2() {
+            log('📝 Тест 2: Asc.scope.evaluate', 'info');
+            try {
+                if (window.Asc && window.Asc.scope && window.Asc.scope.evaluate) {
+                    window.Asc.scope.evaluate(
+                        'var sheet = Api.GetActiveSheet();' +
+                        'sheet.GetRange("A2").SetValue("Тест2: scope.evaluate работает!");'
+                    );
+                    log('✅ Команда отправлена через scope.evaluate', 'success');
+                } else {
+                    log('❌ Метод НЕДОСТУПЕН', 'error');
+                }
+            } catch(e) {
+                log('❌ Ошибка: ' + e.message, 'error');
+            }
+        }
+
+        function test3() {
+            log('📝 Тест 3: plugin.executeCommand', 'info');
+            try {
+                if (window.Asc && window.Asc.plugin && window.Asc.plugin.executeCommand) {
+                    window.Asc.plugin.executeCommand(
+                        'var sheet = Api.GetActiveSheet();' +
+                        'sheet.GetRange("A3").SetValue("Тест3: executeCommand работает!");'
+                    );
+                    log('✅ Команда отправлена через executeCommand', 'success');
+                } else {
+                    log('❌ Метод НЕДОСТУПЕН', 'error');
+                }
+            } catch(e) {
+                log('❌ Ошибка: ' + e.message, 'error');
+            }
+        }
+
+        function test4() {
+            log('📝 Тест 4: plugin.callCommand', 'info');
+            try {
+                if (window.Asc && window.Asc.plugin && window.Asc.plugin.callCommand) {
+                    window.Asc.plugin.callCommand(
+                        'var sheet = Api.GetActiveSheet();' +
+                        'sheet.GetRange("A4").SetValue("Тест4: callCommand работает!");'
+                    );
+                    log('✅ Команда отправлена через callCommand', 'success');
+                } else {
+                    log('❌ Метод НЕДОСТУПЕН', 'error');
+                }
+            } catch(e) {
+                log('❌ Ошибка: ' + e.message, 'error');
+            }
+        }
+
+        function test5() {
+            log('📝 Тест 5: executeMethod (GetCellValue)', 'info');
+            try {
+                if (window.Asc && window.Asc.plugin && window.Asc.plugin.executeMethod) {
+                    window.Asc.plugin.executeMethod("GetCellValue", ["A1"], function(result) {
+                        log('✅ executeMethod работает! Значение A1: ' + (result || 'пусто'), 'success');
+                    });
+                } else {
+                    log('❌ Метод НЕДОСТУПЕН', 'error');
+                }
+            } catch(e) {
+                log('❌ Ошибка: ' + e.message, 'error');
+            }
+        }
+
+        function test6() {
+            log('📝 Тест 6: Поиск ActiveX или внешнего API', 'info');
+            try {
+                // Проверяем, может быть Р7 использует внешний объект
+                if (window.external) {
+                    log('✅ window.external существует', 'success');
+                    var extMethods = [];
+                    for (var key in window.external) {
+                        extMethods.push(key);
+                    }
+                    log('Методы external: ' + extMethods.join(', '), 'info');
+                } else {
+                    log('❌ window.external не найден', 'info');
+                }
+                
+                // Проверяем ActiveX
+                if (typeof ActiveXObject !== 'undefined') {
+                    log('✅ ActiveXObject доступен', 'success');
+                } else {
+                    log('❌ ActiveXObject не доступен', 'info');
+                }
+            } catch(e) {
+                log('❌ Ошибка: ' + e.message, 'error');
+            }
+        }
+
+        // Автоматический запуск диагностики при загрузке
+        window.onload = function() {
+            log('=== Плагин загружен ===', 'info');
+            setTimeout(test7, 500); // Показать доступные методы через полсекунды
+        };
+    </script>
+</body>
+</html>
+```
+
+---
+
+Что делать:
+
+1. Замените содержимое вашего index.html на код выше.
+2. Перезапустите Р7-Офис.
+3. Откройте плагин в боковой панели.
+4. Сделайте скриншот того, что покажет кнопка №7 («Показать все доступные методы Asc»).
+5. Нажмите кнопки 1–6 по очереди — после каждого нажатия проверяйте, появилась ли запись в ячейках A1-A4.
+
+---
+
+Как интерпретировать результаты:
+
+· Если метод окрашен зелёным (✅) и в ячейке появился текст — этот метод рабочий, используйте его.
+· Если метод окрашен красным (❌) — он недоступен в вашей версии.
+· Кнопка №7 покажет все реально существующие методы в вашей версии Р7. Среди них обязательно найдётся тот, который позволяет выполнять код в книге.
+
+Пришлите мне результаты (какие методы зелёные, какие красные, что показала кнопка №7), и я дам точный рабочий код под вашу версию.
+
+
+
+
+
+
+
+
+
+
+
+
+
 Понял вас. В десктопной версии Р7-Офис плагины с isInsideMode: true и собственными кнопками в тулбаре редактора не поддерживаются — это особенность именно серверной (веб) версии.
 
 В вашем случае всё взаимодействие строится внутри боковой панели (модального или немодального окна). Значит, кнопки нужно создавать прямо в HTML-коде вашего плагина, а для работы с таблицей использовать методы Asc.scope (для немодального окна) или выполнять макросы через executeCommand.
