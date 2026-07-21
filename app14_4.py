@@ -1,3 +1,75 @@
+=== Тест 1: AscDesktopEditor.GetActiveSheet ===
+Методы AscDesktopEditor:
+Copy, Paste, Cut, LoadJS, LoadFontBase64, getFontsSprite, SetEditorId, GetEditorId, SpellCheck, _CreateEditorApi, ConsoleLog, Log, RegisterTrace, SendTrace, RegisterTelemetry, SendTelemetry, CheckCloudFeatures, setCookie, setAuth, getCookiePresent, getAuth, Logout, onDocumentModifiedChanged, onDocumentCanClosed, onDocumentContentReady, GetImageBase64, SetDocumentName, OnSave, js_message, CheckNeedWheel, SetFullscreen, Print_Start, Print_Page, Print_End, Print, IsSupportNativePrint, LocalStartOpen, LocalFileOpen, LocalFileRecoverFolder, SetLocalImageCount, LocalFileRecents, LocalFileOpenRecent, LocalFileRemoveRecent, GetLocalFeatures, LocalFileRecovers, LocalFileOpenRecover, LocalFileRemoveRecover, LocalFileSaveChanges, ReplaceChanges, LocalFileCreate, LocalFileGetOpenChangesCount, LocalFileSetOpenChangesCount, LocalFileGetCurrentChangesIndex, LocalFileSave, LocalFileGetSourcePath, LocalFileSetSourcePath, LocalFileGetSaved, LocalFileSetSaved, LocalFileGetImageUrl, LocalFileGetImageUrlFromOpenFileDialog, checkAuth, execCommand, SetDropFiles, IsImageFile, GetDropFiles, DropOfficeFiles, SetAdvancedOptions, LocalFileRemoveAllRecents, LocalFileRemoveAllRecovers, LocalFileRemoveAllUnsaved, LocalFileGetCSVParams, LocalFileSetCSVParams, CheckUserId, ApplyAction, InitJSContext, NativeViewerOpen, NativeViewerClose, NativeFunctionTimer, NativeViewerGetPageUrl, NativeViewerGetCompleteTasks, GetInstallPlugins, GetBackupPlugins, IsLocalFile, IsFilePrinting, Sign, ViewCertificate, SelectCertificate, GetDefaultCertificate, _OpenFilenameDialog, _OpenDirectoryDialog, R7RequestInitialData, SaveQuestion, startReporter, endReporter, sendToReporter, sendFromReporter, IsSignaturesSupport, RemoveSignature, RemoveAllSignatures, SetSupportSign, PluginInstall, PluginUninstall, SetInitFlags, isBlockchainSupport, _sendSystemMessage, _GetHash, _CallInAllWindows, _OpenFileCrypt, buildCryptedStart, buildCryptedEnd, SetCryptDocumentFolder, PreloadCryptoImage, ResaveFile, _DownloadFiles, RemoveFile, GetImageFormat, _SetCryptoMode, GetEncryptedHeader, GetCryptoMode, GetSupportCryptoModes, IsProtectionSupport, _GetAdvancedEncryptedData, _SetAdvancedEncryptedData, GetExternalClouds, IsNativeViewer, CryptoDownloadAs, MediaStart, GetImageOriginalSize, MediaEnd, _AddAudio, _AddVideo, SendByMail, IsLocalFileExist, _CloudCryptoUpload, _CloudCryptoUploadPass, _CloudCryptoUploadSave, CloudCryptUploadEnd, getLocalFileSize, _getMainUrl, _getCurrentUrl, _SaveFilenameDialog, _ImportAdvancedEncryptedData, _ExportAdvancedEncryptedData, CompareDocumentUrl, CompareDocumentFile, MergeDocumentUrl, MergeDocumentFile, IsSupportMedia, SetIsReadOnly, CryptoCloud_GetUserInfo, CryptoAES_Init, CryptoAES_Clean, CryptoAES_Encrypt, CryptoAES_Decrypt, CryproRSA_CreateKeys, CryproRSA_EncryptPublic, CryproRSA_DecryptPrivate, IsCloudCryptoSupport, CryptoGetHash, Property_GetCryptoMode, Property_SetCryptoMode, _cloudCryptoCommandMainFrame, GetFrameId, CallInFrame, initCryptoWorker, getDocumentInfo, setDocumentInfo, isFileSupportCloudCrypt, isFileCrypt, Crypto_GetLocalImageBase64, cloudCryptoCommand, GetSupportedScaleValues, GetFontThumbnailHeight, GetOpenedFile, GetCurrentWindowInfo, openTemplate, _convertFile, _onConvertFile, SetPdfCloudPrintFileInfo, IsCachedPdfCloudPrintFileInfo, sendSimpleRequest, isSupportMacroses, isSupportPlugins, setPortalsList, localSaveToDrawingFormat, emulateCloudPrinting, isSupportNetworkFunctionality, GetAvailablePrinterNames, GetPrinterParams, DocumentProperties, GetMacrosRunMode, DocumentPrevClear, DocumentPrevAdd, DocumentCurrClear, DocumentCurrAdd, CreateEditorApi, sendSystemMessage, GetHash, CallInAllWindows, LocalFileSaveAs, OpenFileCrypt, OpenFilenameDialog, OpenDirectoryDialog, SaveFilenameDialog, DownloadFiles, SetCryptoMode, GetAdvancedEncryptedData, SetAdvancedEncryptedData, AddVideo, AddAudio, ImportAdvancedEncryptedData, ExportAdvancedEncryptedData, CloudCryptFile, CloudCryptUpload, loadLocalFile, cloudCryptoCommandMainFrame, convertFile, getPortalsList
+Метод GetActiveSheet не найден
+=== Тест 7: g_asc_plugins ===
+Тип: object
+Ключи: plugins, systemPlugins, runnedPluginsMap, pluginsMap, path, systemPath, api, runAndCloseData, isNoSystemPluginsOnlyOne, guidAsyncMethod, sendsToInterface, sendEncryptionDataCounter, language, mainEventTypes, mainEvents
+  Объект plugins: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
+  Объект systemPlugins: 
+  Объект runnedPluginsMap:
+  Объект pluginsMap:
+  Объект api: editorId, isLoadFullApi, modulesCount, modulesLoaded, openResult, isOpenOOXInBrowser, openOOXInBrowserZip, HtmlElementName, HtmlElement, isMobileVersion, isEmbedVersion, isViewMode, isPermMode, isHighlightPermMode, restrictions, FontLoader, ImageLoader, LoadedObject, DocumentType, DocInfo, documentId, documentUserId, documentUrl, documentUrlChanges, documentTokenChanges, documentCallbackUrl, documentFormat, documentTitle, documentFormatSave, documentOpenOptions, advancedOptionsAction, OpenDocumentProgress, documentOrigin, documentPathname, ServerIdWaitComplete, IsLongActionCurrent, LongActionCallbacks, LongActionCallbacksParams, autoSaveGap, lastSaveTime, autoSaveGapFast, autoSaveGapSlow, intervalWaitAutoSave, canUnlockDocument, canUnlockDocument2, canStartCoAuthoring, isDocumentCanSave, translateManager, shapeNames, chartPreviewManager, textArtPreviewManager, shapeElementId, isChartEditor, isOpenedChartFrame, isOleEditor, MathMenuLoad, mathInputType, User, CoAuthoringApi, isCoAuthoringEnable, arrPreOpenLocksObjects, SpellCheckUrl, licenseResult, isOnLoadLicense, isDocumentLoadComplete, isPreOpenLocks, isApplyChangesOnOpenEnabled, isProtectionSupport, isAnonymousSupport, canSave, IsUserSave, serverTemplatesAllowUserSave, serverTemplatesEnabled, isForceSaveOnUserSave, forceSaveButtonTimeout, forceSaveButtonContinue, forceSaveTimeoutTimeout, forceSaveForm, disconnectOnSave, forceSaveUndoRequest, VersionHistory, noCreatePoint, exucuteHistory, exucuteHistoryEnd, selectSearchingResults, isSendStandartTextures, tmpFocus, fCurCallback, pluginsManager, isLockTargetUpdate, isLockScrollToTarget, lastWorkTime, signatures, currentPassword, disableAutostartMacros, macros, macrosSignatureProvider, userFunctions, vbaMacros, vbaProject, openFileCryptBinary, copyOutEnabled, watermarkDraw, SaveAfterMacros, SpellCheckApi, isSpellCheckEnable, internalEvents, skinObject, Shortcuts, isUseNativeViewer, openedAt, maxChangesSize, binaryChanges, isBlurEditor, macrosRunMode, formatPainter, eyedropper, inkDrawer, topLineEditorName, topLineEditorElement, controller, handlers, fontRenderingMode, wb, wbModel, tmpLCID, tmpDecimalSeparator, tmpGroupSeparator, tmpLocalization, defaultLanguage, spellcheckState, _gui_control_colors, GuiControlColorsMap, IsSendStandartColors, asyncMethodCallback, FontLoadWaitComplete, oRedoObjectParamNative, collaborativeEditing, autoSaveGapRealTime, isStartAddShape, textArtElementId, frozenPaneBorderType, styleThumbnailWidth, styleThumbnailHeight, formulasList, openingEnd, tmpR1C1mode, isEditVisibleAreaOleEditor, insertDocumentUrlsData, arrPages, isCEditorFocused, smartArtPreviewManager, localization, onKeyDown, onKeyPress, onKeyUp, Begin_CompositeInput, Replace_CompositeText, End_CompositeInput, Set_CursorPosInCompositeText, Get_CursorPosInCompositeText, Get_MaxCursorPosInCompositeText, AddTextWithPr, beginInlineDropTarget, endInlineDropTarget, isEnabledDropTarget, versionSdk
+  Объект sendsToInterface:
+  Объект mainEventTypes: onDocumentContentReady
+  Объект mainEvents: onDocumentContentReady
+  Функция: unregisterAll
+  Функция: unregister
+  Функция: register
+  Функция: registerSystem
+  Функция: runAllSystem
+  Функция: enablePointerEvents
+  Функция: disablePointerEvents
+  Функция: checkRunnedFrameId
+  Функция: sendToAllPlugins
+  Функция: getPluginByGuid
+  Функция: isWorked
+  Функция: stopWorked
+  Функция: isRunned
+  Функция: checkEditorSupport
+  Функция: run
+  Функция: runResize
+  Функция: close
+  Функция: show
+  Функция: buttonClick
+  Функция: init
+  Функция: correctData
+  Функция: loadExtensionPlugins
+  Функция: updateInterface
+  Функция: startLongAction
+  Функция: endLongAction
+  Функция: onChangedSelectionData
+  Функция: onPluginEvent
+  Функция: onPluginEvent2
+  Функция: onPluginEventWindow
+  Функция: onExternalMouseUp
+  Функция: onEnableMouseEvents
+  Функция: onThemeChanged
+  Функция: onPluginMethodReturn
+  Функция: setPluginMethodReturnAsync
+  Функция: getSign
+  Функция: getEncryption
+  Функция: isRunnedEncryption
+  Функция: sendToEncryption
+  Функция: checkCryptoReporter
+  Функция: externalConnectorMessage
+  Функция: checkOrigin
+  Функция: sendMessageToFrame
+=== Тест 8: AscSimpleRequest ===
+Методы AscSimpleRequest:
+  createRequest: function
+  _onSuccess: function
+  _onError: function
+
+
+
+
+
+
+
+
+
+
 <!DOCTYPE html>
 <html>
 <head>
