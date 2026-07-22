@@ -1,3 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial; padding: 10px; background: #f5f5f5; }
+        button { padding: 12px; margin: 5px; width: 100%; cursor: pointer; font-size: 14px; background: #4CAF50; color: white; border: none; border-radius: 5px; }
+        button:hover { background: #45a049; }
+        textarea { width: 100%; height: 300px; font-family: monospace; font-size: 11px; background: #1e1e1e; color: #0f0; padding: 10px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h3>🔧 Тест записи в ячейку</h3>
+    
+    <button onclick="testAscSetData()">1. asc_setData("A1", ...)</button>
+    <button onclick="testAscSetCellText()">2. asc_setCellText (если есть)</button>
+    <button onclick="testPluginSetProperties()">3. pluginMethod_SetProperties</button>
+    <button onclick="testExecuteCommand()">4. execCommand("eval")</button>
+    <button onclick="clearLog()">🧹 Очистить</button>
+    
+    <textarea id="log"></textarea>
+
+    <script>
+        var el = document.getElementById('log');
+        function log(msg) { el.value += msg + '\n'; el.scrollTop = el.scrollHeight; }
+        function clearLog() { el.value = ''; }
+
+        function getEditor() { return window.parent.Asc.editor; }
+        function getDesktopEditor() { return window.parent.AscDesktopEditor; }
+
+        function testAscSetData() {
+            log('=== asc_setData ===');
+            try {
+                var editor = getEditor();
+                if (typeof editor.asc_setData === 'function') {
+                    // Попробуем разные форматы
+                    editor.asc_setData('A1', 'Привет asc_setData!');
+                    log('Вызван asc_setData("A1", "текст")');
+                    
+                    // Может, нужно передавать объект
+                    // editor.asc_setData({range: 'A1', value: 'текст'});
+                } else {
+                    log('❌ asc_setData не найден');
+                }
+            } catch(e) { log('❌ ' + e.message); }
+        }
+
+        function testAscSetCellText() {
+            log('=== asc_setCellText ===');
+            try {
+                var editor = getEditor();
+                // Ищем подходящий метод
+                var textMethods = ['asc_setCellText', 'SetCellText', 'setCellText', 'asc_setData'];
+                for (var i = 0; i < textMethods.length; i++) {
+                    if (typeof editor[textMethods[i]] === 'function') {
+                        editor[textMethods[i]]('A1', 'Текст из ' + textMethods[i]);
+                        log('Вызван ' + textMethods[i]);
+                        break;
+                    }
+                }
+            } catch(e) { log('❌ ' + e.message); }
+        }
+
+        function testPluginSetProperties() {
+            log('=== pluginMethod_SetProperties ===');
+            try {
+                var editor = getEditor();
+                if (typeof editor.pluginMethod_SetProperties === 'function') {
+                    editor.pluginMethod_SetProperties(JSON.stringify({
+                        range: 'A1',
+                        value: 'Свойства'
+                    }));
+                    log('Вызван pluginMethod_SetProperties');
+                } else {
+                    log('❌ pluginMethod_SetProperties не найден');
+                }
+            } catch(e) { log('❌ ' + e.message); }
+        }
+
+        function testExecuteCommand() {
+            log('=== execCommand("eval") ===');
+            try {
+                var de = getDesktopEditor();
+                if (de && de.execCommand) {
+                    de.execCommand('eval', 'Api.GetActiveSheet().GetRange("A1").SetValue("execCommand!");');
+                    log('execCommand выполнен');
+                } else {
+                    log('❌ execCommand недоступен');
+                }
+            } catch(e) { log('❌ ' + e.message); }
+        }
+
+        window.onload = function() {
+            log('=== Плагин готов ===');
+        };
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
 === GetActiveSheet ===
 Тип: object
 Методы: GetVisible, SetVisible, SetActive, GetActiveCell, GetSelection, GetCells, GetRows, GetCols, GetUsedRange, GetName, SetName, GetIndex, GetRange, GetRangeByNumber, FormatAsTable, SetColumnWidth, SetRowHeight, SetDisplayGridlines, SetDisplayHeadings, SetLeftMargin, GetLeftMargin, SetRightMargin, GetRightMargin, SetTopMargin, GetTopMargin, SetBottomMargin, GetBottomMargin, SetPageOrientation, GetPageOrientation, GetPrintHeadings, SetPrintHeadings, GetPrintGridlines, SetPrintGridlines, GetDefNames, GetDefName, AddDefName, GetComments, Delete, SetHyperlink, AddChart, AddShape, AddImage, AddWordArt, AddOleObject, ReplaceCurrentImage, GetAllDrawings, GetAllImages, GetAllShapes, GetAllCharts, GetAllOleObjects, Move
