@@ -5,6 +5,88 @@
     <meta charset="UTF-8">
     <style>
         body { font-family: Arial; padding: 10px; background: #f5f5f5; }
+        button { padding: 12px; margin: 5px; width: 100%; cursor: pointer; font-size: 14px; background: #9C27B0; color: white; border: none; border-radius: 5px; }
+        textarea { width: 100%; height: 300px; font-family: monospace; font-size: 11px; background: #1e1e1e; color: #0f0; padding: 10px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h3>🔍 Методы Range</h3>
+    
+    <button onclick="showRangeMethods()">1. Показать методы Range</button>
+    <button onclick="testRangeSetFill()">2. range.SetFill(цвет)</button>
+    <button onclick="testRangeSetBackground()">3. range.SetBackground(цвет)</button>
+    <button onclick="clearLog()">🧹 Очистить</button>
+    
+    <textarea id="log"></textarea>
+
+    <script>
+        var el = document.getElementById('log');
+        function log(msg) { el.value += msg + '\n'; el.scrollTop = el.scrollHeight; }
+        function clearLog() { el.value = ''; }
+
+        function api() { return window.parent.Asc.editor; }
+
+        function showRangeMethods() {
+            log('=== Методы Range ===');
+            try {
+                var sheet = api().GetActiveSheet();
+                var range = sheet.GetRange('A1');
+                var count = 0;
+                for (var k in range) {
+                    if (typeof range[k] === 'function') {
+                        log('  ' + k + '()');
+                        count++;
+                        if (count >= 60) break;
+                    }
+                }
+                log('Показано: ' + count);
+            } catch(e) { log('❌ ' + e.message); }
+        }
+
+        function testRangeSetFill() {
+            log('=== range.SetFill ===');
+            try {
+                var sheet = api().GetActiveSheet();
+                var range = sheet.GetRange('B1');
+                if (typeof range.SetFill === 'function') {
+                    var color = api().CreateColorFromRGB(255, 215, 0);
+                    range.SetFill(color);
+                    log('Вызван SetFill');
+                } else {
+                    log('SetFill отсутствует');
+                }
+            } catch(e) { log('❌ ' + e.message); }
+        }
+
+        function testRangeSetBackground() {
+            log('=== range.SetBackground ===');
+            try {
+                var sheet = api().GetActiveSheet();
+                var range = sheet.GetRange('B2');
+                if (typeof range.SetBackground === 'function') {
+                    var color = api().CreateColorFromRGB(135, 206, 235);
+                    range.SetBackground(color);
+                    log('Вызван SetBackground');
+                } else {
+                    log('SetBackground отсутствует');
+                }
+            } catch(e) { log('❌ ' + e.message); }
+        }
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial; padding: 10px; background: #f5f5f5; }
         button { padding: 12px; margin: 5px; width: 100%; cursor: pointer; font-size: 14px; background: #4CAF50; color: white; border: none; border-radius: 5px; }
         button:hover { background: #45a049; }
         textarea { width: 100%; height: 200px; font-family: monospace; font-size: 11px; background: #1e1e1e; color: #0f0; padding: 10px; border-radius: 4px; }
