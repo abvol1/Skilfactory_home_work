@@ -1,3 +1,78 @@
+=== Методы Range ===
+  GetClassType()
+  GetRow()
+  GetCol()
+  Clear()
+  GetRows()
+  GetCols()
+  End()
+  GetCells()
+  SetOffset()
+  GetAddress()
+  GetCount()
+  GetValue()
+  SetValue()
+  GetFormula()
+  GetValue2()
+  GetText()
+  SetFontColor()
+  GetHidden()
+  SetHidden()
+  GetColumnWidth()
+  SetColumnWidth()
+  GetRowHeight()
+  SetRowHeight()
+  SetFontSize()
+  SetFontName()
+  SetAlignVertical()
+  SetAlignHorizontal()
+  SetBold()
+  SetItalic()
+  SetUnderline()
+  SetStrikeout()
+  SetWrap()
+  GetWrapText()
+  SetFillColor()
+  GetFillColor()
+  GetNumberFormat()
+  SetNumberFormat()
+  SetBorders()
+  Merge()
+  UnMerge()
+  ForEach()
+  AddComment()
+  GetWorksheet()
+  GetDefName()
+  GetComment()
+  Select()
+  GetOrientation()
+  SetOrientation()
+  SetSort()
+  Delete()
+  Insert()
+  AutoFit()
+  GetAreas()
+  Copy()
+  Paste()
+  Find()
+  FindNext()
+  FindPrevious()
+  Replace()
+  GetCharacters()
+Показано: 60
+=== range.SetFill ===
+SetFill отсутствует
+=== range.SetBackground ===
+SetBackground отсутствует
+
+
+
+
+
+
+
+
+
 
 <!DOCTYPE html>
 <html>
