@@ -1,3 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial; padding: 10px; background: #f5f5f5; }
+        button { padding: 12px; margin: 5px; width: 100%; cursor: pointer; font-size: 14px; background: #4CAF50; color: white; border: none; border-radius: 5px; }
+        textarea { width: 100%; height: 200px; font-family: monospace; font-size: 11px; background: #1e1e1e; color: #0f0; padding: 10px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h3>🎨 Финальный тест заливки</h3>
+    
+    <button onclick="testFillAndRecalc()">1. Установить цвет + asc_Recalculate</button>
+    <button onclick="testFontColor()">2. Проверить SetFontColor (текст)</button>
+    <button onclick="clearLog()">🧹 Очистить</button>
+    
+    <textarea id="log"></textarea>
+
+    <script>
+        var el = document.getElementById('log');
+        function log(msg) { el.value += msg + '\n'; el.scrollTop = el.scrollHeight; }
+        function clearLog() { el.value = ''; }
+
+        function api() { return window.parent.Asc.editor; }
+
+        function testFillAndRecalc() {
+            log('=== Заливка B1 + asc_Recalculate ===');
+            try {
+                var sheet = api().GetActiveSheet();
+                var range = sheet.GetRange('B1');
+                var color = api().CreateColorFromRGB(255, 215, 0);
+                range.SetFillColor(color);
+                log('Цвет установлен');
+                // Принудительно обновляем
+                if (typeof api().asc_Recalculate === 'function') {
+                    api().asc_Recalculate();
+                    log('asc_Recalculate вызван');
+                } else if (typeof api().RecalculateAllFormulas === 'function') {
+                    api().RecalculateAllFormulas();
+                    log('RecalculateAllFormulas вызван');
+                }
+                log('Готово. Проверьте B1');
+            } catch(e) { log('❌ ' + e.message); }
+        }
+
+        function testFontColor() {
+            log('=== Цвет текста в B2 ===');
+            try {
+                var sheet = api().GetActiveSheet();
+                var range = sheet.GetRange('B2');
+                range.SetValue('Тест');
+                var color = api().CreateColorFromRGB(255, 0, 0);
+                range.SetFontColor(color);
+                log('Текст и цвет установлены. Проверьте B2');
+            } catch(e) { log('❌ ' + e.message); }
+        }
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
 === Число ===
 Установлено число
 GetFillColor: No Fill
