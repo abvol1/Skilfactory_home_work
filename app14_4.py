@@ -1,3 +1,59 @@
+function copyUniqueToNewSheet() {
+    var sheet1Name = document.getElementById('sheet1Name').value || 'Лист1';
+    var sheet2Name = document.getElementById('sheet2Name').value || 'Лист2';
+    var colStr = document.getElementById('compareCol').value || 'A';
+    setStatus('📤 Копирую уникальные...');
+    try {
+        var sheet1 = getSheet(sheet1Name);
+        var sheet2 = getSheet(sheet2Name);
+        if (!sheet1 || !sheet2) { setStatus('❌ Листы не найдены'); return; }
+
+        var data1 = getColumnData(sheet1, colStr);
+        var data2 = getColumnData(sheet2, colStr);
+        var set2 = new Set(data2.map(d => d.value));
+        var uniqueIn1 = data1.filter(d => !set2.has(d.value));
+
+        // Создаём новый лист командой asc_addWorksheet
+        var newSheetName = 'Уникальные_' + sheet1Name;
+        try {
+            editor().asc_addWorksheet(newSheetName);
+        } catch(e) {
+            // Возможно, уже существует – пробуем получить
+        }
+
+        // Получаем созданный лист по имени
+        var newSheet = getSheet(newSheetName);
+        if (!newSheet) {
+            setStatus('❌ Не удалось создать или найти лист ' + newSheetName);
+            return;
+        }
+
+        // Копируем заголовок (первая строка листа1) в новую первую строку
+        sheet1.GetRange('1:1').Copy(newSheet.GetRange('A1'));
+
+        // Копируем уникальные строки
+        for (var i = 0; i < uniqueIn1.length; i++) {
+            var srcRow = uniqueIn1[i].row;
+            // Копируем всю строку из sheet1
+            sheet1.GetRange(srcRow + ':' + srcRow).Copy(newSheet.GetRange('A' + (i + 2)));
+        }
+
+        // Делаем первую строку жирной (заголовок)
+        newSheet.GetRange('A1:Z1').SetBold(true);
+
+        refresh();
+        setStatus('✅ Создан лист "' + newSheetName + '" с ' + uniqueIn1.length + ' строками');
+    } catch(e) {
+        setStatus('❌ Ошибка: ' + e.message);
+    }
+}
+
+
+
+
+
+
+
 <!DOCTYPE html>
 <html>
 <head>
