@@ -4,6 +4,101 @@
     <meta charset="UTF-8">
     <style>
         body { font-family: Arial; padding: 10px; background: #f5f5f5; }
+        button { padding: 12px; margin: 5px; width: 100%; cursor: pointer; font-size: 14px; background: #E91E63; color: white; border: none; border-radius: 5px; }
+        textarea { width: 100%; height: 300px; font-family: monospace; font-size: 11px; background: #1e1e1e; color: #0f0; padding: 10px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h3>🔧 Форматы для SetFillColor</h3>
+    
+    <button onclick="testNumber()">1. Число (16766720)</button>
+    <button onclick="testHexString()">2. Строка "#FFD700"</button>
+    <button onclick="testRgbString()">3. Строка "rgb(255,215,0)"</button>
+    <button onclick="testColorObject()">4. Объект {"color":{"rgb":...}}</button>
+    <button onclick="testGetFill()">5. Прочитать FillColor до и после</button>
+    <button onclick="clearLog()">🧹 Очистить</button>
+    
+    <textarea id="log"></textarea>
+
+    <script>
+        var el = document.getElementById('log');
+        function log(msg) { el.value += msg + '\n'; el.scrollTop = el.scrollHeight; }
+        function clearLog() { el.value = ''; }
+
+        function api() { return window.parent.Asc.editor; }
+
+        function testNumber() {
+            log('=== Число ===');
+            try {
+                var sheet = api().GetActiveSheet();
+                var range = sheet.GetRange('B1');
+                range.SetFillColor(16766720); // золотой в decimal
+                log('Установлено число');
+                log('GetFillColor: ' + range.GetFillColor());
+            } catch(e) { log('❌ ' + e.message); }
+        }
+
+        function testHexString() {
+            log('=== HEX-строка ===');
+            try {
+                var sheet = api().GetActiveSheet();
+                var range = sheet.GetRange('B2');
+                range.SetFillColor('#FFD700');
+                log('Установлена строка HEX');
+                log('GetFillColor: ' + range.GetFillColor());
+            } catch(e) { log('❌ ' + e.message); }
+        }
+
+        function testRgbString() {
+            log('=== RGB-строка ===');
+            try {
+                var sheet = api().GetActiveSheet();
+                var range = sheet.GetRange('B3');
+                range.SetFillColor('rgb(255,215,0)');
+                log('Установлена строка RGB');
+                log('GetFillColor: ' + range.GetFillColor());
+            } catch(e) { log('❌ ' + e.message); }
+        }
+
+        function testColorObject() {
+            log('=== Объект цвета ===');
+            try {
+                var sheet = api().GetActiveSheet();
+                var range = sheet.GetRange('B4');
+                var color = api().CreateColorFromRGB(255, 215, 0);
+                log('Объект: ' + JSON.stringify(color));
+                range.SetFillColor(color);
+                log('Установлен объект');
+                log('GetFillColor: ' + range.GetFillColor());
+            } catch(e) { log('❌ ' + e.message); }
+        }
+
+        function testGetFill() {
+            log('=== Чтение FillColor ===');
+            try {
+                var sheet = api().GetActiveSheet();
+                var range = sheet.GetRange('B5');
+                log('До: ' + range.GetFillColor());
+                range.SetFillColor(16766720);
+                log('После установки числа: ' + range.GetFillColor());
+            } catch(e) { log('❌ ' + e.message); }
+        }
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial; padding: 10px; background: #f5f5f5; }
         button { padding: 12px; margin: 5px; width: 100%; cursor: pointer; font-size: 14px; background: #4CAF50; color: white; border: none; border-radius: 5px; }
         textarea { width: 100%; height: 150px; font-family: monospace; font-size: 11px; background: #1e1e1e; color: #0f0; padding: 10px; border-radius: 4px; }
     </style>
