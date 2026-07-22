@@ -1,3 +1,235 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 12px; background: #f5f5f5; }
+        h3 { margin-top: 0; }
+        .row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+        .row label { width: 90px; font-size: 13px; }
+        .row select, .row button { flex: 1; padding: 8px; font-size: 13px; border-radius: 4px; border: 1px solid #ccc; }
+        button {
+            display: block; width: 100%; padding: 10px; margin: 8px 0;
+            border: none; border-radius: 6px; font-size: 14px; font-weight: bold;
+            cursor: pointer; color: white; background: #4CAF50;
+        }
+        button:hover { opacity: 0.9; }
+        .status {
+            margin-top: 12px; padding: 10px; background: #fff; border-radius: 4px;
+            font-size: 12px; color: #333; min-height: 30px; white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h3>📊 Мастер сводной</h3>
+    <p style="font-size:12px; color:#555;">Активный лист будет использован как источник.</p>
+    
+    <div class="row">
+        <label>Группировка:</label>
+        <select id="groupCol"><option value="">Выберите столбец</option></select>
+    </div>
+    <div class="row">
+        <label>Значения:</label>
+        <select id="valueCol"><option value="">Выберите столбец</option></select>
+    </div>
+    <div class="row">
+        <label>Агрегация:</label>
+        <select id="aggType">
+            <option value="sum">Сумма</option>
+            <option value="avg">Среднее</option>
+            <option value="max">Максимум</option>
+            <option value="min">Минимум</option>
+            <option value="count">Количество</option>
+        </select>
+    </div>
+    
+    <button onclick="loadColumns()">🔄 Обновить список столбцов</button>
+    <button onclick="createPivotTable()">⚡ Построить сводную таблицу</button>
+    
+    <div class="status" id="status">Готов. Нажмите «Обновить», чтобы загрузить заголовки с активного листа.</div>
+
+    <script>
+        // ========== БАЗОВЫЕ ФУНКЦИИ ==========
+        function editor() { 
+            var ed = window.parent && window.parent.Asc && window.parent.Asc.editor;
+            if (!ed) throw 'Редактор не доступен';
+            return ed;
+        }
+        function setStatus(msg) { document.getElementById('status').textContent = msg; }
+        function refresh() { 
+            try { 
+                var ed = editor();
+                if (typeof ed.asc_Recalculate === 'function') ed.asc_Recalculate(); 
+            } catch(e) {} 
+        }
+
+        // Получить лист по имени
+        function getSheet(name) {
+            try {
+                var ed = editor();
+                if (typeof ed.GetSheet === 'function') return ed.GetSheet(name);
+                var sheets = ed.GetSheets();
+                if (sheets && typeof sheets.GetSheet === 'function') {
+                    for (var i = 0; i < sheets.GetCount(); i++) {
+                        var sh = sheets.GetSheet(i);
+                        if (sh && sh.GetName && sh.GetName() === name) return sh;
+                    }
+                }
+                return null;
+            } catch(e) { return null; }
+        }
+
+        // Загрузка заголовков
+        function loadColumns() {
+            setStatus('⏳ Считываю заголовки...');
+            try {
+                var ed = editor();
+                var sheet = ed.GetActiveSheet();
+                if (!sheet) { setStatus('❌ Нет активного листа'); return; }
+                
+                var used = sheet.GetUsedRange();
+                if (!used) { setStatus('❌ На листе нет данных'); return; }
+                
+                var firstRow = used.GetRow();
+                var lastCol = used.GetCol() + used.GetCols().GetCount() - 1;
+                
+                var groupSel = document.getElementById('groupCol');
+                var valueSel = document.getElementById('valueCol');
+                groupSel.innerHTML = '<option value="">Выберите столбец</option>';
+                valueSel.innerHTML = '<option value="">Выберите столбец</option>';
+                
+                for (var col = 1; col <= lastCol; col++) {
+                    try {
+                        var colLetter = String.fromCharCode(64 + col);
+                        var cell = sheet.GetRange(colLetter + firstRow);
+                        var val = cell.GetValue();
+                        if (val !== null && val !== undefined && String(val).trim() !== '') {
+                            var text = String(val).trim();
+                            groupSel.add(new Option(text, colLetter));
+                            valueSel.add(new Option(text, colLetter));
+                        }
+                    } catch(e) {}
+                }
+                setStatus('✅ Заголовки загружены. Выберите столбцы и нажмите «Построить сводную таблицу».');
+            } catch(e) {
+                setStatus('❌ Ошибка загрузки: ' + (e.message || e));
+            }
+        }
+
+        // Построение сводной таблицы (без диаграммы)
+        function createPivotTable() {
+            var groupCol = document.getElementById('groupCol').value;
+            var valueCol = document.getElementById('valueCol').value;
+            var aggType = document.getElementById('aggType').value;
+            
+            if (!groupCol || !valueCol) {
+                setStatus('⚠️ Выберите столбцы для группировки и значений.');
+                return;
+            }
+            
+            setStatus('⏳ Начинаю построение...');
+            try {
+                var ed = editor();
+                var srcSheet = ed.GetActiveSheet();
+                if (!srcSheet) throw 'Не удалось получить активный лист';
+                
+                var used = srcSheet.GetUsedRange();
+                if (!used) throw 'На листе нет данных';
+                
+                var firstRow = used.GetRow();
+                var rowsCount = used.GetRows().GetCount();
+                var dataStartRow = firstRow + 1;
+                
+                // Сбор данных
+                var groups = {};
+                for (var r = dataStartRow; r < firstRow + rowsCount; r++) {
+                    var keyCell = srcSheet.GetRange(groupCol + r).GetValue();
+                    var valCell = srcSheet.GetRange(valueCol + r).GetValue();
+                    if (keyCell === null || keyCell === undefined || keyCell === '') continue;
+                    var key = String(keyCell).trim();
+                    var num = parseFloat(valCell);
+                    if (!groups[key]) {
+                        groups[key] = { sum: 0, count: 0, values: [] };
+                    }
+                    if (!isNaN(num)) {
+                        groups[key].sum += num;
+                        groups[key].count += 1;
+                        groups[key].values.push(num);
+                    } else {
+                        groups[key].values.push(0);
+                    }
+                }
+                
+                if (Object.keys(groups).length === 0) {
+                    setStatus('⚠️ Нет данных для группировки');
+                    return;
+                }
+                
+                // Создаём новый лист
+                var pivotSheetName = 'Сводная_' + new Date().toISOString().replace(/[:.]/g, '-');
+                ed.asc_addWorksheet(pivotSheetName);
+                var pivotSheet = getSheet(pivotSheetName);
+                if (!pivotSheet) throw 'Не удалось создать/найти лист ' + pivotSheetName;
+                
+                // Заголовки
+                pivotSheet.GetRange('A1').SetValue('Группа');
+                pivotSheet.GetRange('B1').SetValue(aggType.charAt(0).toUpperCase() + aggType.slice(1));
+                pivotSheet.GetRange('A1:B1').SetBold(true);
+                
+                // Заполнение данных
+                var row = 2;
+                var groupNames = Object.keys(groups).sort();
+                for (var i = 0; i < groupNames.length; i++) {
+                    var g = groupNames[i];
+                    var aggValue;
+                    switch(aggType) {
+                        case 'sum': aggValue = groups[g].sum; break;
+                        case 'avg': aggValue = groups[g].count ? groups[g].sum / groups[g].count : 0; break;
+                        case 'max': aggValue = Math.max(...groups[g].values); break;
+                        case 'min': aggValue = Math.min(...groups[g].values); break;
+                        case 'count': aggValue = groups[g].values.length; break;
+                        default: aggValue = groups[g].sum;
+                    }
+                    pivotSheet.GetRange('A' + row).SetValue(g);
+                    pivotSheet.GetRange('B' + row).SetValue(aggValue);
+                    row++;
+                }
+                
+                // Автоподбор ширины
+                try { pivotSheet.GetRange('A:A').AutoFit(); } catch(e) {}
+                try { pivotSheet.GetRange('B:B').AutoFit(); } catch(e) {}
+                
+                // Числовой формат
+                if (aggType !== 'count') {
+                    pivotSheet.GetRange('B2:B' + (row-1)).SetNumberFormat('#,##0.00');
+                }
+                
+                refresh();
+                setStatus('✅ Сводная таблица создана на листе "' + pivotSheetName + '"');
+            } catch(e) {
+                setStatus('❌ Ошибка: ' + (e.message || e) + (e.stack ? '\nСтек: ' + e.stack.split('\n').slice(0,3).join('\n') : ''));
+            }
+        }
+
+        window.onload = function() {
+            setStatus('✅ Плагин готов. Нажмите «Обновить список столбцов».');
+            setTimeout(loadColumns, 500);
+        };
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
 function createPivotTable() {
     var groupCol = document.getElementById('groupCol').value;
     var valueCol = document.getElementById('valueCol').value;
