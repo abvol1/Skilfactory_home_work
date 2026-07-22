@@ -1,3 +1,143 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; padding: 12px; background: #f5f5f5; margin: 0; }
+        button { 
+            display: block; width: 100%; padding: 12px; margin: 8px 0; 
+            border: none; border-radius: 6px; font-size: 14px; font-weight: bold;
+            cursor: pointer; color: white; text-align: center;
+        }
+        .btn-write  { background: #4CAF50; }
+        .btn-fill   { background: #FF9800; }
+        .btn-font   { background: #2196F3; }
+        .btn-clear  { background: #f44336; }
+        .btn-read   { background: #9C27B0; }
+        .status {
+            margin-top: 15px; padding: 10px; background: #fff; border-radius: 4px;
+            font-size: 12px; color: #333; min-height: 40px; word-break: break-word;
+        }
+    </style>
+</head>
+<body>
+    <h3>⚡ Действия с таблицей</h3>
+    
+    <button class="btn-write" onclick="writeCell()">📝 Записать в A1</button>
+    <button class="btn-fill" onclick="fillCell()">🎨 Закрасить B1</button>
+    <button class="btn-font" onclick="formatText()">🔤 Красный жирный в C1</button>
+    <button class="btn-clear" onclick="clearCells()">🧹 Очистить A1:C1</button>
+    <button class="btn-read" onclick="readCell()">📖 Прочитать A1</button>
+    
+    <div class="status" id="status">Готов к работе</div>
+
+    <script>
+        // Короткий доступ к API редактора
+        function editor() { return window.parent.Asc.editor; }
+
+        function setStatus(msg) {
+            document.getElementById('status').textContent = msg;
+        }
+
+        // Вспомогательная функция: принудительно обновить лист
+        function refresh() {
+            if (typeof editor().asc_Recalculate === 'function') {
+                editor().asc_Recalculate();
+            }
+        }
+
+        // ===== 1. Запись текста в A1 =====
+        function writeCell() {
+            try {
+                // asc_setData надёжно записывает значение
+                editor().asc_setData('A1', 'Привет! ' + new Date().toLocaleTimeString());
+                setStatus('✅ A1: записано');
+                refresh();
+            } catch(e) {
+                setStatus('❌ Ошибка: ' + e.message);
+            }
+        }
+
+        // ===== 2. Заливка B1 золотым цветом =====
+        function fillCell() {
+            try {
+                var sheet = editor().GetActiveSheet();
+                var range = sheet.GetRange('B1');
+                var color = editor().CreateColorFromRGB(255, 215, 0);
+                range.SetFillColor(color);
+                refresh(); // обязательно обновить
+                setStatus('🎨 B1: заливка золотым');
+            } catch(e) {
+                setStatus('❌ Ошибка заливки: ' + e.message);
+            }
+        }
+
+        // ===== 3. Красный жирный текст в C1 =====
+        function formatText() {
+            try {
+                var sheet = editor().GetActiveSheet();
+                var range = sheet.GetRange('C1');
+                
+                // Установить значение
+                range.SetValue('Важно!');
+                
+                // Красный цвет шрифта
+                var red = editor().CreateColorFromRGB(255, 0, 0);
+                range.SetFontColor(red);
+                
+                // Жирный шрифт
+                range.SetBold(true);
+                
+                refresh();
+                setStatus('🔤 C1: красный жирный');
+            } catch(e) {
+                setStatus('❌ Ошибка форматирования: ' + e.message);
+            }
+        }
+
+        // ===== 4. Очистка A1:C1 =====
+        function clearCells() {
+            try {
+                var sheet = editor().GetActiveSheet();
+                var range = sheet.GetRange('A1:C1');
+                range.Clear(); // очищает всё: значения, фон, форматирование
+                refresh();
+                setStatus('🧹 A1:C1 очищены');
+            } catch(e) {
+                setStatus('❌ Ошибка очистки: ' + e.message);
+            }
+        }
+
+        // ===== 5. Прочитать значение A1 =====
+        function readCell() {
+            try {
+                var sheet = editor().GetActiveSheet();
+                var range = sheet.GetRange('A1');
+                var value = range.GetValue();
+                if (value === null || value === undefined || value === '') {
+                    value = '(пусто)';
+                }
+                setStatus('📖 A1 = ' + value);
+            } catch(e) {
+                setStatus('❌ Ошибка чтения: ' + e.message);
+            }
+        }
+
+        window.onload = function() {
+            setStatus('✅ Плагин готов. Нажимайте кнопки.');
+        };
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
 <!DOCTYPE html>
 <html>
 <head>
