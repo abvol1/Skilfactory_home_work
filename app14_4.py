@@ -3,6 +3,114 @@
 <head>
     <meta charset="UTF-8">
     <style>
+        body { font-family: Arial, sans-serif; padding: 12px; background: #f5f5f5; margin:0; }
+        button { 
+            display: block; width: 100%; padding: 12px; margin: 8px 0; 
+            border: none; border-radius: 6px; font-size: 14px; font-weight: bold;
+            cursor: pointer; color: white; text-align: center;
+        }
+        .btn-write  { background: #4CAF50; }
+        .btn-color  { background: #2196F3; }
+        .btn-clear  { background: #f44336; }
+        .btn-read   { background: #FF9800; }
+        .status {
+            margin-top: 15px; padding: 10px; background: #fff; border-radius: 4px;
+            font-size: 12px; color: #333; min-height: 40px; word-break: break-word;
+        }
+    </style>
+</head>
+<body>
+    <h3>⚡ Действия с таблицей</h3>
+    
+    <button class="btn-write" onclick="fillCell()">📝 Заполнить A1</button>
+    <button class="btn-color" onclick="colorCell()">🎨 Закрасить B1</button>
+    <button class="btn-clear" onclick="clearCell()">🧹 Очистить A1:B1</button>
+    <button class="btn-read" onclick="readCell()">📖 Прочитать A1</button>
+    
+    <div class="status" id="status">Готов к работе</div>
+
+    <script>
+        // Укороченный доступ к API
+        function api() {
+            return window.parent.Asc.editor;
+        }
+
+        function setStatus(msg) {
+            document.getElementById('status').textContent = msg;
+        }
+
+        // === 1. Запись в ячейку ===
+        function fillCell() {
+            try {
+                api().asc_setData('A1', '✅ Работает! ' + new Date().toLocaleTimeString());
+                setStatus('✅ Ячейка A1 заполнена');
+            } catch(e) {
+                setStatus('❌ Ошибка: ' + e.message);
+            }
+        }
+
+        // === 2. Заливка цветом ===
+        function colorCell() {
+            try {
+                // asc_setCellBackgroundColor / asc_setCellFill - оба работают с цветом
+                // Передаём диапазон и цвет в HEX
+                api().asc_setCellBackgroundColor('B1', '#FFD700'); // золотой
+                setStatus('🎨 Ячейка B1 закрашена золотым');
+            } catch(e) {
+                setStatus('❌ Ошибка: ' + e.message);
+            }
+        }
+
+        // === 3. Очистка ===
+        function clearCell() {
+            try {
+                // Очищаем значение и фон
+                api().asc_setData('A1', '');
+                api().asc_setData('B1', '');
+                api().asc_setCellBackgroundColor('A1', '#FFFFFF');
+                api().asc_setCellBackgroundColor('B1', '#FFFFFF');
+                setStatus('🧹 Ячейки A1:B1 очищены');
+            } catch(e) {
+                setStatus('❌ Ошибка: ' + e.message);
+            }
+        }
+
+        // === 4. Чтение (опционально, может не работать) ===
+        function readCell() {
+            try {
+                var sheet = api().GetActiveSheet();
+                if (sheet && sheet.GetActiveCell) {
+                    var cell = sheet.GetActiveCell();
+                    var value = cell.GetValue ? cell.GetValue() : '(не прочитано)';
+                    setStatus('📖 Значение активной ячейки: ' + value);
+                } else {
+                    // Альтернативный способ
+                    var coord = api().asc_getActiveCellCoord();
+                    setStatus('📖 Активная ячейка: ' + coord);
+                }
+            } catch(e) {
+                setStatus('❌ Ошибка чтения: ' + e.message);
+            }
+        }
+
+        window.onload = function() {
+            setStatus('✅ Плагин готов. Нажимайте кнопки.');
+        };
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
         body { font-family: Arial; padding: 10px; background: #f5f5f5; }
         button { padding: 12px; margin: 5px; width: 100%; cursor: pointer; font-size: 14px; background: #4CAF50; color: white; border: none; border-radius: 5px; }
         button:hover { background: #45a049; }
