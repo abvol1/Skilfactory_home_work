@@ -1,3 +1,422 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 10px; background: #f5f5f5; }
+        .tabs { display: flex; gap: 5px; margin-bottom: 10px; }
+        .tab-btn {
+            flex: 1; padding: 8px; border: none; border-radius: 6px 6px 0 0;
+            font-size: 12px; font-weight: bold; cursor: pointer; color: #555; background: #ddd;
+        }
+        .tab-btn.active { color: white; background: #4CAF50; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+        button {
+            display: block; width: 100%; padding: 10px; margin: 6px 0;
+            border: none; border-radius: 6px; font-size: 13px; font-weight: bold;
+            cursor: pointer; color: white; background: #4CAF50;
+        }
+        button:hover { opacity: 0.9; }
+        .status {
+            margin-top: 12px; padding: 10px; background: #fff; border-radius: 4px;
+            font-size: 11px; color: #333; min-height: 30px; word-break: break-word;
+            white-space: pre-wrap;
+        }
+        .row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+        .row input, .row select { flex: 1; padding: 6px; border-radius: 4px; border: 1px solid #ccc; font-size: 12px; }
+        .row label { font-size: 12px; width: 70px; }
+    </style>
+</head>
+<body>
+    <h3>🧠 Анализ таблиц</h3>
+    
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('compare')">📊 Сравнение</button>
+        <button class="tab-btn" onclick="switchTab('duplicates')">🔍 Дубликаты</button>
+        <button class="tab-btn" onclick="switchTab('tools')">⚙️ Инструменты</button>
+    </div>
+
+    <!-- Вкладка Сравнение -->
+    <div id="tab-compare" class="tab-panel active">
+        <button onclick="compareSheets()">📋 Сравнить Лист1 и Лист2 (столбец A)</button>
+        <button onclick="clearHighlight()">🧹 Снять выделение со столбца A</button>
+        <button onclick="copyUniqueToNewSheet()">📤 Копировать уникальные на новый лист</button>
+        <div class="row">
+            <label>Лист1:</label><input type="text" id="sheet1Name" value="Лист1">
+            <label>Лист2:</label><input type="text" id="sheet2Name" value="Лист2">
+        </div>
+        <div class="row">
+            <label>Столбец:</label><input type="text" id="compareCol" value="A">
+        </div>
+        <p style="font-size:10px;color:#666;">Сравнение по указанному столбцу (A, B, C...)</p>
+    </div>
+
+    <!-- Вкладка Дубликаты -->
+    <div id="tab-duplicates" class="tab-panel">
+        <button onclick="findDuplicates()">🔴 Найти дубликаты</button>
+        <button onclick="removeDuplicates()">🗑️ Удалить дубликаты (оставить первое)</button>
+        <div class="row">
+            <label>Лист:</label><input type="text" id="dupSheet" value="Лист1">
+            <label>Столбец:</label><input type="text" id="dupCol" value="A">
+        </div>
+        <p style="font-size:10px;color:#666;">Дубликаты выделяются красным. Удаление необратимо!</p>
+    </div>
+
+    <!-- Вкладка Инструменты -->
+    <div id="tab-tools" class="tab-panel">
+        <button onclick="highlightByCondition()">🎯 Выделить строки по условию</button>
+        <div class="row">
+            <label>Лист:</label><input type="text" id="condSheet" value="Лист1">
+            <label>Столбец:</label><input type="text" id="condCol" value="C">
+        </div>
+        <div class="row">
+            <label>Условие:</label>
+            <select id="condOp">
+                <option value=">">Больше</option>
+                <option value="<">Меньше</option>
+                <option value="==">Равно</option>
+                <option value="contains">Содержит текст</option>
+            </select>
+            <input type="text" id="condVal" placeholder="Значение">
+        </div>
+
+        <button onclick="freezeHeaders()">📌 Закрепить первую строку и столбец</button>
+        <button onclick="syncColumnWidths()">📏 Синхронизировать ширину столбцов (Лист1 → Лист2)</button>
+        <button onclick="compareTwoColumns()">📊 Сравнить два столбца на одном листе</button>
+        <div class="row">
+            <label>Лист:</label><input type="text" id="twoColSheet" value="Лист1">
+            <label>Столбец1:</label><input type="text" id="col1" value="A">
+            <label>Столбец2:</label><input type="text" id="col2" value="B">
+        </div>
+    </div>
+
+    <div class="status" id="status">Готов к работе</div>
+
+    <script>
+        // ========== БАЗОВЫЕ ФУНКЦИИ ==========
+        function editor() { return window.parent.Asc.editor; }
+        function setStatus(msg) { document.getElementById('status').textContent = msg; }
+        function refresh() { if (typeof editor().asc_Recalculate === 'function') editor().asc_Recalculate(); }
+
+        // Переключение вкладок
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            document.getElementById('tab-' + tabId).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        // Получить лист по имени
+        function getSheet(name) {
+            try {
+                if (typeof editor().GetSheet === 'function') return editor().GetSheet(name);
+                var sheets = editor().GetSheets();
+                for (var i = 0; i < sheets.GetCount(); i++) {
+                    if (sheets.GetSheet(i).GetName() === name) return sheets.GetSheet(i);
+                }
+                return null;
+            } catch(e) { return null; }
+        }
+
+        // Собрать значения столбца (colStr = "A", "B"...) -> [{value, row}]
+        function getColumnData(sheet, colStr) {
+            var data = [], row = 1;
+            while (true) {
+                try {
+                    var range = sheet.GetRange(colStr + row);
+                    var value = range.GetValue();
+                    if (value === null || value === undefined || value === '') break;
+                    data.push({ value: value, row: row });
+                    row++;
+                } catch(e) { break; }
+            }
+            return data;
+        }
+
+        // Получить номер столбца из буквы (A=1, B=2...)
+        function colLetterToNumber(letter) {
+            letter = letter.toUpperCase();
+            var num = 0;
+            for (var i = 0; i < letter.length; i++) {
+                num = num * 26 + (letter.charCodeAt(i) - 64);
+            }
+            return num;
+        }
+
+        // Выделить строки на листе цветом (номера строк)
+        function highlightRows(sheet, rows, color) {
+            for (var i = 0; i < rows.length; i++) {
+                try {
+                    sheet.GetRange('A' + rows[i] + ':Z' + rows[i]).SetFillColor(color);
+                } catch(e) {}
+            }
+        }
+
+        // Очистить заливку в указанных строках и столбце (colStr)
+        function clearFillInColumn(sheet, colStr, rows) {
+            var noFill = editor().CreateNoFill();
+            for (var i = 0; i < rows.length; i++) {
+                try {
+                    sheet.GetRange(colStr + rows[i]).SetFillColor(noFill);
+                } catch(e) {}
+            }
+        }
+
+        // ========== 1. СРАВНЕНИЕ ЛИСТОВ ==========
+        function compareSheets() {
+            var sheet1Name = document.getElementById('sheet1Name').value || 'Лист1';
+            var sheet2Name = document.getElementById('sheet2Name').value || 'Лист2';
+            var colStr = document.getElementById('compareCol').value || 'A';
+
+            setStatus('⏳ Сравниваю...');
+            try {
+                var sheet1 = getSheet(sheet1Name), sheet2 = getSheet(sheet2Name);
+                if (!sheet1 || !sheet2) { setStatus('❌ Листы не найдены'); return; }
+
+                var data1 = getColumnData(sheet1, colStr);
+                var data2 = getColumnData(sheet2, colStr);
+
+                var set1 = new Set(data1.map(d => d.value));
+                var set2 = new Set(data2.map(d => d.value));
+
+                var only1 = data1.filter(d => !set2.has(d.value));
+                var only2 = data2.filter(d => !set1.has(d.value));
+
+                if (only1.length === 0 && only2.length === 0) {
+                    setStatus('✅ Расхождений нет'); return;
+                }
+
+                var yellow = editor().CreateColorFromRGB(255, 255, 0);
+                var orange = editor().CreateColorFromRGB(255, 165, 0);
+
+                highlightRows(sheet1, only1.map(d => d.row), yellow);
+                highlightRows(sheet2, only2.map(d => d.row), orange);
+                refresh();
+                setStatus('✅ Лист1: ' + only1.length + ' строк (жёлтые), Лист2: ' + only2.length + ' строк (оранжевые)');
+            } catch(e) { setStatus('❌ Ошибка: ' + e.message); }
+        }
+
+        function clearHighlight() {
+            var sheet1Name = document.getElementById('sheet1Name').value || 'Лист1';
+            var sheet2Name = document.getElementById('sheet2Name').value || 'Лист2';
+            var colStr = document.getElementById('compareCol').value || 'A';
+            setStatus('🧹 Снимаю заливку...');
+            try {
+                var sheet1 = getSheet(sheet1Name), sheet2 = getSheet(sheet2Name);
+                var noFill = editor().CreateNoFill();
+
+                var clearCol = function(sheet) {
+                    if (!sheet) return;
+                    var used = sheet.GetUsedRange();
+                    if (!used) return;
+                    var rowsCount = used.GetRows().GetCount();
+                    var startRow = used.GetRow();
+                    for (var i = 0; i < rowsCount; i++) {
+                        sheet.GetRange(colStr + (startRow + i)).SetFillColor(noFill);
+                    }
+                };
+                clearCol(sheet1); clearCol(sheet2);
+                refresh();
+                setStatus('✅ Заливка снята');
+            } catch(e) { setStatus('❌ Ошибка: ' + e.message); }
+        }
+
+        function copyUniqueToNewSheet() {
+            var sheet1Name = document.getElementById('sheet1Name').value || 'Лист1';
+            var sheet2Name = document.getElementById('sheet2Name').value || 'Лист2';
+            var colStr = document.getElementById('compareCol').value || 'A';
+            setStatus('📤 Копирую уникальные...');
+            try {
+                var sheet1 = getSheet(sheet1Name), sheet2 = getSheet(sheet2Name);
+                if (!sheet1 || !sheet2) { setStatus('❌ Листы не найдены'); return; }
+
+                var data1 = getColumnData(sheet1, colStr);
+                var data2 = getColumnData(sheet2, colStr);
+                var set2 = new Set(data2.map(d => d.value));
+                var uniqueIn1 = data1.filter(d => !set2.has(d.value));
+
+                // Создаём новый лист
+                var newSheet = editor().AddSheet('Уникальные_' + sheet1Name);
+                // Копируем заголовок и строки
+                if (uniqueIn1.length > 0) {
+                    // Копируем шапку (первая строка листа1)
+                    sheet1.GetRange('1:1').Copy(newSheet.GetRange('A1'));
+                    for (var i = 0; i < uniqueIn1.length; i++) {
+                        var srcRow = uniqueIn1[i].row;
+                        sheet1.GetRange(srcRow + ':' + srcRow).Copy(newSheet.GetRange('A' + (i + 2)));
+                    }
+                    newSheet.GetRange('A1:Z1').SetFontBold(true);
+                }
+                refresh();
+                setStatus('✅ Создан лист "Уникальные_' + sheet1Name + '" с ' + uniqueIn1.length + ' строками');
+            } catch(e) { setStatus('❌ Ошибка: ' + e.message); }
+        }
+
+        // ========== 2. ДУБЛИКАТЫ ==========
+        function findDuplicates() {
+            var sheetName = document.getElementById('dupSheet').value || 'Лист1';
+            var colStr = document.getElementById('dupCol').value || 'A';
+            setStatus('🔍 Ищу дубликаты...');
+            try {
+                var sheet = getSheet(sheetName);
+                if (!sheet) { setStatus('❌ Лист не найден'); return; }
+
+                var data = getColumnData(sheet, colStr);
+                var seen = new Set();
+                var duplicateRows = [];
+                for (var i = 0; i < data.length; i++) {
+                    if (seen.has(data[i].value)) {
+                        duplicateRows.push(data[i].row);
+                    } else {
+                        seen.add(data[i].value);
+                    }
+                }
+
+                var red = editor().CreateColorFromRGB(255, 100, 100);
+                highlightRows(sheet, duplicateRows, red);
+                refresh();
+                setStatus('🔴 Найдено дубликатов: ' + duplicateRows.length + ' строк');
+            } catch(e) { setStatus('❌ Ошибка: ' + e.message); }
+        }
+
+        function removeDuplicates() {
+            var sheetName = document.getElementById('dupSheet').value || 'Лист1';
+            var colStr = document.getElementById('dupCol').value || 'A';
+            setStatus('🗑️ Удаляю дубликаты...');
+            try {
+                var sheet = getSheet(sheetName);
+                if (!sheet) { setStatus('❌ Лист не найден'); return; }
+
+                var data = getColumnData(sheet, colStr);
+                var seen = new Set();
+                var rowsToDelete = [];
+                for (var i = 0; i < data.length; i++) {
+                    if (seen.has(data[i].value)) {
+                        rowsToDelete.push(data[i].row);
+                    } else {
+                        seen.add(data[i].value);
+                    }
+                }
+                // Удаляем строки с конца, чтобы не сбить нумерацию
+                rowsToDelete.sort((a,b) => b - a);
+                for (var j = 0; j < rowsToDelete.length; j++) {
+                    sheet.GetRange(rowsToDelete[j] + ':' + rowsToDelete[j]).Delete();
+                }
+                refresh();
+                setStatus('✅ Удалено дубликатов: ' + rowsToDelete.length);
+            } catch(e) { setStatus('❌ Ошибка: ' + e.message); }
+        }
+
+        // ========== 3. ИНСТРУМЕНТЫ ==========
+        function highlightByCondition() {
+            var sheetName = document.getElementById('condSheet').value || 'Лист1';
+            var colStr = document.getElementById('condCol').value || 'C';
+            var op = document.getElementById('condOp').value;
+            var val = document.getElementById('condVal').value;
+
+            setStatus('🎯 Применяю условие...');
+            try {
+                var sheet = getSheet(sheetName);
+                if (!sheet) { setStatus('❌ Лист не найден'); return; }
+
+                var data = getColumnData(sheet, colStr);
+                var rowsToHighlight = [];
+
+                for (var i = 0; i < data.length; i++) {
+                    var cellVal = data[i].value;
+                    var match = false;
+                    if (op === '>') match = Number(cellVal) > Number(val);
+                    else if (op === '<') match = Number(cellVal) < Number(val);
+                    else if (op === '==') match = String(cellVal) === val;
+                    else if (op === 'contains') match = String(cellVal).toLowerCase().includes(val.toLowerCase());
+                    if (match) rowsToHighlight.push(data[i].row);
+                }
+
+                var green = editor().CreateColorFromRGB(144, 238, 144);
+                highlightRows(sheet, rowsToHighlight, green);
+                refresh();
+                setStatus('✅ Выделено строк: ' + rowsToHighlight.length);
+            } catch(e) { setStatus('❌ Ошибка: ' + e.message); }
+        }
+
+        function freezeHeaders() {
+            setStatus('📌 Закрепляю...');
+            try {
+                // Закрепить 1 строку и 1 столбец
+                if (typeof editor().asc_freezePane === 'function') {
+                    editor().asc_freezePane(1, 1); // строки, столбцы
+                } else {
+                    // альтернатива: установка через asc_setSheetView
+                    var sheet = editor().GetActiveSheet();
+                    // некоторые версии API: sheet.SetFrozenPanes(1, 1)
+                }
+                refresh();
+                setStatus('✅ Первая строка и столбец закреплены');
+            } catch(e) { setStatus('❌ Ошибка: ' + e.message); }
+        }
+
+        function syncColumnWidths() {
+            setStatus('📏 Синхронизирую ширину...');
+            try {
+                var sheet1 = getSheet('Лист1');
+                var sheet2 = getSheet('Лист2');
+                if (!sheet1 || !sheet2) { setStatus('❌ Нужны Лист1 и Лист2'); return; }
+                var maxCol = 20; // предположим, до 20 столбцов
+                for (var c = 1; c <= maxCol; c++) {
+                    try {
+                        var colLetter = String.fromCharCode(64 + c);
+                        var w = sheet1.GetRange(colLetter + '1').GetColumnWidth();
+                        if (w && w > 0) sheet2.GetRange(colLetter + '1').SetColumnWidth(w);
+                    } catch(e) {}
+                }
+                refresh();
+                setStatus('✅ Ширина столбцов скопирована с Лист1 на Лист2');
+            } catch(e) { setStatus('❌ Ошибка: ' + e.message); }
+        }
+
+        function compareTwoColumns() {
+            var sheetName = document.getElementById('twoColSheet').value || 'Лист1';
+            var col1 = document.getElementById('col1').value || 'A';
+            var col2 = document.getElementById('col2').value || 'B';
+            setStatus('📊 Сравниваю два столбца...');
+            try {
+                var sheet = getSheet(sheetName);
+                if (!sheet) { setStatus('❌ Лист не найден'); return; }
+
+                var data1 = getColumnData(sheet, col1);
+                var data2 = getColumnData(sheet, col2);
+                var set2 = new Set(data2.map(d => d.value));
+
+                var onlyInCol1 = data1.filter(d => !set2.has(d.value));
+                // Только в col2 не ищем, но можно добавить
+
+                var blue = editor().CreateColorFromRGB(173, 216, 230);
+                highlightRows(sheet, onlyInCol1.map(d => d.row), blue);
+                refresh();
+                setStatus('✅ В столбце ' + col1 + ' уникальных значений: ' + onlyInCol1.length);
+            } catch(e) { setStatus('❌ Ошибка: ' + e.message); }
+        }
+
+        window.onload = function() {
+            setStatus('✅ Плагин готов. Выберите вкладку и действие.');
+        };
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
 // Снять выделение ТОЛЬКО со столбца A
 function clearHighlight() {
     setStatus('🧹 Снимаю заливку со столбца A...');
