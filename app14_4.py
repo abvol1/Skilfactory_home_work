@@ -1,3 +1,30 @@
+=== Число ===
+Установлено число
+GetFillColor: No Fill
+=== HEX-строка ===
+Установлена строка HEX
+GetFillColor: No Fill
+=== RGB-строка ===
+Установлена строка RGB
+GetFillColor: No Fill
+=== Объект цвета ===
+Объект: {"color":{"rgb":16766720}}
+Установлен объект
+GetFillColor: [object Object]
+=== Чтение FillColor ===
+До: No Fill
+После установки числа: No Fill
+
+
+
+
+
+
+
+
+
+
+
 <!DOCTYPE html>
 <html>
 <head>
