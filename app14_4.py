@@ -1,3 +1,30 @@
+=== Тест 1: CreateColorFromRGB + asc_setCellFill ===
+CreateColorFromRGB существует: function
+color: object = {"color":{"rgb":16766720}}
+asc_setCellFill существует: function
+❌ ОШИБКА: Cr.checkEmptyContent is not a function
+   стек: TypeError: Cr.checkEmptyContent is not a function
+    at Ci.setFill (file:///opt/r7-office/desktopeditors/editors/sdkjs/cell/sdk-all.js:38:198932)
+    at wo.setFill (file:///opt/r7-office/desktopeditors/editors/sdkjs/cell/sdk-all.js:414:262997)
+
+=== Тест 2: CreateColorFromRGB + asc_setCellBackgroundColor ===
+Выполнено без ошибок
+
+=== Тест 3: CreateRGBColor + asc_setCellFill ===
+CreateRGBColor существует: function
+color: object = {"Unicolor":{"color":{"RGBA":{"R":255,"G":182,"B":193,"A":255,"needRecalc":true},"Mods":null,"h":null,"s":null,"l":null},"Mods":null,"RGBA":{"R":0,"G":0,"B":0,"A":255}}}
+❌ ОШИБКА: Cr.checkEmptyContent is not a function
+   стек: TypeError: Cr.checkEmptyContent is not a function
+    at Ci.setFill (file:///opt/r7-office/desktopeditors/editors/sdkjs/cell/sdk-all.js:38:198932)
+    at wo.setFill (file:///opt/r7-office/desktopeditors/editors/sdkjs/cell/sdk-all.js:414:262997)
+
+
+
+
+
+
+
+
 <!DOCTYPE html>
 <html>
 <head>
