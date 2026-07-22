@@ -1,3 +1,81 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial; padding: 10px; background: #f5f5f5; }
+        button { padding: 12px; margin: 5px; width: 100%; cursor: pointer; font-size: 14px; background: #4CAF50; color: white; border: none; border-radius: 5px; }
+        button:hover { background: #45a049; }
+        textarea { width: 100%; height: 300px; font-family: monospace; font-size: 11px; background: #1e1e1e; color: #0f0; padding: 10px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h3>🎨 Тест заливки</h3>
+    
+    <button onclick="test1()">1. asc_setCellFill + CreateColorFromRGB</button>
+    <button onclick="test2()">2. asc_setCellBackgroundColor + CreateColorFromRGB</button>
+    <button onclick="test3()">3. asc_setCellFill + CreateRGBColor</button>
+    <button onclick="test4()">4. asc_setCellBackgroundColor + HEX строка</button>
+    <button onclick="clearLog()">🧹 Очистить</button>
+    
+    <textarea id="log"></textarea>
+
+    <script>
+        var el = document.getElementById('log');
+        function log(msg) { el.value += msg + '\n'; el.scrollTop = el.scrollHeight; }
+        function clearLog() { el.value = ''; }
+
+        function api() { return window.parent.Asc.editor; }
+
+        function test1() {
+            log('=== asc_setCellFill + CreateColorFromRGB ===');
+            try {
+                var color = api().CreateColorFromRGB(255, 215, 0); // золотой
+                api().asc_setCellFill('B1', color);
+                log('Выполнено');
+            } catch(e) { log('❌ ' + e.message); }
+        }
+
+        function test2() {
+            log('=== asc_setCellBackgroundColor + CreateColorFromRGB ===');
+            try {
+                var color = api().CreateColorFromRGB(135, 206, 235); // голубой
+                api().asc_setCellBackgroundColor('B2', color);
+                log('Выполнено');
+            } catch(e) { log('❌ ' + e.message); }
+        }
+
+        function test3() {
+            log('=== asc_setCellFill + CreateRGBColor ===');
+            try {
+                if (api().CreateRGBColor) {
+                    var color = api().CreateRGBColor(255, 182, 193); // розовый
+                    api().asc_setCellFill('B3', color);
+                    log('Выполнено');
+                } else {
+                    log('CreateRGBColor не найден');
+                }
+            } catch(e) { log('❌ ' + e.message); }
+        }
+
+        function test4() {
+            log('=== asc_setCellBackgroundColor + HEX ===');
+            try {
+                api().asc_setCellBackgroundColor('B4', '#FFD700');
+                log('Выполнено');
+            } catch(e) { log('❌ ' + e.message); }
+        }
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
 <!DOCTYPE html>
 <html>
 <head>
