@@ -1,3 +1,64 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial; padding: 10px; background: #f5f5f5; }
+        button { padding: 12px; margin: 5px; width: 100%; cursor: pointer; font-size: 14px; background: #4CAF50; color: white; border: none; border-radius: 5px; }
+        button:hover { background: #45a049; }
+        textarea { width: 100%; height: 200px; font-family: monospace; font-size: 11px; background: #1e1e1e; color: #0f0; padding: 10px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h3>🎨 Финальный тест заливки</h3>
+    
+    <button onclick="test()">Закрасить B1 через SolidFill → asc_setCellBackgroundColor</button>
+    <button onclick="clearLog()">🧹 Очистить</button>
+    
+    <textarea id="log"></textarea>
+
+    <script>
+        var el = document.getElementById('log');
+        function log(msg) { el.value += msg + '\n'; el.scrollTop = el.scrollHeight; }
+        function clearLog() { el.value = ''; }
+
+        function api() { return window.parent.Asc.editor; }
+
+        function test() {
+            log('=== Закраска B1 ===');
+            try {
+                var editor = api();
+                
+                // 1. Создаём цвет
+                var color = editor.CreateColorFromRGB(255, 200, 0);
+                log('Цвет создан: ' + JSON.stringify(color));
+                
+                // 2. Создаём заливку
+                var fill = editor.CreateSolidFill(color);
+                log('Заливка создана: ' + typeof fill);
+                
+                // 3. Применяем
+                editor.asc_setCellBackgroundColor('B1', fill);
+                log('✅ Готово! Проверьте B1');
+            } catch(e) {
+                log('❌ ' + e.message);
+            }
+        }
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
 === Тест 1: CreateColorFromRGB + asc_setCellFill ===
 CreateColorFromRGB существует: function
 color: object = {"color":{"rgb":16766720}}
@@ -56,7 +117,7 @@ color: object = {"Unicolor":{"color":{"RGBA":{"R":255,"G":182,"B":193,"A":255,"n
             log('=== Тест 1: CreateColorFromRGB + asc_setCellFill ===');
             try {
                 var editor = api();
-                log('CreateColorFromRGB существует: ' + (typeof editor.CreateColorFromRGB));
+log('CreateColorFromRGB существует: ' + (typeof editor.CreateColorFromRGB));
                 var color = editor.CreateColorFromRGB(255, 215, 0);
                 log('color: ' + typeof color + ' = ' + JSON.stringify(color));
                 
