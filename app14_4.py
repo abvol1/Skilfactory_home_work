@@ -1,3 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial; padding: 10px; background: #f5f5f5; }
+        button { padding: 12px; margin: 5px; width: 100%; cursor: pointer; font-size: 14px; background: #4CAF50; color: white; border: none; border-radius: 5px; }
+        textarea { width: 100%; height: 150px; font-family: monospace; font-size: 11px; background: #1e1e1e; color: #0f0; padding: 10px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h3>🎨 SetFillColor</h3>
+    
+    <button onclick="test()">Закрасить B1 золотым</button>
+    <button onclick="clearLog()">🧹 Очистить</button>
+    
+    <textarea id="log"></textarea>
+
+    <script>
+        var el = document.getElementById('log');
+        function log(msg) { el.value += msg + '\n'; el.scrollTop = el.scrollHeight; }
+        function clearLog() { el.value = ''; }
+
+        function api() { return window.parent.Asc.editor; }
+
+        function test() {
+            log('=== SetFillColor на B1 ===');
+            try {
+                var sheet = api().GetActiveSheet();
+                var range = sheet.GetRange('B1');
+                var color = api().CreateColorFromRGB(255, 215, 0);
+                range.SetFillColor(color);
+                log('✅ Готово! Проверьте B1');
+            } catch(e) { log('❌ ' + e.message); }
+        }
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
 === Методы Range ===
   GetClassType()
   GetRow()
