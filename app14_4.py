@@ -1,3 +1,135 @@
+function createPivotTable() {
+    var groupCol = document.getElementById('groupCol').value;
+    var valueCol = document.getElementById('valueCol').value;
+    var aggType = document.getElementById('aggType').value;
+    
+    if (!groupCol || !valueCol) {
+        setStatus('⚠️ Выберите столбцы для группировки и значений.');
+        return;
+    }
+    
+    setStatus('⏳ Начинаю построение...');
+    try {
+        var srcSheet = editor().GetActiveSheet();
+        if (!srcSheet) throw 'Не удалось получить активный лист';
+        setStatus('⏳ Активный лист получен');
+        
+        var used = srcSheet.GetUsedRange();
+        if (!used) throw 'На листе нет данных (GetUsedRange вернул null)';
+        setStatus('⏳ Используемый диапазон получен');
+        
+        var firstRow = used.GetRow();
+        var rowsCount = used.GetRows().GetCount();
+        var dataStartRow = firstRow + 1;
+        setStatus('⏳ Строк: ' + rowsCount + ', первая строка: ' + firstRow);
+        
+        // Сбор данных
+        var groups = {};
+        for (var r = dataStartRow; r < firstRow + rowsCount; r++) {
+            var keyCell = srcSheet.GetRange(groupCol + r).GetValue();
+            var valCell = srcSheet.GetRange(valueCol + r).GetValue();
+            if (keyCell === null || keyCell === undefined || keyCell === '') continue;
+            var key = String(keyCell).trim();
+            var num = parseFloat(valCell);
+            if (!groups[key]) {
+                groups[key] = { sum: 0, count: 0, values: [] };
+            }
+            if (!isNaN(num)) {
+                groups[key].sum += num;
+                groups[key].count += 1;
+                groups[key].values.push(num);
+            } else {
+                groups[key].values.push(0); // для count
+            }
+        }
+        setStatus('⏳ Данные собраны. Групп: ' + Object.keys(groups).length);
+        
+        if (Object.keys(groups).length === 0) {
+            setStatus('⚠️ Нет данных для группировки');
+            return;
+        }
+        
+        // Создаём новый лист
+        var pivotSheetName = 'Сводная_' + new Date().toISOString().replace(/[:.]/g, '-');
+        setStatus('⏳ Создаю лист ' + pivotSheetName);
+        editor().asc_addWorksheet(pivotSheetName);
+        var pivotSheet = getSheet(pivotSheetName);
+        if (!pivotSheet) throw 'Не удалось найти созданный лист';
+        setStatus('⏳ Лист создан');
+        
+        // Заголовки
+        pivotSheet.GetRange('A1').SetValue('Группа');
+        pivotSheet.GetRange('B1').SetValue(aggType.charAt(0).toUpperCase() + aggType.slice(1));
+        pivotSheet.GetRange('A1:B1').SetBold(true);
+        
+        // Заполняем данные
+        var row = 2;
+        var groupNames = Object.keys(groups).sort();
+        for (var i = 0; i < groupNames.length; i++) {
+            var g = groupNames[i];
+            var aggValue;
+            switch(aggType) {
+                case 'sum': aggValue = groups[g].sum; break;
+                case 'avg': aggValue = groups[g].count ? groups[g].sum / groups[g].count : 0; break;
+                case 'max': aggValue = Math.max(...groups[g].values); break;
+                case 'min': aggValue = Math.min(...groups[g].values); break;
+                case 'count': aggValue = groups[g].values.length; break;
+                default: aggValue = groups[g].sum;
+            }
+            pivotSheet.GetRange('A' + row).SetValue(g);
+            pivotSheet.GetRange('B' + row).SetValue(aggValue);
+            row++;
+        }
+        
+        setStatus('⏳ Данные записаны');
+        
+        // Автоподбор ширины
+        try { pivotSheet.GetRange('A:A').AutoFit(); } catch(e) {}
+        try { pivotSheet.GetRange('B:B').AutoFit(); } catch(e) {}
+        
+        if (aggType !== 'count') {
+            pivotSheet.GetRange('B2:B' + (row-1)).SetNumberFormat('#,##0.00');
+        }
+        
+        setStatus('⏳ Попытка создать диаграмму...');
+        // Создание диаграммы (безопасно)
+        try {
+            var chartRange = 'A1:B' + (row-1);
+            if (typeof pivotSheet.AddChart === 'function') {
+                // Пробуем несколько типов диаграмм
+                var types = ['column', 'bar', 'histogram'];
+                var chartAdded = false;
+                for (var t = 0; t < types.length; t++) {
+                    try {
+                        pivotSheet.AddChart(types[t], chartRange, 'D1');
+                        chartAdded = true;
+                        break;
+                    } catch(e) {}
+                }
+                if (chartAdded) {
+                    setStatus('✅ Диаграмма создана');
+                } else {
+                    setStatus('⚠️ Не удалось создать диаграмму ни с одним типом');
+                }
+            } else {
+                setStatus('⚠️ Метод AddChart не поддерживается, диаграмма пропущена');
+            }
+        } catch(chartError) {
+            setStatus('⚠️ Ошибка диаграммы: ' + chartError.message);
+        }
+        
+        refresh();
+        setStatus('✅ Сводная таблица построена на листе "' + pivotSheetName + '"');
+    } catch(e) {
+        setStatus('❌ Ошибка: ' + e.message + '\nСтек: ' + (e.stack ? e.stack.split('\n').slice(0,3).join('\n') : ''));
+    }
+}
+
+
+
+
+
+
 <!DOCTYPE html>
 <html>
 <head>
