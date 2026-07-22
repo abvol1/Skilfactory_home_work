@@ -44,6 +44,171 @@
             if (typeof editor().GetSheet === 'function') {
                 return editor().GetSheet(name);
             }
+            var sheets = editor().GetSheets();
+            for (var i = 0; i < sheets.GetCount(); i++) {
+                var sh = sheets.GetSheet(i);
+                if (sh.GetName() === name) return sh;
+            }
+            return null;
+        }
+
+        // Собрать значения столбца A и номера строк
+        function getColumnValues(sheet) {
+            var data = [];
+            var row = 1;
+            while (true) {
+                try {
+                    var range = sheet.GetRange('A' + row);
+                    var value = range.GetValue();
+                    if (value === null || value === undefined || value === '') break;
+                    data.push({ value: value, row: row });
+                    row++;
+                } catch(e) {
+                    break;
+                }
+            }
+            return data;
+        }
+
+        // Закрасить строки
+        function highlightRows(sheet, rows, color) {
+            for (var i = 0; i < rows.length; i++) {
+                try {
+                    var range = sheet.GetRange('A' + rows[i] + ':Z' + rows[i]);
+                    range.SetFillColor(color);
+                } catch(e) {}
+            }
+        }
+
+        // Сравнение листов
+        function compareSheets() {
+            setStatus('⏳ Получаю листы...');
+            try {
+                var sheet1 = getSheetByName('Лист1');
+                var sheet2 = getSheetByName('Лист2');
+                
+                if (!sheet1 || !sheet2) {
+                    setStatus('❌ Не найдены листы "Лист1" и/или "Лист2". Проверьте названия.');
+                    return;
+                }
+
+                setStatus('📊 Читаю столбец A на Лист1...');
+                var data1 = getColumnValues(sheet1);
+                setStatus('📊 Читаю столбец A на Лист2...');
+                var data2 = getColumnValues(sheet2);
+
+                var set1 = new Set(data1.map(function(d) { return d.value; }));
+                var set2 = new Set(data2.map(function(d) { return d.value; }));
+
+                var onlyIn1 = data1.filter(function(d) { return !set2.has(d.value); });
+                var onlyIn2 = data2.filter(function(d) { return !set1.has(d.value); });
+
+                var rows1 = onlyIn1.map(function(d) { return d.row; });
+                var rows2 = onlyIn2.map(function(d) { return d.row; });
+
+                if (rows1.length === 0 && rows2.length === 0) {
+                    setStatus('✅ Расхождений не найдено. Все значения столбца A совпадают.');
+                    return;
+                }
+
+                var color1 = editor().CreateColorFromRGB(255, 255, 0);   // жёлтый
+                var color2 = editor().CreateColorFromRGB(255, 165, 0); // оранжевый
+
+                setStatus('🎨 Выделяю ' + rows1.length + ' строк на Лист1 и ' + rows2.length + ' строк на Лист2...');
+                
+                highlightRows(sheet1, rows1, color1);
+                highlightRows(sheet2, rows2, color2);
+                
+                refresh();
+                setStatus('✅ Готово! Жёлтые строки — только на Лист1, оранжевые — только на Лист2.\nЛист1: ' + rows1.length + ' строк, Лист2: ' + rows2.length + ' строк.');
+            } catch(e) {
+                setStatus('❌ Ошибка: ' + e.message);
+            }
+        }
+
+        // Снять выделение (исправлено!)
+        function clearHighlight() {
+            setStatus('🧹 Снимаю заливку...');
+            try {
+                var sheet1 = getSheetByName('Лист1');
+                var sheet2 = getSheetByName('Лист2');
+                var noFill = editor().CreateNoFill(); // Создаём объект "No Fill"
+
+                [sheet1, sheet2].forEach(function(sheet) {
+                    if (sheet) {
+                        var used = sheet.GetUsedRange();
+                        if (used) {
+                            used.SetFillColor(noFill); // Применяем "No Fill" ко всему диапазону
+                        }
+                    }
+                });
+                refresh();
+                setStatus('✅ Заливка снята.');
+            } catch(e) {
+                setStatus('❌ Ошибка: ' + e.message);
+            }
+        }
+
+        window.onload = function() {
+            setStatus('✅ Плагин готов. Нажмите кнопку для сравнения листов "Лист1" и "Лист2" по столбцу A.');
+        };
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; padding: 12px; background: #f5f5f5; margin: 0; }
+        button {
+            width: 100%; padding: 12px; margin: 8px 0;
+            border: none; border-radius: 6px; font-size: 14px; font-weight: bold;
+            cursor: pointer; color: white; background: #4CAF50;
+        }
+        button:hover { background: #45a049; }
+        .status {
+            margin-top: 15px; padding: 10px; background: #fff; border-radius: 4px;
+            font-size: 12px; color: #333; min-height: 40px; word-break: break-word;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h3>🔍 Сравнить Лист1 и Лист2</h3>
+    <p style="font-size:12px; color:#666;">Будут выделены строки, которые есть только на одном из листов (по столбцу A).</p>
+    
+    <button onclick="compareSheets()">⚡ Найти и покрасить расхождения</button>
+    <button onclick="clearHighlight()" style="background:#f44336;">🧹 Снять выделение</button>
+    
+    <div class="status" id="status">Готов к работе</div>
+
+    <script>
+        function editor() { return window.parent.Asc.editor; }
+
+        function setStatus(msg) {
+            document.getElementById('status').textContent = msg;
+        }
+
+        function refresh() {
+            if (typeof editor().asc_Recalculate === 'function') {
+                editor().asc_Recalculate();
+            }
+        }
+
+        // Получить лист по имени
+        function getSheetByName(name) {
+            if (typeof editor().GetSheet === 'function') {
+                return editor().GetSheet(name);
+            }
             // Альтернатива: перебор всех листов
             var sheets = editor().GetSheets();
             for (var i = 0; i < sheets.GetCount(); i++) {
