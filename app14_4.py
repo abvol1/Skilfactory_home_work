@@ -1,3 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial; padding: 10px; background: #f5f5f5; }
+        button { padding: 12px; margin: 5px; width: 100%; cursor: pointer; font-size: 14px; background: #4CAF50; color: white; border: none; border-radius: 5px; }
+        button:hover { background: #45a049; }
+        textarea { width: 100%; height: 300px; font-family: monospace; font-size: 11px; background: #1e1e1e; color: #0f0; padding: 10px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h3>🔍 Тест API editor</h3>
+    
+    <button onclick="testSheet()">1. GetActiveSheet</button>
+    <button onclick="testRange()">2. GetRange</button>
+    <button onclick="testSetValue()">3. Установить A1</button>
+    <button onclick="clearLog()">🧹 Очистить</button>
+    
+    <textarea id="log"></textarea>
+
+    <script>
+        var el = document.getElementById('log');
+        function log(msg) { el.value += msg + '\n'; el.scrollTop = el.scrollHeight; }
+        function clearLog() { el.value = ''; }
+
+        function getEditor() { return window.parent.Asc.editor; }
+
+        function testSheet() {
+            log('=== GetActiveSheet ===');
+            try {
+                var sheet = getEditor().GetActiveSheet();
+                log('Тип: ' + typeof sheet);
+                if (sheet) {
+                    var funcs = [];
+                    for (var k in sheet) {
+                        if (typeof sheet[k] === 'function') funcs.push(k);
+                    }
+                    log('Методы: ' + funcs.join(', '));
+                }
+            } catch(e) { log('❌ ' + e.message); }
+        }
+
+        function testRange() {
+            log('=== GetRange ===');
+            try {
+                var editor = getEditor();
+                // Пробуем editor.GetRange
+                if (editor.GetRange) {
+                    var r1 = editor.GetRange('A1');
+                    log('editor.GetRange: ' + typeof r1);
+                    if (r1 && typeof r1.SetValue === 'function') log('✅ Есть SetValue');
+                }
+                // Пробуем sheet.GetRange
+                var sheet = editor.GetActiveSheet();
+                if (sheet && sheet.GetRange) {
+                    var r2 = sheet.GetRange('A1');
+                    log('sheet.GetRange: ' + typeof r2);
+                    if (r2 && typeof r2.SetValue === 'function') log('✅ Есть SetValue');
+                }
+            } catch(e) { log('❌ ' + e.message); }
+        }
+
+        function testSetValue() {
+            log('=== Установка A1 ===');
+            try {
+                var editor = getEditor();
+                var sheet = editor.GetActiveSheet();
+                if (sheet && sheet.GetRange) {
+                    sheet.GetRange('A1').SetValue('✅ Работает! ' + new Date().toLocaleTimeString());
+                    log('Записано через sheet.GetRange');
+                } else if (editor.GetRange) {
+                    editor.GetRange('A1').SetValue('✅ Работает! ' + new Date().toLocaleTimeString());
+                    log('Записано через editor.GetRange');
+                } else if (editor.asc_setData) {
+                    editor.asc_setData('A1', '✅ Работает через asc_setData');
+                    log('Вызван asc_setData');
+                }
+            } catch(e) { log('❌ ' + e.message); }
+        }
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
 === Тест api.wb ===
 ✅ api.wb существует
 Тип wb: object
