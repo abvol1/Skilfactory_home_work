@@ -1,3 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial; padding: 10px; background: #f5f5f5; }
+        button { padding: 12px; margin: 5px; width: 100%; cursor: pointer; font-size: 14px; background: #FF9800; color: white; border: none; border-radius: 5px; }
+        button:hover { background: #F57C00; }
+        textarea { width: 100%; height: 250px; font-family: monospace; font-size: 11px; background: #1e1e1e; color: #0f0; padding: 10px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h3>🎨 Тест Fill-объектов</h3>
+    
+    <button onclick="testSolidFill()">1. CreateSolidFill + asc_setCellFill</button>
+    <button onclick="testRGBFill()">2. CreateRGBColor → CreateSolidFill → asc_setCellFill</button>
+    <button onclick="testAscSetCellBackground()">3. asc_setCellBackgroundColor с Fill</button>
+    <button onclick="clearLog()">🧹 Очистить</button>
+    
+    <textarea id="log"></textarea>
+
+    <script>
+        var el = document.getElementById('log');
+        function log(msg) { el.value += msg + '\n'; el.scrollTop = el.scrollHeight; }
+        function clearLog() { el.value = ''; }
+
+        function api() { return window.parent.Asc.editor; }
+
+        function testSolidFill() {
+            log('=== CreateSolidFill + asc_setCellFill ===');
+            try {
+                var color = api().CreateColorFromRGB(255, 215, 0); // золотой
+                log('color создан: ' + typeof color);
+                
+                var fill = api().CreateSolidFill(color);
+                log('fill создан: ' + typeof fill);
+                
+                api().asc_setCellFill('B1', fill);
+                log('Выполнено: B1 должен стать золотым');
+            } catch(e) { log('❌ ' + e.message); }
+        }
+
+        function testRGBFill() {
+            log('=== CreateRGBColor → CreateSolidFill → asc_setCellFill ===');
+            try {
+                var color = api().CreateRGBColor(135, 206, 235); // голубой
+                var fill = api().CreateSolidFill(color);
+                api().asc_setCellFill('B2', fill);
+                log('Выполнено: B2 должен стать голубым');
+            } catch(e) { log('❌ ' + e.message); }
+        }
+
+        function testAscSetCellBackground() {
+            log('=== asc_setCellBackgroundColor с Fill ===');
+            try {
+                var color = api().CreateColorFromRGB(255, 182, 193); // розовый
+                var fill = api().CreateSolidFill(color);
+                api().asc_setCellBackgroundColor('B3', fill);
+                log('Выполнено: B3 должен стать розовым');
+            } catch(e) { log('❌ ' + e.message); }
+        }
+    </script>
+</body>
+</html>
+
+
+
+
 
 <!DOCTYPE html>
 <html>
