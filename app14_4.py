@@ -1,3 +1,28 @@
+=== GetActiveSheet ===
+Тип: object
+Методы: GetVisible, SetVisible, SetActive, GetActiveCell, GetSelection, GetCells, GetRows, GetCols, GetUsedRange, GetName, SetName, GetIndex, GetRange, GetRangeByNumber, FormatAsTable, SetColumnWidth, SetRowHeight, SetDisplayGridlines, SetDisplayHeadings, SetLeftMargin, GetLeftMargin, SetRightMargin, GetRightMargin, SetTopMargin, GetTopMargin, SetBottomMargin, GetBottomMargin, SetPageOrientation, GetPageOrientation, GetPrintHeadings, SetPrintHeadings, GetPrintGridlines, SetPrintGridlines, GetDefNames, GetDefName, AddDefName, GetComments, Delete, SetHyperlink, AddChart, AddShape, AddImage, AddWordArt, AddOleObject, ReplaceCurrentImage, GetAllDrawings, GetAllImages, GetAllShapes, GetAllCharts, GetAllOleObjects, Move
+=== GetRange ===
+editor.GetRange: object
+✅ Есть SetValue
+sheet.GetRange: object
+✅ Есть SetValue
+=== Установка A1 ===
+Записано через sheet.GetRange
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <!DOCTYPE html>
 <html>
 <head>
