@@ -1,3 +1,40 @@
+// Снять выделение ТОЛЬКО со столбца A
+function clearHighlight() {
+    setStatus('🧹 Снимаю заливку со столбца A...');
+    try {
+        var sheet1 = getSheetByName('Лист1');
+        var sheet2 = getSheetByName('Лист2');
+        var noFill = editor().CreateNoFill();
+
+        var clearColumnA = function(sheet) {
+            if (!sheet) return;
+            var used = sheet.GetUsedRange();
+            if (!used) return;
+            var rowsCount = used.GetRows().GetCount();
+            var startRow = used.GetRow();
+            for (var i = 0; i < rowsCount; i++) {
+                var rowNum = startRow + i;
+                var cell = sheet.GetRange('A' + rowNum); // ТОЛЬКО столбец A
+                cell.SetFillColor(noFill);
+            }
+        };
+
+        clearColumnA(sheet1);
+        clearColumnA(sheet2);
+        refresh();
+        setStatus('✅ Заливка в столбце A снята.');
+    } catch(e) {
+        setStatus('❌ Ошибка: ' + e.message);
+    }
+}
+
+
+
+
+
+
+
+
 <!DOCTYPE html>
 <html>
 <head>
