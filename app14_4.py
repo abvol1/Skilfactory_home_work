@@ -9,6 +9,60 @@
         return;
     }
     
+    // === 1. Замена на всём Лист2 ===
+    var usedRange = sheet2.GetUsedRange();
+    if (usedRange) {
+        // Получаем коллекцию всех ячеек в используемом диапазоне
+        var cells = usedRange.GetCells();
+        var cellCount = cells.GetCount();
+        
+        for (var i = 0; i < cellCount; i++) {
+            // Item принимает индекс от 0
+            var cell = cells.Item(i);
+            var value = cell.GetValue();
+            
+            if (value !== null && value !== undefined) {
+                var strValue = String(value);
+                
+                // Удаляем все запятые
+                var newStr = strValue.replace(/,/g, "");
+                // Заменяем точки на запятые
+                newStr = newStr.replace(/\./g, ",");
+                
+                if (newStr !== strValue) {
+                    cell.SetValue(newStr);
+                }
+            }
+        }
+    }
+    
+    // === 2. Копирование столбцов B и C на Лист1 ===
+    var rangeB2 = sheet2.GetRange("B:B");
+    rangeB2.Copy(sheet1.GetRange("A1"));
+    
+    var rangeC2 = sheet2.GetRange("C:C");
+    rangeC2.Copy(sheet1.GetRange("B1"));
+    
+    // Обновление книги
+    if (typeof Api.asc_Recalculate === 'function') {
+        Api.asc_Recalculate();
+    }
+})();
+
+
+
+
+
+(function()
+{
+    var sheet2 = Api.GetSheet("Лист2");
+    var sheet1 = Api.GetSheet("Лист1");
+    
+    if (!sheet2 || !sheet1) {
+        alert("Не найдены листы 'Лист1' и/или 'Лист2'");
+        return;
+    }
+    
     // === 1. Замена символов на всём Листе2 ===
     var usedRange = sheet2.GetUsedRange();
     if (usedRange) {
