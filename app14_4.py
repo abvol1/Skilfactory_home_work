@@ -1,6 +1,82 @@
 
 (function()
 {
+    var sheet2 = Api.GetSheet("Лист2");
+    var sheet1 = Api.GetSheet("Лист1");
+    
+    if (!sheet2 || !sheet1) {
+        alert("Не найдены листы 'Лист1' и/или 'Лист2'");
+        return;
+    }
+    
+    // === 1. Замена символов на всём Листе2 ===
+    var usedRange = sheet2.GetUsedRange();
+    if (usedRange) {
+        var rowCount = usedRange.GetRows().GetCount();
+        var colCount = usedRange.GetCols().GetCount();
+        var startRow = usedRange.GetRow();
+        var startCol = usedRange.GetCol();
+        var endRow = startRow + rowCount - 1;
+        var endCol = startCol + colCount - 1;
+        
+        // Проходим по каждой ячейке
+        for (var r = startRow; r <= endRow; r++) {
+            for (var c = startCol; c <= endCol; c++) {
+                // Получаем букву столбца (A = 65)
+                var colLetter = String.fromCharCode(64 + c);
+                var cellAddress = colLetter + r;
+                var cell = sheet2.GetRange(cellAddress);
+                
+                var value = cell.GetValue();
+                if (value !== null && value !== undefined) {
+                    var strValue = String(value);
+                    
+                    // Удаляем все запятые (разделители тысяч)
+                    var newStr = strValue.replace(/,/g, "");
+                    // Заменяем точку (десятичный разделитель) на запятую
+                    newStr = newStr.replace(/\./g, ",");
+                    
+                    // Если изменения произошли – записываем обратно
+                    if (newStr !== strValue) {
+                        // Пытаемся понять, число это или текст
+                        var num = parseFloat(newStr.replace(",", "."));
+                        if (!isNaN(num) && newStr.indexOf(",") !== -1) {
+                            // Число с запятой (десятичный разделитель) — оставляем как текст,
+                            // чтобы запятая сохранилась
+                            cell.SetValue(newStr);
+                        } else if (!isNaN(num)) {
+                            // Обычное число без запятой — сохраняем как число
+                            cell.SetValue(num);
+                        } else {
+                            // Не число — пишем как текст
+                            cell.SetValue(newStr);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // === 2. Копирование столбцов B и C с Лист2 на Лист1 ===
+    var rangeB2 = sheet2.GetRange("B:B");
+    rangeB2.Copy(sheet1.GetRange("A1"));
+    
+    var rangeC2 = sheet2.GetRange("C:C");
+    rangeC2.Copy(sheet1.GetRange("B1"));
+    
+    // Обновление книги (для версий 2026+)
+    if (typeof Api.asc_Recalculate === 'function') {
+        Api.asc_Recalculate();
+    }
+})();
+
+
+
+
+
+
+(function()
+{
     var currentSheet = Api.GetActiveSheet(); // Лист2, если кнопка там
     var targetSheet = Api.GetSheet("Лист1");
     
