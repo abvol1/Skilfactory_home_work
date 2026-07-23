@@ -1,4 +1,69 @@
 
+(function()
+{
+    var currentSheet = Api.GetActiveSheet();
+    var targetSheet = Api.GetSheet("Лист1");
+    
+    if (!currentSheet || !targetSheet) {
+        alert("Не найден активный лист или лист 'Лист1'");
+        return;
+    }
+    
+    // === 1. Замена символов на текущем листе ===
+    var usedRange = currentSheet.GetUsedRange();
+    if (usedRange) {
+        var rows = usedRange.GetRows();
+        var cols = usedRange.GetCols();
+        var startRow = usedRange.GetRow();
+        var startCol = usedRange.GetCol();
+        var endRow = startRow + rows.GetCount() - 1;
+        var endCol = startCol + cols.GetCount() - 1;
+        
+        for (var r = startRow; r <= endRow; r++) {
+            for (var c = startCol; c <= endCol; c++) {
+                var colLetter = String.fromCharCode(64 + c);
+                var cell = currentSheet.GetRange(colLetter + r);
+                
+                // Получаем ОТОБРАЖАЕМЫЙ текст (с разделителями, знаком минус и т.д.)
+                var displayedText = cell.GetText();
+                
+                if (displayedText !== null && displayedText !== undefined) {
+                    // Удаляем все запятые (разделители тысяч)
+                    var newText = displayedText.replace(/,/g, "");
+                    // Заменяем точку (десятичный разделитель) на запятую
+                    newText = newText.replace(/\./g, ",");
+                    
+                    // Пытаемся преобразовать в число (если это число, сохраним как число)
+                    var num = parseFloat(newText.replace(",", ".")); // для парсинга возвращаем точку
+                    if (!isNaN(num) && newText.indexOf(",") !== -1) {
+                        // Это число с запятой в качестве десятичного разделителя
+                        // Записываем его как текст, чтобы сохранить запятую
+                        cell.SetValue(newText);
+                    } else if (!isNaN(num)) {
+                        // Обычное число без запятой – пишем как число
+                        cell.SetValue(num);
+                    } else {
+                        // Текст – пишем изменённую строку
+                        cell.SetValue(newText);
+                    }
+                }
+            }
+        }
+    }
+    
+    // === 2. Копирование столбцов B и C на Лист1 ===
+    currentSheet.GetRange("B:B").Copy(targetSheet.GetRange("A1"));
+    currentSheet.GetRange("C:C").Copy(targetSheet.GetRange("B1"));
+    
+    // Обновление (для версий 2026+)
+    if (typeof Api.asc_Recalculate === 'function') {
+        Api.asc_Recalculate();
+    }
+})();
+
+
+
+
 
 (function()
 {
