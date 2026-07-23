@@ -1,4 +1,65 @@
 
+
+(function()
+{
+    // Текущий лист (на котором кнопка)
+    var currentSheet = Api.GetActiveSheet();
+    // Лист для вставки данных
+    var targetSheet = Api.GetSheet("Лист1");
+    
+    if (!currentSheet || !targetSheet) {
+        alert("Не найден активный лист или лист 'Лист1'");
+        return;
+    }
+    
+    // === 1. Ручная замена символов на текущем листе ===
+    // Получаем используемый диапазон (или задайте конкретный, например "A1:C1000")
+    var usedRange = currentSheet.GetUsedRange();
+    if (usedRange) {
+        // Получаем количество строк и столбцов
+        var rows = usedRange.GetRows();
+        var cols = usedRange.GetCols();
+        
+        var startRow = usedRange.GetRow();
+        var startCol = usedRange.GetCol();
+        var endRow = startRow + rows.GetCount() - 1;
+        var endCol = startCol + cols.GetCount() - 1;
+        
+        // Перебираем все ячейки
+        for (var r = startRow; r <= endRow; r++) {
+            for (var c = startCol; c <= endCol; c++) {
+                // Получаем адрес ячейки: буква + номер
+                var colLetter = String.fromCharCode(64 + c);
+                var cellAddress = colLetter + r;
+                var cell = currentSheet.GetRange(cellAddress);
+                
+                var value = cell.GetValue();
+                if (value !== null && value !== undefined && typeof value === "string") {
+                    // Заменяем: сначала запятые на пусто, потом точки на запятые
+                    var newValue = value.replace(/,/g, "").replace(/\./g, ",");
+                    if (newValue !== value) {
+                        cell.SetValue(newValue);
+                    }
+                }
+            }
+        }
+    }
+    
+    // === 2. Копирование столбцов B и C с текущего листа на Лист1 ===
+    currentSheet.GetRange("B:B").Copy(targetSheet.GetRange("A1"));
+    currentSheet.GetRange("C:C").Copy(targetSheet.GetRange("B1"));
+    
+    // Обновление (для версий 2026+)
+    if (typeof Api.asc_Recalculate === 'function') {
+        Api.asc_Recalculate();
+    }
+})();
+
+
+
+
+
+
 В Р7-Офис макросы пишутся на JavaScript с использованием встроенного API. Создадим макрос, который:
 
 1. На листе Лист2 удаляет все запятые (, → пусто), затем меняет точки на запятые (. → ,).
