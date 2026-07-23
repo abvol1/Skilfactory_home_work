@@ -1,4 +1,120 @@
 
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; padding: 12px; background: #f5f5f5; margin: 0; }
+        button {
+            width: 100%; padding: 12px; margin: 8px 0;
+            border: none; border-radius: 6px; font-size: 14px; font-weight: bold;
+            cursor: pointer; color: white; background: #4CAF50;
+        }
+        .status {
+            margin-top: 15px; padding: 10px; background: #fff; border-radius: 4px;
+            font-size: 12px; color: #333; min-height: 40px; word-break: break-word;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h3>🔄 Обработка столбца Z</h3>
+    <p style="font-size:12px; color:#666;">
+        Лист2: в столбце Z ","→"", "."→","<br>
+        Копирует Z → A на Лист1
+    </p>
+    <button onclick="process()">⚡ Выполнить</button>
+    <div class="status" id="status">Нажмите кнопку для запуска</div>
+
+    <script>
+        function editor() { return window.parent.Asc.editor; }
+        function setStatus(msg) { document.getElementById('status').textContent = msg; }
+        function refresh() {
+            try { if (typeof editor().asc_Recalculate === 'function') editor().asc_Recalculate(); } catch(e) {}
+        }
+
+        function getSheet(name) {
+            try {
+                var ed = editor();
+                if (typeof ed.GetSheet === 'function') return ed.GetSheet(name);
+                var sheets = ed.GetSheets();
+                for (var i = 0; i < sheets.GetCount(); i++) {
+                    var sh = sheets.GetSheet(i);
+                    if (sh && sh.GetName && sh.GetName() === name) return sh;
+                }
+                return null;
+            } catch(e) { return null; }
+        }
+
+        // Ищем последнюю непустую строку в заданном столбце (colLetter)
+        function getLastRowInColumn(sheet, colLetter) {
+            var used = sheet.GetUsedRange();
+            if (!used) return 0;
+            var lastRow = used.GetRow() + used.GetRows().GetCount() - 1;
+            // Идём снизу вверх, пока не встретим значение
+            for (var r = lastRow; r >= 1; r--) {
+                var val = sheet.GetRange(colLetter + r).GetValue();
+                if (val !== null && val !== undefined && String(val).trim() !== '') {
+                    return r;
+                }
+            }
+            return 0;
+        }
+
+        function process() {
+            setStatus('⏳ Анализирую столбец Z...');
+            try {
+                var sheet2 = getSheet('Лист2');
+                var sheet1 = getSheet('Лист1');
+                if (!sheet2 || !sheet1) {
+                    setStatus('❌ Не найдены листы "Лист1" или "Лист2"');
+                    return;
+                }
+
+                // Определяем последнюю реально заполненную строку в столбце Z
+                var lastRowZ = getLastRowInColumn(sheet2, 'Z');
+                if (lastRowZ === 0) {
+                    setStatus('⚠️ Столбец Z пуст');
+                    return;
+                }
+
+                setStatus('⏳ Меняю запятые/точки в строках 1-' + lastRowZ + '...');
+                
+                // === 1. Замена только в столбце Z до последней непустой строки ===
+                for (var r = 1; r <= lastRowZ; r++) {
+                    var cell = sheet2.GetRange('Z' + r);
+                    var value = cell.GetValue();
+                    if (value !== null && value !== undefined) {
+                        var strValue = String(value);
+                        var newStr = strValue.replace(/,/g, '').replace(/\./g, ',');
+                        if (newStr !== strValue) {
+                            cell.SetValue(newStr);
+                        }
+                    }
+                }
+                refresh();
+                setStatus('✅ Замена выполнена. Копирую Z1:Z' + lastRowZ + ' на Лист1...');
+
+                // === 2. Копируем только заполненный диапазон Z на Лист1 ===
+                var rangeZ = sheet2.GetRange('Z1:Z' + lastRowZ);
+                rangeZ.Copy(sheet1.GetRange('A1'));
+
+                refresh();
+                setStatus('✅ Готово! Обработано ' + lastRowZ + ' строк. Данные в столбце A на Лист1.');
+            } catch(e) {
+                setStatus('❌ Ошибка: ' + (e.message || e));
+            }
+        }
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
 Вот готовый плагин, который делает именно то, что вы описали: обрабатывает столбец Z на Лист2 (меняет 19,987.00 → 19987,00) и копирует его в столбец A на Лист1.
 
 ---
