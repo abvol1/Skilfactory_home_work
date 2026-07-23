@@ -1,6 +1,80 @@
 
 (function()
 {
+    var currentSheet = Api.GetActiveSheet(); // Лист2, если кнопка там
+    var targetSheet = Api.GetSheet("Лист1");
+    
+    if (!currentSheet || !targetSheet) {
+        alert("Не найден активный лист или лист 'Лист1'");
+        return;
+    }
+    
+    // === 1. Ручная замена символов на текущем листе ===
+    var usedRange = currentSheet.GetUsedRange();
+    if (usedRange) {
+        // Определяем границы диапазона
+        var rowCount = usedRange.GetRows().GetCount();
+        var colCount = usedRange.GetCols().GetCount();
+        var startRow = usedRange.GetRow();
+        var startCol = usedRange.GetCol();
+        var endRow = startRow + rowCount - 1;
+        var endCol = startCol + colCount - 1;
+        
+        // Перебираем все ячейки
+        for (var r = startRow; r <= endRow; r++) {
+            for (var c = startCol; c <= endCol; c++) {
+                // Получаем букву столбца
+                var colLetter = String.fromCharCode(64 + c); // 65 = 'A'
+                var cellAddress = colLetter + r;
+                var cell = currentSheet.GetRange(cellAddress);
+                
+                var value = cell.GetValue();
+                if (value !== null && value !== undefined) {
+                    // Преобразуем в строку и делаем замены
+                    var strValue = String(value);
+                    // Удаляем все запятые
+                    var newStr = strValue.replace(/,/g, "");
+                    // Заменяем точки на запятые
+                    newStr = newStr.replace(/\./g, ",");
+                    
+                    // Если строка изменилась – записываем обратно
+                    if (newStr !== strValue) {
+                        // Проверим, является ли результат числом (если да – можно сохранить как число)
+                        var num = parseFloat(newStr.replace(",", "."));
+                        if (!isNaN(num) && newStr.indexOf(",") !== -1) {
+                            // Содержит запятую как десятичный разделитель – оставляем текст
+                            cell.SetValue(newStr);
+                        } else if (!isNaN(num)) {
+                            // Целое число без запятой – запишем как число
+                            cell.SetValue(num);
+                        } else {
+                            // Не число – пишем как текст
+                            cell.SetValue(newStr);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // === 2. Копирование столбцов B и C на Лист1 ===
+    currentSheet.GetRange("B:B").Copy(targetSheet.GetRange("A1"));
+    currentSheet.GetRange("C:C").Copy(targetSheet.GetRange("B1"));
+    
+    // Обновление (для версий 2026+)
+    if (typeof Api.asc_Recalculate === 'function') {
+        Api.asc_Recalculate();
+    }
+})();
+
+
+
+
+
+
+
+(function()
+{
     var currentSheet = Api.GetActiveSheet();
     var targetSheet = Api.GetSheet("Лист1");
     
