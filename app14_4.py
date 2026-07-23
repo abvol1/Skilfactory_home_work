@@ -1,3 +1,52 @@
+(function()
+{
+    var sheet2 = Api.GetSheet("Лист2");
+    var sheet1 = Api.GetSheet("Лист1");
+    
+    if (!sheet2 || !sheet1) {
+        alert("Не найдены листы 'Лист1' и/или 'Лист2'");
+        return;
+    }
+    
+    // Функция для обработки одной ячейки
+    function processCell(cell) {
+        var value = cell.GetValue();
+        if (value !== null && value !== undefined) {
+            var strValue = String(value);
+            // Удаляем все запятые, затем точку меняем на запятую
+            var newStr = strValue.replace(/,/g, "").replace(/\./g, ",");
+            if (newStr !== strValue) {
+                cell.SetValue(newStr);
+            }
+        }
+    }
+    
+    // --- 1. Замена на Лист2 (во всём листе или только в столбце Z) ---
+    // Если нужно только в столбце Z, замените на:
+    // var rangeZ = sheet2.GetRange("Z1:Z1048576"); // весь столбец Z
+    // Но проще взять используемый диапазон всего листа (как ранее)
+    var usedRange = sheet2.GetUsedRange();
+    if (usedRange) {
+        usedRange.ForEach(processCell);
+    }
+    
+    // --- 2. Копирование столбца Z Лист2 в столбец A Лист1 ---
+    sheet2.GetRange("Z:Z").Copy(sheet1.GetRange("A1"));
+    
+    // Обновление (для версий 2026+)
+    if (typeof Api.asc_Recalculate === 'function') {
+        Api.asc_Recalculate();
+    }
+})();
+
+
+
+
+
+
+
+
+
 
 (function()
 {
