@@ -1,3 +1,155 @@
+
+Вот готовый плагин, который делает именно то, что вы описали: обрабатывает столбец Z на Лист2 (меняет 19,987.00 → 19987,00) и копирует его в столбец A на Лист1.
+
+---
+
+Плагин «Замена в столбце Z и копирование»
+
+1. config.json
+
+```json
+{
+    "name": "Замена и копирование Z",
+    "guid": "asc.{z-replace-copy-1234-5678}",
+    "variations": [
+        {
+            "url": "index.html",
+            "EditorsSupport": ["spreadsheet"],
+            "isVisual": true,
+            "isModal": false,
+            "isInsideMode": false,
+            "size": [320, 180]
+        }
+    ]
+}
+```
+
+2. index.html
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; padding: 12px; background: #f5f5f5; margin: 0; }
+        button {
+            width: 100%; padding: 12px; margin: 8px 0;
+            border: none; border-radius: 6px; font-size: 14px; font-weight: bold;
+            cursor: pointer; color: white; background: #4CAF50;
+        }
+        .status {
+            margin-top: 15px; padding: 10px; background: #fff; border-radius: 4px;
+            font-size: 12px; color: #333; min-height: 40px; word-break: break-word;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h3>🔄 Обработка столбца Z</h3>
+    <p style="font-size:12px; color:#666;">
+        Лист2: в столбце Z ","→"", "."→","<br>
+        Копирует Z → A на Лист1
+    </p>
+    <button onclick="process()">⚡ Выполнить</button>
+    <div class="status" id="status">Нажмите кнопку для запуска</div>
+
+    <script>
+        function editor() { return window.parent.Asc.editor; }
+        function setStatus(msg) { document.getElementById('status').textContent = msg; }
+        function refresh() {
+            try { if (typeof editor().asc_Recalculate === 'function') editor().asc_Recalculate(); } catch(e) {}
+        }
+
+        function getSheet(name) {
+            try {
+                var ed = editor();
+                if (typeof ed.GetSheet === 'function') return ed.GetSheet(name);
+                var sheets = ed.GetSheets();
+                for (var i = 0; i < sheets.GetCount(); i++) {
+                    var sh = sheets.GetSheet(i);
+                    if (sh && sh.GetName && sh.GetName() === name) return sh;
+                }
+                return null;
+            } catch(e) { return null; }
+        }
+
+        function process() {
+            setStatus('⏳ Обрабатываю столбец Z на Лист2...');
+            try {
+                var sheet2 = getSheet('Лист2');
+                var sheet1 = getSheet('Лист1');
+                if (!sheet2 || !sheet1) {
+                    setStatus('❌ Не найдены листы "Лист1" или "Лист2"');
+                    return;
+                }
+
+                // === 1. Замена в столбце Z ===
+                var used = sheet2.GetUsedRange();
+                if (used) {
+                    var lastRow = used.GetRow() + used.GetRows().GetCount() - 1;
+                    for (var r = 1; r <= lastRow; r++) {
+                        var cell = sheet2.GetRange('Z' + r);
+                        var value = cell.GetValue();
+                        if (value !== null && value !== undefined) {
+                            var strValue = String(value);
+                            var newStr = strValue.replace(/,/g, '').replace(/\./g, ',');
+                            if (newStr !== strValue) {
+                                cell.SetValue(newStr);
+                            }
+                        }
+                    }
+                    setStatus('✅ Замена выполнена. Копирую...');
+                    refresh();
+                } else {
+                    setStatus('⚠️ Лист2 пуст');
+                    return;
+                }
+
+                // === 2. Копирование Z → A на Лист1 ===
+                sheet2.GetRange('Z:Z').Copy(sheet1.GetRange('A1'));
+                refresh();
+                setStatus('✅ Готово! Столбец Z скопирован в A на Лист1.');
+            } catch(e) {
+                setStatus('❌ Ошибка: ' + (e.message || e));
+            }
+        }
+    </script>
+</body>
+</html>
+```
+
+---
+
+Как это работает
+
+1. Находит листы Лист2 и Лист1.
+2. Определяет последнюю использованную строку на Лист2 (через GetUsedRange).
+3. Построчно проходит по столбцу Z с первой до последней значимой строки.
+4. В каждой ячейке читает значение, приводит к строке, удаляет все запятые, заменяет точку на запятую. Если строка изменилась – записывает обратно.
+5. Копирует весь столбец Z с Лист2 и вставляет в столбец A на Лист1.
+
+---
+
+Установка
+
+1. Создайте папку плагина (например, z_replace).
+2. Поместите в неё два файла: config.json и index.html.
+3. Скопируйте папку в директорию плагинов Р7-Офис (обычно /opt/r7-office/desktopeditors/editors/sdkjs-plugins/ или ~/.local/share/R7-Office/desktopeditors/sdkjs-plugins/).
+4. Перезапустите Р7-Офис.
+5. Откройте книгу с листами «Лист1» и «Лист2».
+6. Запустите плагин через меню «Плагины» → «Замена и копирование Z».
+7. Нажмите кнопку «Выполнить».
+
+После этого данные в столбце Z на Лист2 изменятся (19,987.00 → 19987,00), и весь столбец появится на Лист1 в столбце A.
+
+Если нужно копировать в другой столбец или на другой лист – просто измените адрес в строке sheet1.GetRange('A1') на нужный.
+
+
+
+
+
+
 В макросах Р7 иногда помогает метод ForEach — он перебирает все ячейки диапазона и применяет к ним функцию. Попробуем его для замены в столбце Z и последующего копирования на Лист1.
 
 ```javascript
