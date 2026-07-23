@@ -1,3 +1,202 @@
+Дополним описание, указав откуда и как подтягиваются данные для каждого элемента пользовательской части. Это поможет команде, которая будет переносить логику на FastAPI, сразу понять запросы к БД и вычисляемые поля.
+
+Общие справочные таблицы
+
+Таблица Основные столбцы Использование
+users name (логин), full_name, name_filial, name_vsp идентификация пользователя, получение филиала и ВСП по умолчанию
+filials id, name, check_name, blocked название филиала, флаг альтернативных фильтров, блокировка доступа
+vsp id, name, name_vsp, filial_id, close_vsp список ВСП, привязка к филиалу; close_vsp=false для активных
+checklist_templates id, item_order, description, additional_info, filter_value, events_value, alt_* пункты чек-листа, фильтры, альтернативные фильтры
+checklist_sessions id, user_name, filial_id, vsp_id, operation_date, status_bul, created_at, completed_at, completion_comment сессии проверок
+checklist_answers session_id, template_item_id, is_completed, comment ответы на пункты, комментарии к пунктам
+vsp_non_working_days id, user_name, filial_id, vsp_id, date, reason нерабочие дни ВСП
+
+---
+
+Вкладка «Новая проверка»
+
+Информация о пользователе и ВСП
+
+· ФИО: из users.full_name по логину.
+· Логин: из users.name.
+· ВСП по умолчанию: vsp.name (и vsp.name_vsp) через связь users.name_vsp = vsp.name (для определения ВСП пользователя).
+· Филиал: filials.name через users.name_filial::numeric = filials.id.
+· Блокировка филиала: filials.blocked (если true – доступ запрещён).
+
+Выбор ВСП
+
+· Список ВСП: vsp.name, vsp.name_vsp для vsp.filial_id = :filial_id AND close_vsp = false, сортировка по name.
+
+Проверки перед началом
+
+· Наличие черновика за сегодня: запрос к checklist_sessions с условиями user_name = :current_user AND operation_date = today AND status_bul = false.
+· Существующая проверка (любая) для ВСП на дату: запрос к checklist_sessions с vsp_id = :vsp_id AND operation_date = :date.
+
+Создание сессии
+
+· Вставка в checklist_sessions (user_name, filial_id, vsp_id, operation_date, status_bul=false).
+· При субботе: удаление нерабочего дня (DELETE FROM vsp_non_working_days WHERE vsp_id=:vsp_id AND date=:date).
+
+---
+
+Вкладка «История проверок»
+
+Таблица истории
+
+Запрос объединяет сессии с филиалами, ВСП и подсчитывает ответы.
+
+```sql
+SELECT 
+    s.id,
+    s.operation_date AS "Дата проверки",
+    f.name AS "Филиал",
+    v.name AS "ВСП",
+    CASE s.status_bul WHEN true THEN 'Завершена' ELSE 'Черновик' END AS "Статус",
+    s.created_at AS "Дата и время начала",
+    s.completed_at AS "Дата и время завершения",
+    COUNT(a.id) AS "Выполнено проверок",
+    (SELECT COUNT(*) FROM checklist_templates) AS "Всего проверок"
+FROM checklist_sessions s
+JOIN filials f ON s.filial_id = f.id
+JOIN vsp v ON s.vsp_id = v.id
+LEFT JOIN checklist_answers a ON s.id = a.session_id AND a.is_completed = true
+WHERE s.user_name = :current_user AND s.filial_id = :filial_id
+GROUP BY s.id, f.name, v.name, ...
+ORDER BY s.created_at DESC
+```
+
+· ID сессии: s.id.
+· Дата проверки: s.operation_date.
+· Филиал: f.name.
+· ВСП: v.name.
+· Статус: вычисляется из s.status_bul.
+· Дата и время начала: s.created_at.
+· Дата и время завершения: s.completed_at.
+· Выполнено проверок: COUNT(a.id) WHERE is_completed = true.
+· Всего проверок: общее количество пунктов в checklist_templates (подзапрос).
+
+Детальный просмотр сессии
+
+· Загружается сама сессия (SELECT * FROM checklist_sessions WHERE id = :session_id).
+· Загружаются ответы: SELECT template_item_id, is_completed, comment FROM checklist_answers WHERE session_id = :session_id.
+· Шаблон чек-листа (SELECT * FROM checklist_templates ORDER BY item_order).
+· При отображении: для каждого пункта показывается статус (is_completed) и описание из шаблона.
+
+Удаление черновика
+
+· Удаление из checklist_answers и checklist_sessions по ID (каскадное).
+
+---
+
+Вкладка «Нерабочие дни ВСП»
+
+Добавление нерабочего дня
+
+· Поля: ВСП (из vsp), дата, причина.
+· Сохранение: INSERT INTO vsp_non_working_days (user_name, filial_id, vsp_id, date, reason).
+
+Ранее добавленные нерабочие дни
+
+· Запрос с JOIN к filials и vsp:
+
+```sql
+SELECT 
+    nwd.id, nwd.user_name, f.name AS filial, v.name AS vsp,
+    nwd.date, nwd.reason, nwd.created_at
+FROM vsp_non_working_days nwd
+JOIN filials f ON nwd.filial_id = f.id
+JOIN vsp v ON nwd.vsp_id = v.id
+WHERE nwd.filial_id = :filial_id [AND nwd.vsp_id = :vsp_id]
+ORDER BY nwd.date DESC, nwd.created_at DESC
+```
+
+· Возможность фильтрации по конкретному ВСП или все (чекбокс «Показать все выходные вашего ВСП» управляет наличием условия vsp_id = :vsp_id).
+· Удаление: DELETE FROM vsp_non_working_days WHERE id = :id AND vsp_id = :vsp_id AND filial_id = :filial_id.
+
+---
+
+Вкладка «Аналитика по филиалу»
+
+Фильтры
+
+· Филиал берётся автоматически из last_filial_id пользователя.
+· Период дат (date_from, date_to).
+
+Таблица всех проверок
+
+· Используется запрос get_filial_sessions(filial_id) с дополнительной фильтрацией по дате.
+· Поля аналогичны истории, но для всех пользователей филиала:
+  · id, Сотрудник (s.user_name), Дата проверки, ВСП, Статус, Выполнено проверок, Всего проверок, Дата и время начала, Дата и время завершения.
+  · Если реализован комментарий к сессии, добавляется s.completion_comment.
+
+Управление черновиками
+
+· Черновики = status_bul = false.
+· Дополнительный фильтр по ВСП = last_vsp_name пользователя.
+· Отображение: ID, Сотрудник, Дата, Прогресс.
+· Массовое удаление: цикл по выбранным ID с вызовом delete_session.
+
+---
+
+Вкладка «Визуализация»
+
+Статус ВСП на дату
+
+· Источник: объединение данных из vsp (активные), vsp_non_working_days и checklist_sessions.
+· Логика:
+  1. Получить все активные ВСП филиала (vsp WHERE filial_id = :filial_id AND close_vsp = false).
+  2. Получить множество ВСП, для которых есть нерабочий день на дату (SELECT vsp_id FROM vsp_non_working_days WHERE date = :date AND filial_id = :filial_id).
+  3. Получить множество ВСП, для которых есть завершённая сессия на дату (SELECT vsp_id FROM checklist_sessions WHERE operation_date = :date AND filial_id = :filial_id AND status_bul = true).
+  4. Для каждого ВСП:
+     · Если vsp_id в списке нерабочих → статус «Выходной»,
+     · Иначе если в списке завершённых → «Заполнен»,
+     · Иначе → «Не заполнен».
+· Круговая диаграмма: строится по ВСП, исключая «Выходной». Рассчитываются доли «Заполнен» / «Не заполнен».
+· Таблица детализации: выводится список ВСП и статус с цветовой индикацией.
+
+---
+
+Заполнение чек-листа (step 1, не описано ранее)
+
+Данные для формы
+
+· Шаблон: checklist_templates (все пункты с order, description, фильтрами).
+· Сохранённые ответы: checklist_answers для текущей сессии (session_id). Возвращаются is_completed и comment.
+· Альтернативные фильтры: если filials.check_name = true для филиала сессии, то используются поля alt_*, иначе стандартные.
+· Подстановки в фильтрах (на клиенте):
+  · [Дата1], [Дата1 гггг-мм-дд], [Дата1 дд.мм.гггг] → текущая дата в нужном формате.
+  · [РФ] → vsp.name.
+  · [РФ1] → первые три символа vsp.name.
+
+Сохранение
+
+· Черновик: save_answers(session_id, answers), где answers = Dict[template_item_id, {"is_completed": bool, "comment": str}]. Затем update_session_status(session_id, false).
+· Завершение: то же самое, но update_session_status(session_id, true). Перед этим может сохраняться общий комментарий в completion_comment сессии.
+
+---
+
+Сводная таблица зависимостей (для API)
+
+UI-блок Данные Основные таблицы Вычисляемые/агрегатные поля
+Информация о пользователе ФИО, логин, ВСП, филиал users, vsp, filials –
+Список ВСП для выбора name, name_vsp vsp фильтр по filial_id и close_vsp
+Таблица истории список сессий checklist_sessions, filials, vsp, checklist_answers, checklist_templates COUNT(answers), подзапрос COUNT(templates)
+Детальный просмотр сессия + ответы + шаблон все три таблицы сопоставление ответов с шаблоном
+Нерабочие дни (добавление) ВСП, дата, причина vsp_non_working_days –
+Нерабочие дни (просмотр) список записей vsp_non_working_days + filials + vsp –
+Аналитика по филиалу таблица проверок те же, что и история, но без фильтра по пользователю COUNT, CASE для статуса
+Визуализация статус ВСП на дату vsp + vsp_non_working_days + checklist_sessions категоризация по трём статусам
+Чек-лист (заполнение) пункты шаблона, ответы checklist_templates, checklist_answers –
+
+Эта детализация источников данных должна быть добавлена в описание пользовательской части, чтобы разработчики FastAPI могли напрямую сопоставить интерфейс с SQL-запросами.
+
+
+
+
+
+
+
+
 Вы очень точно описали основные элементы, но есть несколько важных пропусков, особенно с учётом того функционала, который мы только что обсуждали (добавление комментариев) и логики, уже заложенной в коде. Ниже – что нужно дополнить.
 
 ---
