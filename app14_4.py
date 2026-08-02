@@ -1,3 +1,73 @@
+
+Отлично! Чтобы нажать на крестик, привязанный к конкретному тексту «Фактическая операция по договору (Полный список) Из:», используйте XPath, который сначала находит этот текст, а затем переходит к соседней кнопке с aria-label="Удалить".
+
+Самый надёжный XPath
+
+```xpath
+//div[@class='ui-tabs-item__text' and contains(., 'Фактическая операция')]/following-sibling::button[@aria-label='Удалить']
+```
+
+Готовый код с ожиданием
+
+```python
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+# Ждём появления кнопки, связанной с нужным текстом
+button_xpath = "//div[@class='ui-tabs-item__text' and contains(., 'Фактическая операция')]/following-sibling::button[@aria-label='Удалить']"
+
+try:
+    button = WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable((By.XPATH, button_xpath))
+    )
+    # Прокручиваем для надёжности
+    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
+    time.sleep(0.3)
+    button.click()
+    print("Крестик нажат для вкладки 'Фактическая операция'")
+except Exception as e:
+    print(f"Не удалось нажать крестик: {e}")
+```
+
+Если кнопка появляется только при наведении (hover)
+
+```python
+from selenium.webdriver.common.action_chains import ActionChains
+
+# Находим контейнер с текстом
+container = driver.find_element(By.XPATH, "//div[@class='ui-tabs-item__text' and contains(., 'Фактическая операция')]")
+# Наводим мышь, чтобы показать крестик
+ActionChains(driver).move_to_element(container).perform()
+time.sleep(0.5)
+
+# Теперь кликаем
+button = driver.find_element(By.XPATH, "./following-sibling::button[@aria-label='Удалить']", container)
+button.click()
+```
+
+Альтернативный XPath (через родителя)
+
+```xpath
+//*[contains(., 'Фактическая операция')]/ancestor::div[contains(@class, 'ui-tabs-item')]//button[@aria-label='Удалить']
+```
+
+Но первый вариант (following-sibling) точнее, так как кнопка идёт сразу после div с текстом.
+
+---
+
+Почему это работает?
+
+· contains(., 'Фактическая операция') — ищет div, внутри которого есть нужная фраза (даже внутри вложенных span).
+· following-sibling::button — выбирает следующую кнопку-соседа на том же уровне.
+
+Используйте этот подход — и крестик будет нажат именно для нужной вкладки!
+
+
+
+
+
+
 Чтобы нажать на кнопку-крестик, можно использовать несколько надёжных локаторов. Вот лучшие варианты:
 
 1. По aria-label="Удалить" (самый надёжный)
