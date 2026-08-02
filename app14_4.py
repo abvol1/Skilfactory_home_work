@@ -1,3 +1,11 @@
+<div data-v-3d7="" class="ui-tabs-item__text"><span data-v-3d7=""> Фактическая операция по договору (Полный список) Из: </span></div>
+<button data-v-d16="" data-v-3d7="" type="button" aria-label="Удалить" tabindex="0" class="non-draggable ds-icon-button ds-icon-button__type-transparent ds-icon-button__size-s ds-icon-button__color-secondary ds-icon-button__square ds-icon-button__icon-only ds-icon-button__no-padding"><span data-v-cf273d10="" data-v-d16abfc0="" class="ds-icon mdi mdi-close" style="font-size: var(--ds-icon-size-s); height: var(--ds-icon-size-s); width: var(--ds-icon-size-s); color: var(--ds-color-secondary); z-index: 1;"><!----></span><!----></button>
+
+
+
+
+
+
 <!DOCTYPE html>
 <html>
 <head>
