@@ -1,3 +1,85 @@
+Чтобы нажать на кнопку-крестик, можно использовать несколько надёжных локаторов. Вот лучшие варианты:
+
+1. По aria-label="Удалить" (самый надёжный)
+
+```python
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+button = WebDriverWait(driver, 10).until(
+    EC.element_to_be_clickable((By.XPATH, "//button[@aria-label='Удалить']"))
+)
+button.click()
+```
+
+2. По иконке mdi-close (если несколько кнопок "Удалить")
+
+```python
+# Ищем кнопку, внутри которой есть span с классом mdi-close
+button = driver.find_element(By.XPATH, "//button[.//span[contains(@class, 'mdi-close')]]")
+button.click()
+```
+
+3. По классу ds-icon-button и атрибуту aria-label
+
+```python
+button = driver.find_element(By.XPATH, "//button[@aria-label='Удалить' and contains(@class, 'ds-icon-button')]")
+button.click()
+```
+
+4. Комбинация с родительским контейнером (если нужно найти конкретную)
+
+```python
+# Если нужно найти крестик внутри определённого блока
+container = driver.find_element(By.XPATH, "//div[@class='ui-tabs-item__text']/..")
+button = container.find_element(By.XPATH, ".//button[@aria-label='Удалить']")
+button.click()
+```
+
+Полный пример с прокруткой и ожиданием
+
+```python
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
+
+try:
+    # Ждём появления кнопки
+    button = WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.XPATH, "//button[@aria-label='Удалить']"))
+    )
+    # Прокручиваем к кнопке (на случай, если она вне экрана)
+    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
+    # Ждём кликабельности
+    WebDriverWait(driver, 5).until(EC.element_to_be_clickable(button))
+    button.click()
+    print("Крестик нажат")
+except TimeoutException:
+    print("Кнопка не найдена или не кликабельна")
+```
+
+Если кнопка появляется после наведения
+
+```python
+from selenium.webdriver.common.action_chains import ActionChains
+
+# Наводим на родительский элемент, чтобы кнопка стала видимой
+parent = driver.find_element(By.XPATH, "//div[@class='ui-tabs-item__text']")
+ActionChains(driver).move_to_element(parent).perform()
+time.sleep(0.5)
+
+# Теперь кликаем
+button = driver.find_element(By.XPATH, "//button[@aria-label='Удалить']")
+button.click()
+```
+
+Выбирайте способ, который лучше всего подходит к вашей странице. aria-label="Удалить" — самый надёжный, если он уникален. Если на странице несколько таких кнопок, уточните контекст через родительский элемент.
+
+
+
+
 <div data-v-3d7="" class="ui-tabs-item__text"><span data-v-3d7=""> Фактическая операция по договору (Полный список) Из: </span></div>
 <button data-v-d16="" data-v-3d7="" type="button" aria-label="Удалить" tabindex="0" class="non-draggable ds-icon-button ds-icon-button__type-transparent ds-icon-button__size-s ds-icon-button__color-secondary ds-icon-button__square ds-icon-button__icon-only ds-icon-button__no-padding"><span data-v-cf273d10="" data-v-d16abfc0="" class="ds-icon mdi mdi-close" style="font-size: var(--ds-icon-size-s); height: var(--ds-icon-size-s); width: var(--ds-icon-size-s); color: var(--ds-color-secondary); z-index: 1;"><!----></span><!----></button>
 
