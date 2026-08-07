@@ -1,4 +1,304 @@
 
+Конечно, можно обойтись без Flask-SQLAlchemy и использовать встроенный модуль sqlite3.
+Тогда не придётся ставить никакие дополнительные библиотеки, кроме самого Flask.
+
+Я переписал код. Вот обновлённые файлы:
+
+1. app.py — основное приложение
+
+```python
+import sqlite3
+import os
+from datetime import datetime
+from functools import wraps
+from flask import Flask, render_template, request, jsonify, g
+
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'your-secret-key-here'
+DATABASE = 'chatbot.db'
+
+# ---------- Работа с базой данных ----------
+def get_db():
+    """Возвращает соединение с базой данных для текущего запроса"""
+    if 'db' not in g:
+        g.db = sqlite3.connect(DATABASE)
+        g.db.row_factory = sqlite3.Row
+        g.db.execute("PRAGMA foreign_keys = ON")
+    return g.db
+
+@app.teardown_appcontext
+def close_db(exception):
+    """Закрывает соединение после запроса"""
+    db = g.pop('db', None)
+    if db is not None:
+        db.close()
+
+def init_db():
+    """Создаёт таблицы и заполняет тестовыми данными, если их нет"""
+    db = sqlite3.connect(DATABASE)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS questions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            question TEXT NOT NULL,
+            answer TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS allowed_ips (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ip_address TEXT UNIQUE NOT NULL,
+            description TEXT,
+            is_active INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS access_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ip_address TEXT NOT NULL,
+            access_granted INTEGER DEFAULT 0,
+            endpoint TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # Проверяем, есть ли уже вопросы
+    if db.execute("SELECT COUNT(*) FROM questions").fetchone()[0] == 0:
+        sample_qa = [
+            ('привет', 'Здравствуйте! Я чат-бот. Чем могу помочь?'),
+            ('как дела', 'У меня всё отлично! Я готов отвечать на ваши вопросы.'),
+            ('что ты умеешь', 'Я могу отвечать на вопросы, которые есть в моей базе данных. Спросите меня о чём-нибудь!'),
+            ('пока', 'До свидания! Буду ждать вашего возвращения.'),
+            ('спасибо', 'Пожалуйста! Рад был помочь.'),
+            ('какая погода', 'Извините, я не умею проверять погоду. Но могу ответить на другие вопросы!'),
+            ('расскажи шутку', 'Почему программисты путают Рождество и Хэллоуин? Потому что 31 OCT = 25 DEC!')
+        ]
+        db.executemany("INSERT INTO questions (question, answer) VALUES (?, ?)", sample_qa)
+
+    # Проверяем, есть ли IP-адреса
+    if db.execute("SELECT COUNT(*) FROM allowed_ips").fetchone()[0] == 0:
+        db.execute("INSERT INTO allowed_ips (ip_address, description, is_active) VALUES (?, ?, ?)",
+                   ('127.0.0.1', 'Локальный доступ', 1))
+
+    db.commit()
+    db.close()
+
+# Инициализируем базу при старте
+with app.app_context():
+    init_db()
+
+# ---------- IP-ограничения ----------
+def get_client_ip():
+    """Получение IP клиента с учётом прокси"""
+    if request.headers.get('X-Forwarded-For'):
+        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    elif request.headers.get('X-Real-IP'):
+        return request.headers.get('X-Real-IP')
+    return request.remote_addr
+
+def check_ip_access(ip_address):
+    """Проверка, есть ли IP в списке разрешённых и активных"""
+    db = get_db()
+    row = db.execute(
+        "SELECT id FROM allowed_ips WHERE ip_address = ? AND is_active = 1",
+        (ip_address,)
+    ).fetchone()
+    return row is not None
+
+def require_allowed_ip(f):
+    """Декоратор для защиты маршрутов по IP"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        client_ip = get_client_ip()
+        access = check_ip_access(client_ip)
+
+        # Логируем попытку
+        db = get_db()
+        db.execute(
+            "INSERT INTO access_logs (ip_address, access_granted, endpoint) VALUES (?, ?, ?)",
+            (client_ip, int(access), request.endpoint)
+        )
+        db.commit()
+
+        if not access:
+            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({
+                    'error': 'Доступ запрещен',
+                    'message': f'Ваш IP-адрес ({client_ip}) не имеет доступа',
+                    'status': 'forbidden'
+                }), 403
+            return render_template('access_denied.html', ip=client_ip), 403
+        return f(*args, **kwargs)
+    return decorated_function
+
+# ---------- Маршруты чат-бота ----------
+@app.route('/')
+@require_allowed_ip
+def index():
+    return render_template('chat.html')
+
+@app.route('/ask', methods=['POST'])
+@require_allowed_ip
+def ask():
+    data = request.get_json()
+    question = data.get('question', '').strip().lower()
+
+    if not question:
+        return jsonify({'answer': 'Пожалуйста, задайте вопрос.', 'status': 'error'})
+
+    db = get_db()
+
+    # Точное совпадение
+    row = db.execute("SELECT answer FROM questions WHERE question = ?", (question,)).fetchone()
+    if row:
+        return jsonify({'answer': row['answer'], 'status': 'success'})
+
+    # Частичное совпадение
+    row = db.execute("SELECT answer FROM questions WHERE ? LIKE '%' || question || '%'", (question,)).fetchone()
+    if row:
+        return jsonify({'answer': row['answer'], 'status': 'success'})
+
+    # Поиск по вхождению вопроса в базу
+    row = db.execute("SELECT answer FROM questions WHERE question LIKE ?", ('%' + question + '%',)).fetchone()
+    if row:
+        return jsonify({'answer': row['answer'], 'status': 'success'})
+
+    # Ответ по умолчанию
+    return jsonify({
+        'answer': 'Извините, я пока не знаю ответа. Попробуйте спросить что-нибудь другое.',
+        'status': 'not_found'
+    })
+
+@app.route('/add_qa', methods=['GET', 'POST'])
+@require_allowed_ip
+def add_qa():
+    if request.method == 'POST':
+        question = request.form.get('question', '').strip().lower()
+        answer = request.form.get('answer', '').strip()
+        if not question or not answer:
+            return jsonify({'message': 'Заполните оба поля!', 'status': 'error'})
+
+        db = get_db()
+        existing = db.execute("SELECT id FROM questions WHERE question = ?", (question,)).fetchone()
+        if existing:
+            return jsonify({'message': 'Такой вопрос уже существует!', 'status': 'error'})
+
+        db.execute("INSERT INTO questions (question, answer) VALUES (?, ?)", (question, answer))
+        db.commit()
+        return jsonify({'message': 'Вопрос и ответ добавлены!', 'status': 'success'})
+
+    return render_template('add_qa.html')
+
+@app.route('/list_qa')
+@require_allowed_ip
+def list_qa():
+    db = get_db()
+    rows = db.execute("SELECT * FROM questions ORDER BY created_at DESC").fetchall()
+    return render_template('list_qa.html', qa_list=rows)
+
+@app.route('/delete_qa/<int:id>', methods=['DELETE'])
+@require_allowed_ip
+def delete_qa(id):
+    db = get_db()
+    db.execute("DELETE FROM questions WHERE id = ?", (id,))
+    db.commit()
+    return jsonify({'status': 'success', 'message': 'Удалено'})
+
+# ---------- Админка IP ----------
+@app.route('/admin/ips')
+@require_allowed_ip
+def manage_ips():
+    db = get_db()
+    ips = db.execute("SELECT * FROM allowed_ips ORDER BY created_at DESC").fetchall()
+    logs = db.execute("SELECT * FROM access_logs ORDER BY timestamp DESC LIMIT 50").fetchall()
+    return render_template('manage_ips.html', ips=ips, logs=logs)
+
+@app.route('/admin/ips/add', methods=['POST'])
+@require_allowed_ip
+def add_ip():
+    data = request.get_json()
+    ip = data.get('ip_address', '').strip()
+    desc = data.get('description', '').strip()
+
+    if not ip:
+        return jsonify({'status': 'error', 'message': 'IP-адрес обязателен'})
+
+    # Простая проверка формата (можно усилить)
+    import ipaddress
+    try:
+        ipaddress.ip_address(ip)
+    except ValueError:
+        return jsonify({'status': 'error', 'message': 'Неверный формат IP'})
+
+    db = get_db()
+    existing = db.execute("SELECT id FROM allowed_ips WHERE ip_address = ?", (ip,)).fetchone()
+    if existing:
+        return jsonify({'status': 'error', 'message': 'Такой IP уже существует'})
+
+    db.execute("INSERT INTO allowed_ips (ip_address, description) VALUES (?, ?)", (ip, desc))
+    db.commit()
+    return jsonify({'status': 'success', 'message': 'IP добавлен'})
+
+@app.route('/admin/ips/<int:id>/toggle', methods=['POST'])
+@require_allowed_ip
+def toggle_ip(id):
+    db = get_db()
+    row = db.execute("SELECT * FROM allowed_ips WHERE id = ?", (id,)).fetchone()
+    if not row:
+        return jsonify({'status': 'error', 'message': 'IP не найден'})
+    new_status = 0 if row['is_active'] else 1
+    db.execute("UPDATE allowed_ips SET is_active = ? WHERE id = ?", (new_status, id))
+    db.commit()
+    status_text = 'активирован' if new_status else 'деактивирован'
+    return jsonify({'status': 'success', 'message': f'IP {row["ip_address"]} {status_text}'})
+
+@app.route('/admin/ips/<int:id>/delete', methods=['DELETE'])
+@require_allowed_ip
+def delete_ip(id):
+    db = get_db()
+    db.execute("DELETE FROM allowed_ips WHERE id = ?", (id,))
+    db.commit()
+    return jsonify({'status': 'success', 'message': 'IP удалён'})
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)
+```
+
+2. requirements.txt (теперь только Flask)
+
+```txt
+Flask==3.0.0
+```
+
+3. Шаблоны
+
+Остаются те же: chat.html, add_qa.html, list_qa.html, access_denied.html, manage_ips.html — их не меняем.
+
+Что изменилось
+
+· Полностью убрана зависимость от flask-sqlalchemy и SQLAlchemy.
+· Вся работа с БД идёт через стандартный модуль sqlite3.
+· Соединение с базой создаётся один раз на запрос и хранится в объекте g (Flask).
+· Таблицы создаются автоматически при запуске, тестовые данные добавляются один раз.
+
+Установка и запуск
+
+```bash
+pip install flask        # только Flask, sqlite3 уже внутри Python
+python app.py
+```
+
+Теперь никаких проблем с недостающими модулями быть не должно. Если возникнут вопросы — пишите.
+
+
+
+
+
+
+
+
+
 Я создам для вас простого чат-бота на Flask с SQLite, который работает по принципу "вопрос-ответ". Вот полный код:
 
 1. Структура проекта
