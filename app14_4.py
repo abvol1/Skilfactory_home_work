@@ -1,4 +1,189 @@
 
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; padding: 12px; background: #f5f5f5; margin: 0; }
+        button {
+            width: 100%; padding: 12px; margin: 8px 0;
+            border: none; border-radius: 6px; font-size: 14px; font-weight: bold;
+            cursor: pointer; color: white; background: #4CAF50;
+        }
+        button.clear-btn { background: #f44336; }
+        .status {
+            margin-top: 15px; padding: 10px; background: #fff; border-radius: 4px;
+            font-size: 12px; color: #333; min-height: 40px; white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h3>🔎 Фильтр «уратекст + проба»</h3>
+    <p style="font-size:12px; color:#666;">
+        Активный лист → строки, где A = "уратекст" и B = "проба"<br>
+        → новый лист «тест1»
+    </p>
+    
+    <!-- Кнопка 1: Найти и скопировать -->
+    <button onclick="
+        // ========== НАЙТИ И СКОПИРОВАТЬ ==========
+        try {
+            var ed = window.parent.Asc.editor;
+            document.getElementById('status').textContent = '⏳ Анализирую активный лист...';
+
+            // Активный лист
+            var activeSheet = ed.GetActiveSheet();
+            if (!activeSheet) throw 'Нет активного листа';
+
+            // Используемый диапазон (чтобы знать количество столбцов)
+            var usedRange = activeSheet.GetUsedRange();
+            if (!usedRange) throw 'На листе нет данных';
+
+            var rowCount = usedRange.GetRows().GetCount();
+            var colCount = usedRange.GetCols().GetCount();  // сколько всего столбцов в данных
+            var startRow = usedRange.GetRow();
+            var startCol = usedRange.GetCol();              // обычно 1 (A)
+            var endRow = startRow + rowCount - 1;
+            var endCol = startCol + colCount - 1;
+
+            // Собираем номера подходящих строк
+            var matchingRows = [];
+
+            // Перебираем строки
+            for (var r = startRow; r <= endRow; r++) {
+                // Читаем столбец A
+                var cellA = activeSheet.GetRange('A' + r);
+                var valA = cellA.GetValue();
+                var textA = (valA !== null && valA !== undefined) ? String(valA).trim().toLowerCase() : '';
+
+                // Читаем столбец B
+                var cellB = activeSheet.GetRange('B' + r);
+                var valB = cellB.GetValue();
+                var textB = (valB !== null && valB !== undefined) ? String(valB).trim().toLowerCase() : '';
+
+                // Проверяем условие: A == 'уратекст' И B == 'проба'
+                if (textA === 'уратекст' && textB === 'проба') {
+                    matchingRows.push(r);
+                }
+            }
+
+            if (matchingRows.length === 0) {
+                document.getElementById('status').textContent = '❌ Нет строк, удовлетворяющих условию';
+                return;
+            }
+
+            // Удаляем старый лист «тест1», если он существует
+            var test1 = null;
+            if (typeof ed.GetSheet === 'function') {
+                test1 = ed.GetSheet('тест1');
+            } else {
+                var sheets = ed.GetSheets();
+                for (var i = 0; i < sheets.GetCount(); i++) {
+                    var sh = sheets.GetSheet(i);
+                    if (sh && sh.GetName && sh.GetName() === 'тест1') {
+                        test1 = sh;
+                        break;
+                    }
+                }
+            }
+            if (test1) {
+                test1.Delete();
+                try { if (typeof ed.asc_Recalculate === 'function') ed.asc_Recalculate(); } catch(e) {}
+            }
+
+            // Создаём новый лист «тест1»
+            if (typeof ed.AddSheet === 'function') {
+                test1 = ed.AddSheet('тест1');
+            } else {
+                ed.asc_addWorksheet('тест1');
+                // Ищем созданный лист повторно
+                if (typeof ed.GetSheet === 'function') {
+                    test1 = ed.GetSheet('тест1');
+                } else {
+                    var sheets = ed.GetSheets();
+                    for (var i = 0; i < sheets.GetCount(); i++) {
+                        var sh = sheets.GetSheet(i);
+                        if (sh && sh.GetName && sh.GetName() === 'тест1') {
+                            test1 = sh;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (!test1) throw 'Не удалось создать лист «тест1»';
+
+            // Копируем найденные строки ВРУЧНУЮ – через GetValue / SetValue
+            for (var i = 0; i < matchingRows.length; i++) {
+                var srcRow = matchingRows[i];
+                var targetRow = i + 1;   // строки в «тест1» нумеруем с 1
+
+                // Копируем каждую ячейку в строке (от startCol до endCol)
+                for (var c = startCol; c <= endCol; c++) {
+                    // Получаем букву столбца (1→A, 2→B, ...)
+                    var colLetter = String.fromCharCode(64 + c);
+                    
+                    // Адрес исходной ячейки
+                    var srcCell = activeSheet.GetRange(colLetter + srcRow);
+                    var value = srcCell.GetValue();   // читаем значение
+
+                    // Адрес целевой ячейки
+                    var dstCell = test1.GetRange(colLetter + targetRow);
+                    dstCell.SetValue(value);          // записываем значение
+                }
+            }
+
+            // Обновляем книгу
+            try { if (typeof ed.asc_Recalculate === 'function') ed.asc_Recalculate(); } catch(e) {}
+            document.getElementById('status').textContent = '✅ Скопировано ' + matchingRows.length + ' строк на лист «тест1»';
+        } catch(e) {
+            document.getElementById('status').textContent = '❌ Ошибка: ' + (e.message || e);
+        }
+    ">📋 Найти и скопировать</button>
+
+    <!-- Кнопка 2: Очистить тест1 -->
+    <button class="clear-btn" onclick="
+        // ========== ОЧИСТИТЬ ЛИСТ «тест1» ==========
+        try {
+            var ed = window.parent.Asc.editor;
+            document.getElementById('status').textContent = '🗑️ Удаляю лист «тест1»...';
+
+            var test1 = null;
+            if (typeof ed.GetSheet === 'function') {
+                test1 = ed.GetSheet('тест1');
+            } else {
+                var sheets = ed.GetSheets();
+                for (var i = 0; i < sheets.GetCount(); i++) {
+                    var sh = sheets.GetSheet(i);
+                    if (sh && sh.GetName && sh.GetName() === 'тест1') {
+                        test1 = sh;
+                        break;
+                    }
+                }
+            }
+
+            if (test1) {
+                test1.Delete();
+                try { if (typeof ed.asc_Recalculate === 'function') ed.asc_Recalculate(); } catch(e) {}
+                document.getElementById('status').textContent = '✅ Лист «тест1» удалён';
+            } else {
+                document.getElementById('status').textContent = '⚠️ Лист «тест1» не существует';
+            }
+        } catch(e) {
+            document.getElementById('status').textContent = '❌ Ошибка: ' + (e.message || e);
+        }
+    ">🗑️ Очистить тест1</button>
+
+    <div class="status" id="status">Готов к работе</div>
+</body>
+</html>
+
+
+
+
+
+
+
+
 Сделаем плагин с двумя кнопками и линейным кодом — все операции (получение листов, поиск, создание «тест1», копирование, удаление) прописаны прямо внутри обработчиков нажатий, без дополнительных пользовательских функций.
 Остались только три короткие служебные строки: editor(), setStatus() и refresh() – они не содержат бизнес-логики, а просто сокращают обращения к API.
 
