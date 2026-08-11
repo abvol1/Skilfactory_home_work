@@ -3,6 +3,106 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import openpyxl
 
+selected_file_path = None
+
+def process_excel(file_path):
+    """Суммирует числа в первом столбце (пропуская заголовок)"""
+    wb = openpyxl.load_workbook(file_path)
+    ws = wb.active
+    total = 0
+    for row in ws.iter_rows(min_row=2, max_col=1):
+        cell = row[0]
+        if cell.value and isinstance(cell.value, (int, float)):
+            total += cell.value
+    return total
+
+def process_search_copy(file_path):
+    """Ищет 'проба' в столбце A и копирует строки на лист 'тест'"""
+    wb = openpyxl.load_workbook(file_path)
+
+    # Определяем исходный лист
+    if 'Лист1' in wb.sheetnames:
+        ws_source = wb['Лист1']
+    else:
+        ws_source = wb.active  # если "Лист1" нет, берём активный
+
+    # Удаляем старый лист "тест", если он есть
+    if 'тест' in wb.sheetnames:
+        del wb['тест']
+
+    ws_target = wb.create_sheet('тест')
+    copied = 0
+
+    # Проходим по всем строкам исходного листа
+    for row in ws_source.iter_rows(min_row=1, max_col=ws_source.max_column):
+        cell_a = row[0]  # первый столбец
+        if cell_a.value and isinstance(cell_a.value, str) and 'проба' in cell_a.value.lower():
+            # Копируем значения всей строки
+            values = [c.value for c in row]
+            ws_target.append(values)
+            copied += 1
+
+    wb.save(file_path)
+    return copied
+
+def select_file():
+    global selected_file_path
+    file_path = filedialog.askopenfilename(
+        title="Выберите файл Excel",
+        filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
+    )
+    if file_path:
+        selected_file_path = file_path
+        label_file.config(text=f"Выбран: {file_path.split('/')[-1]}")
+
+def sum_column():
+    if not selected_file_path:
+        messagebox.showwarning("Файл не выбран", "Сначала выберите файл.")
+        return
+    try:
+        result = process_excel(selected_file_path)
+        messagebox.showinfo("Результат", f"Сумма чисел в первом столбце: {result}")
+    except Exception as e:
+        messagebox.showerror("Ошибка", f"Не удалось обработать файл:\n{e}")
+
+def search_proba():
+    if not selected_file_path:
+        messagebox.showwarning("Файл не выбран", "Сначала выберите файл.")
+        return
+    try:
+        copied = process_search_copy(selected_file_path)
+        messagebox.showinfo("Готово", f"Создан лист 'тест', скопировано строк: {copied}")
+    except Exception as e:
+        messagebox.showerror("Ошибка", f"Не удалось обработать файл:\n{e}")
+
+# Интерфейс
+root = tk.Tk()
+root.title("Обработка Excel")
+root.geometry("400x250")
+
+label_file = tk.Label(root, text="Файл не выбран", fg="gray")
+label_file.pack(pady=10)
+
+btn_select = tk.Button(root, text="Выбрать файл", command=select_file)
+btn_select.pack(pady=5)
+
+btn_sum = tk.Button(root, text="Сумма по столбцу A", command=sum_column)
+btn_sum.pack(pady=5)
+
+btn_search = tk.Button(root, text="Поиск 'проба' и копирование в лист 'тест'", command=search_proba)
+btn_search.pack(pady=5)
+
+root.mainloop()
+
+
+
+
+
+
+import tkinter as tk
+from tkinter import filedialog, messagebox
+import openpyxl
+
 def process_excel(file_path):
     wb = openpyxl.load_workbook(file_path)
     ws = wb.active
