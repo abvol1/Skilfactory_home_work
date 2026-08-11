@@ -1,4 +1,46 @@
 
+import tkinter as tk
+from tkinter import filedialog, messagebox
+import openpyxl
+
+def process_excel(file_path):
+    """Обработка Excel-файла и возврат результата"""
+    wb = openpyxl.load_workbook(file_path)
+    ws = wb.active
+    total = 0
+    for row in ws.iter_rows(min_row=2, max_col=1, values_only=True):
+        if row[0] and isinstance(row[0], (int, float)):
+            total += row[0]
+    return total
+
+def select_file():
+    """Диалог выбора файла и запуск обработки"""
+    file_path = filedialog.askopenfilename(
+        title="Выберите файл Excel",
+        filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
+    )
+    if file_path:
+        try:
+            result = process_excel(file_path)
+            messagebox.showinfo("Результат", f"Сумма чисел в первом столбце: {result}")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось обработать файл:\n{e}")
+
+# Создаём простое окно
+root = tk.Tk()
+root.title("Обработка Excel")
+root.geometry("300x150")
+
+label = tk.Label(root, text="Выберите .xlsx файл для обработки")
+label.pack(pady=20)
+
+button = tk.Button(root, text="Выбрать файл", command=select_file)
+button.pack(pady=10)
+
+root.mainloop()
+
+
+
 Да, это абсолютно реально. Можно создать веб-приложение на Flask, которое при нажатии кнопки открывает стандартное диалоговое окно выбора файла (через <input type="file">), загружает .xlsx на сервер, обрабатывает его и показывает результат. Либо можно сделать настольное приложение на Python (например, на tkinter, PyQt), где диалоговое окно выбора файла также легко реализуется.
 
 Я покажу веб-вариант на Flask — он продолжит ваш проект с чат-ботом, и вы сможете добавить к нему функциональность работы с Excel.
