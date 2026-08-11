@@ -4,6 +4,45 @@ from tkinter import filedialog, messagebox
 import openpyxl
 
 def process_excel(file_path):
+    wb = openpyxl.load_workbook(file_path)
+    ws = wb.active
+    total = 0
+    for row in ws.iter_rows(min_row=2, max_col=1):
+        cell = row[0]
+        if cell.value and isinstance(cell.value, (int, float)):
+            total += cell.value
+    return total
+
+def select_file():
+    file_path = filedialog.askopenfilename(
+        title="Выберите файл Excel",
+        filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
+    )
+    if file_path:
+        try:
+            result = process_excel(file_path)
+            messagebox.showinfo("Результат", f"Сумма чисел в первом столбце: {result}")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось обработать файл:\n{e}")
+
+root = tk.Tk()
+root.title("Обработка Excel")
+root.geometry("300x150")
+
+tk.Label(root, text="Выберите .xlsx файл для обработки").pack(pady=20)
+tk.Button(root, text="Выбрать файл", command=select_file).pack(pady=10)
+
+root.mainloop()
+
+
+
+
+
+import tkinter as tk
+from tkinter import filedialog, messagebox
+import openpyxl
+
+def process_excel(file_path):
     """Обработка Excel-файла и возврат результата"""
     wb = openpyxl.load_workbook(file_path)
     ws = wb.active
