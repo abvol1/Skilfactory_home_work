@@ -1,3 +1,33 @@
+
+(function() {
+    var srcSheet = Api.ActiveSheet();
+    if (!srcSheet) { Api.ShowMessage("Нет активного листа"); return; }
+
+    var destSheet = Api.Sheets("текст");
+    if (!destSheet) {
+        destSheet = Api.Sheets.Add();
+        destSheet.Name = "текст";
+    }
+
+    var destRow = 1;
+    for (var i = 1; i <= 100; i++) {
+        var val = srcSheet.Cells(i, 1).Value;
+        if (val && val.toString().toLowerCase().indexOf("проба") !== -1) {
+            for (var j = 1; j <= 5; j++) {
+                destSheet.Cells(destRow, j).Value = srcSheet.Cells(i, j).Value;
+            }
+            destRow++;
+        }
+    }
+    Api.ShowMessage("Готово!");
+})();
+
+
+
+
+
+
+
 (function() {
     var srcSheet = Api.GetActiveSheet();
     var destSheet = Api.GetSheet("текст");
