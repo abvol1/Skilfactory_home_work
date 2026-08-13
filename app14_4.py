@@ -1,3 +1,67 @@
+(function() {
+    var srcSheet = Api.GetActiveSheet();
+    if (!srcSheet) {
+        Api.ShowMessage("Нет активного листа.");
+        return;
+    }
+
+    // Создаем или получаем лист "текст"
+    var destSheet = Api.GetSheet("текст");
+    if (!destSheet) {
+        destSheet = Api.CreateSheet("текст");
+        if (!destSheet) {
+            Api.ShowMessage("Не удалось создать лист 'текст'.");
+            return;
+        }
+    }
+
+    // Определяем используемый диапазон на исходном листе
+    var usedRange = srcSheet.GetUsedRange();
+    if (!usedRange) {
+        Api.ShowMessage("На активном листе нет данных.");
+        return;
+    }
+
+    // Получаем количество строк и столбцов в используемом диапазоне
+    var totalRows = usedRange.GetRowsCount();
+    var totalCols = usedRange.GetColumnsCount();
+
+    // Если данные начинаются не с первой строки, нужно смещение
+    var startRow = usedRange.GetRow(); // номер первой строки диапазона
+    var startCol = usedRange.GetColumn(); // номер первого столбца
+
+    // Переменная для строки назначения (начинаем с первой свободной)
+    var destRow = destSheet.GetUsedRange() ? destSheet.GetUsedRange().GetRow() + destSheet.GetUsedRange().GetRowsCount() : 1;
+
+    // Проходим по всем строкам используемого диапазона
+    for (var i = 0; i < totalRows; i++) {
+        var rowIndex = startRow + i; // абсолютный номер строки
+        // Получаем значение в столбце А (индекс столбца = startCol)
+        var cell = srcSheet.GetRange(rowIndex, startCol); // ячейка A
+        var cellValue = cell.GetValue();
+
+        // Проверяем, содержит ли значение "проба" (без учета регистра и пробелов)
+        if (cellValue && cellValue.toString().toLowerCase().indexOf("проба") !== -1) {
+            // Копируем всю строку по ячейкам
+            for (var j = 0; j < totalCols; j++) {
+                var colIndex = startCol + j;
+                var srcCell = srcSheet.GetRange(rowIndex, colIndex);
+                var val = srcCell.GetValue();
+                // Записываем в лист назначения
+                destSheet.GetRange(destRow, colIndex - startCol + 1).SetValue(val);
+            }
+            destRow++; // переходим на следующую строку в назначении
+        }
+    }
+
+    Api.ShowMessage("Готово! Скопировано строк: " + (destRow - (destSheet.GetUsedRange() ? destSheet.GetUsedRange().GetRow() : 1)));
+})();
+
+
+
+
+
+
 
 (function() {
     var oWorksheet = Api.GetActiveSheet();
