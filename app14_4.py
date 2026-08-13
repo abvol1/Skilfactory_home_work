@@ -1,5 +1,108 @@
 
 (function() {
+    // ---- 1. Получаем активный лист ----
+    var srcSheet = Api.GetActiveSheet();
+    if (!srcSheet) {
+        // Если не удалось, записываем ошибку в ячейку A1 текущего листа
+        var errSheet = Api.GetActiveSheet();
+        if (errSheet) errSheet.GetRange("A1").SetValue("Ошибка: нет активного листа");
+        return;
+    }
+
+    // ---- 2. Работа с листом "текст" ----
+    var destSheet = Api.GetSheet("текст");
+    if (!destSheet) {
+        destSheet = Api.CreateSheet("текст");
+        // Если создать не удалось – выходим
+        if (!destSheet) {
+            srcSheet.GetRange("Z1").SetValue("Ошибка: не удалось создать лист 'текст'");
+            return;
+        }
+    }
+
+    // Очищаем лист назначения (опционально, чтобы не было мусора)
+    // destSheet.GetUsedRange().Clear();
+
+    // ---- 3. Определяем границы данных на исходном листе ----
+    // Пытаемся получить используемый диапазон
+    var usedRange = srcSheet.GetUsedRange();
+    var totalRows, totalCols, startRow, startCol;
+
+    if (usedRange) {
+        totalRows = usedRange.GetRowsCount();
+        totalCols = usedRange.GetColumnsCount();
+        startRow = usedRange.GetRow();
+        startCol = usedRange.GetColumn();
+    } else {
+        // Если UsedRange не работает – вручную ищем последнюю строку и столбец
+        totalRows = 0;
+        totalCols = 0;
+        startRow = 1;
+        startCol = 1;
+        // Ищем последнюю непустую строку (максимум 10000)
+        for (var i = 1; i <= 10000; i++) {
+            var val = srcSheet.GetRange("A" + i).GetValue();
+            if (val !== undefined && val !== null && val !== "") {
+                totalRows = i;
+            } else {
+                // Если 5 пустых подряд – стоп
+                var empty = 0;
+                for (var j = i; j <= i + 4 && j <= 10000; j++) {
+                    if (!srcSheet.GetRange("A" + j).GetValue()) empty++;
+                }
+                if (empty >= 5) break;
+            }
+        }
+        // Ищем последнюю непустую колонку (максимум 50)
+        for (var c = 1; c <= 50; c++) {
+            var colVal = srcSheet.GetRange(startRow, c).GetValue();
+            if (colVal !== undefined && colVal !== null && colVal !== "") {
+                totalCols = c;
+            }
+        }
+        if (totalRows === 0) {
+            srcSheet.GetRange("Z1").SetValue("Нет данных для копирования");
+            return;
+        }
+        // Если totalCols остался 0, ставим хотя бы 1
+        if (totalCols === 0) totalCols = 1;
+    }
+
+    // ---- 4. Копирование строк ----
+    var destRow = 1;
+    var copiedCount = 0;
+
+    for (var r = 0; r < totalRows; r++) {
+        var rowIndex = startRow + r;
+        var cellA = srcSheet.GetRange(rowIndex, startCol); // столбец A
+        var cellValue = cellA.GetValue();
+
+        // Проверяем наличие "проба" (без учёта регистра)
+        if (cellValue && cellValue.toString().toLowerCase().indexOf("проба") !== -1) {
+            // Копируем все столбцы из диапазона
+            for (var c = 0; c < totalCols; c++) {
+                var colIndex = startCol + c;
+                var srcVal = srcSheet.GetRange(rowIndex, colIndex).GetValue();
+                destSheet.GetRange(destRow, c + 1).SetValue(srcVal);
+            }
+            destRow++;
+            copiedCount++;
+        }
+    }
+
+    // ---- 5. Вывод результата на лист "текст" ----
+    destSheet.GetRange("A1").SetValue("Скопировано строк: " + copiedCount);
+    // Также можно записать отчёт на исходный лист (в ячейку Z1)
+    srcSheet.GetRange("Z1").SetValue("Макрос выполнен, скопировано " + copiedCount + " строк");
+})();
+
+
+
+
+
+
+
+(function() {
     var srcSheet = Api.ActiveSheet();
     if (!srcSheet) { Api.ShowMessage("Нет активного листа"); return; }
 
