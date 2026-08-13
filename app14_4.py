@@ -1,3 +1,32 @@
+
+(function() {
+    var oWorksheet = Api.GetActiveSheet();
+    var destSheetName = "текст";
+    var destSheet = Api.GetSheet(destSheetName);
+
+    if (!destSheet) {
+        destSheet = Api.CreateSheet(destSheetName);
+    }
+
+    var lastRow = oWorksheet.GetRowsCount();
+    var destRow = 1;
+
+    for (var i = 1; i <= lastRow; i++) {
+        var cell = oWorksheet.GetRange("A" + i);
+        var cellValue = cell.GetValue();
+
+        if (cellValue && cellValue.toString().toLowerCase().indexOf("проба") !== -1) {
+            var srcRange = oWorksheet.GetRange("A" + i + ":" + oWorksheet.GetColumnsCount() + i);
+            var destRange = destSheet.GetRange("A" + destRow);
+            srcRange.Copy(destRange);
+            destRow++;
+        }
+    }
+})();
+
+
+
+
 Действительно, в Р7-Офис не используется VBA. Программирование макросов и плагинов в нем ведется на языке JavaScript.
 
 Это связано с архитектурой Р7-Офис, который является ответвлением OnlyOffice. Макросы Microsoft Office используют VBA, а редакторы Р7 — JavaScript. Однако это не сложно — ваши ранее используемые макросы можно преобразовать в новый формат.
