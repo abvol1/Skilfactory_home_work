@@ -1,6 +1,65 @@
 
 
+(function() {
+    var srcSheet = Api.GetActiveSheet();
 
+    // ---- 1. Проверяем лист "текст" ----
+    var destSheet = Api.GetSheet("текст");
+    if (!destSheet) {
+        srcSheet.GetRange("Z1").SetValue("Ошибка: создайте лист 'текст' вручную");
+        return;
+    }
+
+    // ---- 2. Определяем последнюю строку с данными (до 5000) ----
+    var lastRow = 0;
+    for (var i = 1; i <= 5000; i++) {
+        var val = srcSheet.GetRange("A" + i).GetValue();
+        if (val !== undefined && val !== null && val !== "") {
+            lastRow = i;
+        } else {
+            // 5 пустых подряд – стоп
+            var emptyCount = 0;
+            for (var j = i; j <= i + 4 && j <= 5000; j++) {
+                if (!srcSheet.GetRange("A" + j).GetValue()) emptyCount++;
+            }
+            if (emptyCount >= 5) break;
+        }
+    }
+
+    if (lastRow === 0) {
+        srcSheet.GetRange("Z1").SetValue("Нет данных в столбце A");
+        return;
+    }
+
+    // ---- 3. Копирование (столбцы A–T) ----
+    var destRow = 1;
+    var copiedCount = 0;
+    var maxCols = 20; // Можно увеличить до 26 (A–Z) или больше
+
+    for (var r = 1; r <= lastRow; r++) {
+        var cellA = srcSheet.GetRange("A" + r);
+        var cellValue = cellA.GetValue();
+
+        if (cellValue && cellValue.toString().toLowerCase().indexOf("проба") !== -1) {
+            // Копируем столбцы по буквам
+            for (var c = 1; c <= maxCols; c++) {
+                // Преобразуем номер столбца в букву (A=1, B=2, ...)
+                var colLetter = String.fromCharCode(64 + c); // 65 = 'A'
+                var srcAddr = colLetter + r;
+                var destAddr = colLetter + destRow;
+
+                var srcVal = srcSheet.GetRange(srcAddr).GetValue();
+                destSheet.GetRange(destAddr).SetValue(srcVal);
+            }
+            destRow++;
+            copiedCount++;
+        }
+    }
+
+    // ---- 4. Итог ----
+    srcSheet.GetRange("Z1").SetValue("Готово! Скопировано строк: " + copiedCount);
+    destSheet.GetRange("A1").SetValue("Скопировано строк: " + copiedCount);
+})();
 
 
 
