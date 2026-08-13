@@ -2,6 +2,65 @@
 (function() {
     var srcSheet = Api.GetActiveSheet();
 
+    // ---- 1. Получаем лист "текст" (должен существовать) ----
+    var destSheet = Api.GetSheet("текст");
+    if (!destSheet) {
+        srcSheet.GetRange("Z1").SetValue("Ошибка: создайте лист 'текст' вручную");
+        return;
+    }
+
+    // ---- 2. Определяем последнюю строку с данными (до 5000) ----
+    var lastRow = 0;
+    for (var i = 1; i <= 5000; i++) {
+        var val = srcSheet.GetRange("A" + i).GetValue();
+        if (val !== undefined && val !== null && val !== "") {
+            lastRow = i;
+        } else {
+            var emptyCount = 0;
+            for (var j = i; j <= i + 4 && j <= 5000; j++) {
+                if (!srcSheet.GetRange("A" + j).GetValue()) emptyCount++;
+            }
+            if (emptyCount >= 5) break;
+        }
+    }
+
+    if (lastRow === 0) {
+        srcSheet.GetRange("Z1").SetValue("Нет данных в столбце A");
+        return;
+    }
+
+    // ---- 3. Копирование строк (столбцы A–T, можно увеличить) ----
+    var destRow = 1;
+    var copiedCount = 0;
+    var maxCols = 20; // если нужно больше – измените
+
+    for (var r = 1; r <= lastRow; r++) {
+        var cellValue = srcSheet.GetRange("A" + r).GetValue();
+        if (cellValue && cellValue.toString().toLowerCase().indexOf("проба") !== -1) {
+            // Копируем столбцы от 1 до maxCols
+            for (var c = 1; c <= maxCols; c++) {
+                var srcVal = srcSheet.GetRange(r, c).GetValue();
+                destSheet.GetRange(destRow, c).SetValue(srcVal);
+            }
+            destRow++;
+            copiedCount++;
+        }
+    }
+
+    // ---- 4. Итог ----
+    srcSheet.GetRange("Z1").SetValue("Готово! Скопировано строк: " + copiedCount);
+    destSheet.GetRange("A1").SetValue("Скопировано строк: " + copiedCount);
+})();
+
+
+
+
+
+
+
+(function() {
+    var srcSheet = Api.GetActiveSheet();
+
     // ---- Получаем лист "текст" (он должен существовать) ----
     var destSheet = Api.GetSheet("текст");
     if (!destSheet) {
