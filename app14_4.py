@@ -1,5 +1,56 @@
 (function() {
     var srcSheet = Api.GetActiveSheet();
+    var destSheet = Api.GetSheet("текст");
+    
+    // Создаём лист "текст", если его нет
+    if (!destSheet) {
+        destSheet = Api.CreateSheet("текст");
+    }
+
+    // Определяем последнюю строку с данными в столбце A
+    var lastRow = 1;
+    for (var i = 1; i <= 10000; i++) {
+        var val = srcSheet.GetRange("A" + i).GetValue();
+        if (val !== undefined && val !== null && val !== "") {
+            lastRow = i;
+        } else {
+            // Если встретили подряд 5 пустых строк — считаем, что данные кончились
+            var emptyCount = 0;
+            for (var j = i; j <= i + 5; j++) {
+                var checkVal = srcSheet.GetRange("A" + j).GetValue();
+                if (checkVal === undefined || checkVal === null || checkVal === "") {
+                    emptyCount++;
+                }
+            }
+            if (emptyCount >= 5) break;
+        }
+    }
+
+    var destRow = 1;
+    var maxCols = 20; // Копируем столбцы A–T (можно увеличить)
+
+    for (var i = 1; i <= lastRow; i++) {
+        var cellValue = srcSheet.GetRange("A" + i).GetValue();
+        if (cellValue && cellValue.toString().toLowerCase().indexOf("проба") !== -1) {
+            for (var j = 1; j <= maxCols; j++) {
+                var srcCell = srcSheet.GetRange(i, j);
+                var val = srcCell.GetValue();
+                destSheet.GetRange(destRow, j).SetValue(val);
+            }
+            destRow++;
+        }
+    }
+
+    Api.ShowMessage("Готово! Скопировано строк: " + (destRow - 1));
+})();
+
+
+
+
+
+
+(function() {
+    var srcSheet = Api.GetActiveSheet();
     if (!srcSheet) {
         Api.ShowMessage("Нет активного листа.");
         return;
