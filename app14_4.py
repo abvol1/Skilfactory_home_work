@@ -1,3 +1,83 @@
+Действительно, в Р7-Офис не используется VBA. Программирование макросов и плагинов в нем ведется на языке JavaScript.
+
+Это связано с архитектурой Р7-Офис, который является ответвлением OnlyOffice. Макросы Microsoft Office используют VBA, а редакторы Р7 — JavaScript. Однако это не сложно — ваши ранее используемые макросы можно преобразовать в новый формат.
+
+📝 Как будут выглядеть ваши макросы на JavaScript
+
+Вот как можно переписать ваши задачи:
+
+Макрос 1: Поиск "проба" и копирование на лист "текст"
+
+```javascript
+(function() {
+    const oWorksheet = Api.GetActiveSheet();
+    const destSheetName = "текст";
+    let destSheet = Api.GetSheet(destSheetName);
+    
+    if (!destSheet) {
+        destSheet = Api.CreateSheet(destSheetName);
+    }
+
+    const lastRow = oWorksheet.GetRowsCount();
+    let destRow = 1;
+
+    for (let i = 1; i <= lastRow; i++) {
+        const cellValue = oWorksheet.GetRange("A" + i).GetValue();
+        if (cellValue && cellValue.toString().toLowerCase().includes("проба")) {
+            const srcRange = oWorksheet.GetRange("A" + i + ":" + oWorksheet.GetColumnsCount() + i);
+            const destRange = destSheet.GetRange("A" + destRow);
+            srcRange.Copy(destRange);
+            destRow++;
+        }
+    }
+})();
+```
+
+Макрос 2: Импорт данных из выбранного файла
+
+```javascript
+(function() {
+    const filePath = Api.OpenFileDialog("Выберите файл для импорта", "*.xls;*.xlsx;*.xlsm");
+    if (!filePath) return;
+
+    const oWorkbook = Api.OpenFile(filePath);
+    if (!oWorkbook) return;
+
+    const srcSheet = oWorkbook.GetSheet("Лист1") || oWorkbook.GetActiveSheet();
+    const destSheet = Api.GetSheet("текст");
+    if (!destSheet) {
+        Api.ShowMessage("Лист 'текст' не найден. Сначала выполните первый макрос.");
+        oWorkbook.Close();
+        return;
+    }
+
+    const usedRange = srcSheet.GetUsedRange();
+    const lastDestRow = destSheet.GetRowsCount() + 1;
+    usedRange.Copy(destSheet.GetRange("A" + lastDestRow));
+
+    oWorkbook.Close();
+    Api.ShowMessage("Импорт завершён!");
+})();
+```
+
+🚀 Как запустить макросы в Р7-Офис
+
+1. Откройте таблицу и перейдите на вкладку «Плагины» → выберите «Макросы».
+2. В открывшемся окне нажмите «Создать» (или «Новый»).
+3. В поле редактора вставьте код JavaScript (вместо стандартной заготовки).
+4. Нажмите «ОК» для сохранения, затем снова откройте окно макросов, выберите ваш макрос и нажмите «Выполнить».
+
+💡 Альтернативные подходы
+
+· RPA-инструменты: для автоматизации подойдут системы вроде Primo RPA с пакетом Primo.Office.P7 или Robin RPA с поддержкой Python-скриптов для Р7.
+· Готовые решения: поищите на GitHub (например, проект championship_r7_2025) или обратитесь к специалистам по разработке макросов для Р7.
+
+Если нужна помощь с адаптацией других конкретных задач — пишите, постараюсь помочь с переводом на JavaScript.
+
+
+
+
+
 Вот два макроса для Р7-Офис (совместимого с VBA).
 
 ---
