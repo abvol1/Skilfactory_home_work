@@ -1,6 +1,55 @@
 
 (function() {
     var srcSheet = Api.GetActiveSheet();
+    srcSheet.GetRange("Z1").SetValue("1. Старт");
+
+    var destSheet = Api.GetSheet("текст");
+    srcSheet.GetRange("Z2").SetValue("2. Поиск листа");
+
+    if (!destSheet) {
+        destSheet = Api.CreateSheet("текст");
+        srcSheet.GetRange("Z3").SetValue("3. Создан новый лист");
+    } else {
+        srcSheet.GetRange("Z3").SetValue("3. Лист уже есть");
+    }
+    if (!destSheet) {
+        srcSheet.GetRange("Z1").SetValue("Ошибка создания листа");
+        return;
+    }
+    srcSheet.GetRange("Z4").SetValue("4. Лист готов");
+
+    // Проверяем первую ячейку, чтобы убедиться, что чтение работает
+    var testVal = srcSheet.GetRange("A1").GetValue();
+    srcSheet.GetRange("Z5").SetValue("5. Значение A1: " + (testVal || "пусто"));
+
+    // Ищем последнюю строку (упрощённо, только до 100)
+    var lastRow = 0;
+    for (var i = 1; i <= 100; i++) {
+        var v = srcSheet.GetRange("A" + i).GetValue();
+        if (v && v !== "") lastRow = i;
+    }
+    srcSheet.GetRange("Z6").SetValue("6. Последняя строка: " + lastRow);
+
+    var copied = 0;
+    for (var r = 1; r <= lastRow; r++) {
+        var val = srcSheet.GetRange("A" + r).GetValue();
+        if (val && val.toString().toLowerCase().indexOf("проба") !== -1) {
+            // копируем только столбец A для теста
+            destSheet.GetRange(copied + 1, 1).SetValue(val);
+            copied++;
+        }
+    }
+    srcSheet.GetRange("Z7").SetValue("7. Скопировано: " + copied);
+    srcSheet.GetRange("Z1").SetValue("Готово");
+})();
+
+
+
+
+
+
+(function() {
+    var srcSheet = Api.GetActiveSheet();
     // Пишем начало работы в ячейку Z1 (чтобы видеть, что макрос стартовал)
     srcSheet.GetRange("Z1").SetValue("Макрос запущен...");
 
