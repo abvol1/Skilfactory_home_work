@@ -1,4 +1,70 @@
 
+(function() {
+    var srcSheet = Api.GetActiveSheet();
+
+    // ---- 1. Получаем или создаём лист "текст" ----
+    var destSheet = Api.GetSheet("текст");
+    if (!destSheet) {
+        // Если лист не найден, создаём его с помощью AddSheet
+        Api.AddSheet("текст");
+        destSheet = Api.GetSheet("текст");
+        if (!destSheet) {
+            srcSheet.GetRange("Z1").SetValue("Ошибка: не удалось создать лист");
+            return;
+        }
+        // Возвращаемся на исходный лист, чтобы продолжить работу
+        srcSheet.Activate();
+    }
+
+    // ---- 2. Определяем последнюю строку с данными (до 5000) ----
+    var lastRow = 0;
+    for (var i = 1; i <= 5000; i++) {
+        var val = srcSheet.GetRange("A" + i).GetValue();
+        if (val !== undefined && val !== null && val !== "") {
+            lastRow = i;
+        } else {
+            var emptyCount = 0;
+            for (var j = i; j <= i + 4 && j <= 5000; j++) {
+                if (!srcSheet.GetRange("A" + j).GetValue()) emptyCount++;
+            }
+            if (emptyCount >= 5) break;
+        }
+    }
+
+    if (lastRow === 0) {
+        srcSheet.GetRange("Z1").SetValue("Нет данных в столбце A");
+        return;
+    }
+
+    // ---- 3. Копирование (столбцы A–T) ----
+    var destRow = 1;
+    var copiedCount = 0;
+    var maxCols = 20;
+
+    for (var r = 1; r <= lastRow; r++) {
+        var cellValue = srcSheet.GetRange("A" + r).GetValue();
+        if (cellValue && cellValue.toString().toLowerCase().indexOf("проба") !== -1) {
+            for (var c = 1; c <= maxCols; c++) {
+                var colLetter = String.fromCharCode(64 + c);
+                var srcVal = srcSheet.GetRange(colLetter + r).GetValue();
+                destSheet.GetRange(colLetter + destRow).SetValue(srcVal);
+            }
+            destRow++;
+            copiedCount++;
+        }
+    }
+
+    // ---- 4. Итог ----
+    srcSheet.GetRange("Z1").SetValue("Готово! Скопировано: " + copiedCount);
+})();
+
+
+
+
+
+
+
+
 
 (function() {
     var srcSheet = Api.GetActiveSheet();
