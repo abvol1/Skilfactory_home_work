@@ -1,5 +1,74 @@
 
+(function() {
+    var srcSheet = Api.GetActiveSheet();
 
+    // ---- Получаем лист "текст" (он должен существовать) ----
+    var destSheet = Api.GetSheet("текст");
+    if (!destSheet) {
+        // Если листа нет — пишем сообщение в ячейку и выходим
+        srcSheet.GetRange("Z1").SetValue("Ошибка: создайте лист 'текст' вручную и запустите макрос снова");
+        return;
+    }
+
+    // ---- Определяем последнюю строку с данными (до 10 000) ----
+    var lastRow = 0;
+    for (var i = 1; i <= 10000; i++) {
+        var val = srcSheet.GetRange("A" + i).GetValue();
+        if (val !== undefined && val !== null && val !== "") {
+            lastRow = i;
+        } else {
+            // Если 5 пустых подряд – считаем, что данные кончились
+            var emptyCount = 0;
+            for (var j = i; j <= i + 4 && j <= 10000; j++) {
+                if (!srcSheet.GetRange("A" + j).GetValue()) emptyCount++;
+            }
+            if (emptyCount >= 5) break;
+        }
+    }
+
+    if (lastRow === 0) {
+        srcSheet.GetRange("Z1").SetValue("Нет данных в столбце A");
+        return;
+    }
+
+    // ---- Определяем последний столбец с данными (максимум 50) ----
+    var lastCol = 1;
+    for (var c = 1; c <= 50; c++) {
+        var colVal = srcSheet.GetRange(1, c).GetValue();
+        if (colVal !== undefined && colVal !== null && colVal !== "") {
+            lastCol = c;
+        }
+    }
+
+    // ---- Очищаем лист назначения (только данные, не форматирование) ----
+    // для безопасности очищаем только столбцы, которые будем заполнять
+    for (var r = 1; r <= 10000; r++) {
+        for (var c = 1; c <= lastCol; c++) {
+            destSheet.GetRange(r, c).SetValue("");
+        }
+    }
+
+    // ---- Копирование строк со словом "проба" ----
+    var destRow = 1;
+    var copiedCount = 0;
+
+    for (var r = 1; r <= lastRow; r++) {
+        var cellValue = srcSheet.GetRange("A" + r).GetValue();
+        if (cellValue && cellValue.toString().toLowerCase().indexOf("проба") !== -1) {
+            // Копируем все столбцы от 1 до lastCol
+            for (var c = 1; c <= lastCol; c++) {
+                var srcVal = srcSheet.GetRange(r, c).GetValue();
+                destSheet.GetRange(destRow, c).SetValue(srcVal);
+            }
+            destRow++;
+            copiedCount++;
+        }
+    }
+
+    // ---- Итоговое сообщение ----
+    srcSheet.GetRange("Z1").SetValue("Готово! Скопировано строк: " + copiedCount);
+    destSheet.GetRange("A1").SetValue("Скопировано строк: " + copiedCount);
+})();
 
 
 
