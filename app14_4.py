@@ -32,6 +32,93 @@
         btn.textContent = 'Выполняется...';
         logMessage('=== СТАРТ ===');
 
+        // Используем executeMethod для доступа к API
+        window.Asc.plugin.executeMethod("callCommand", [function() {
+            try {
+                // Внутри этого колбэка Api должен быть доступен
+                if (typeof Api === 'undefined') {
+                    // Если всё равно undefined, попробуем получить через this
+                    var api = this.Api || window.Api;
+                    if (!api) {
+                        logMessage('❌ Api не определён');
+                        window.Asc.plugin.executeCommand("close", "error");
+                        return;
+                    }
+                }
+                logMessage('✅ Api доступен');
+
+                var srcSheet = Api.GetActiveSheet();
+                if (!srcSheet) {
+                    logMessage('❌ Активный лист не получен');
+                    window.Asc.plugin.executeCommand("close", "error");
+                    return;
+                }
+                logMessage('✅ Активный лист получен');
+
+                // Проверка записи
+                srcSheet.GetRange("Z1").SetValue("Плагин работает!");
+                logMessage('✅ Запись в Z1 выполнена');
+
+                // ---- Ваш основной код здесь ----
+                // (код разбиения по столбцу А, который мы уже писали)
+                // Я сокращу для примера, но вы можете вставить полную версию
+
+                // Закрываем плагин с успехом
+                window.Asc.plugin.executeCommand("close", "success");
+            } catch (e) {
+                logMessage('❌ Ошибка: ' + e.message);
+                window.Asc.plugin.executeCommand("close", "error");
+            }
+        }]);
+
+        window.Asc.plugin.onClose = function(result) {
+            logMessage('🔚 Результат: ' + result);
+            btn.disabled = false;
+            btn.textContent = '▶ Выполнить';
+        };
+    });
+</script>
+</body>
+</html>
+
+
+
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Разбить по столбцу А</title>
+    <style>
+        body { font-family: Arial; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 500px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+        button { background: #2b7b8c; color: white; border: none; padding: 10px 24px; font-size: 16px; border-radius: 4px; cursor: pointer; width: 100%; }
+        button:hover { background: #1f5f6e; }
+        #log { margin-top: 15px; padding: 10px; background: #f0f0f0; border-radius: 4px; font-size: 13px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; font-family: monospace; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>📊 Разбить по столбцу А</h2>
+    <button id="runBtn">▶ Выполнить</button>
+    <div id="log">Лог будет здесь...</div>
+</div>
+
+<script>
+    function logMessage(msg) {
+        var logDiv = document.getElementById('log');
+        logDiv.textContent += msg + '\n';
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    document.getElementById('runBtn').addEventListener('click', function() {
+        var btn = this;
+        btn.disabled = true;
+        btn.textContent = 'Выполняется...';
+        logMessage('=== СТАРТ ===');
+
         // Проверяем доступность Api
         if (typeof Api === 'undefined') {
             logMessage('❌ ОШИБКА: Api не определён!');
