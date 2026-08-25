@@ -1,4 +1,200 @@
 
+Разработка плагина для Р7-Офис действительно отличается от создания макроса. Готовый плагин, который делает именно то, что вам нужно, — ниже.
+
+📁 Структура плагина
+
+Плагин для Р7-Офис — это папка с тремя обязательными файлами:
+
+· config.json — конфигурация (имя, иконка, тип редактора).
+· index.html — точка входа, подключающая базовые файлы.
+· pluginCode.js — основной код на JavaScript.
+
+Шаг 1. Создайте папку плагина
+
+Создайте папку с названием, например, SplitByColumn.
+
+Шаг 2. Создайте файл config.json
+
+Этот файл сообщает Р7-Офис, как отображать ваш плагин.
+
+```json
+{
+    "baseUrl": "",
+    "guid": "split.by.column.plugin",
+    "name": "Разбить по столбцу А",
+    "variations": [
+        {
+            "description": "Создает листы по уникальным значениям в столбце А",
+            "EditorsSupport": ["cell"],
+            "icons": ["icon.png", "icon@2x.png"],
+            "isVisual": false,
+            "isViewer": false,
+            "url": "index.html"
+        }
+    ]
+}
+```
+
+· "EditorsSupport": ["cell"] указывает, что плагин работает только в табличном редакторе.
+· "isVisual": false: плагин не открывает отдельное окно, а просто выполняет действие по нажатию кнопки.
+
+Шаг 3. Создайте файл index.html
+
+Это точка входа плагина.
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Разбить по столбцу А</title>
+    <script src="pluginCode.js"></script>
+</head>
+<body>
+</body>
+</html>
+```
+
+Этот файл просто подключает основной скрипт pluginCode.js.
+
+Шаг 4. Создайте файл pluginCode.js (основной код)
+
+Это сердце плагина. Он содержит ту же логику, что и ваш рабочий макрос, но обернутую в структуру плагина.
+
+```javascript
+window.Asc.plugin.init = function () {
+    this.callCommand(function() {
+        var srcSheet = Api.GetActiveSheet();
+        var lastRow = 0;
+        var maxRows = 5000;
+
+        // ---- 1. Определяем последнюю строку с данными ----
+        for (var i = 1; i <= maxRows; i++) {
+            var val = srcSheet.GetRange("A" + i).GetValue();
+            if (val !== undefined && val !== null && val !== "") {
+                lastRow = i;
+            } else {
+                var empty = 0;
+                for (var j = i; j <= i + 4 && j <= maxRows; j++) {
+                    if (!srcSheet.GetRange("A" + j).GetValue()) empty++;
+                }
+                if (empty >= 5) break;
+            }
+        }
+
+        if (lastRow === 0) {
+            srcSheet.GetRange("Z1").SetValue("Нет данных в столбце A");
+            return;
+        }
+
+        // ---- 2. Определяем последний столбец с данными ----
+        var maxCols = 1;
+        for (var c = 1; c <= 50; c++) {
+            var colLetter = String.fromCharCode(64 + c);
+            var val = srcSheet.GetRange(colLetter + "1").GetValue();
+            if (val !== undefined && val !== null && val !== "") {
+                maxCols = c;
+            }
+        }
+
+        // ---- 3. Собираем уникальные значения из столбца A (пропускаем заголовок) ----
+        var uniqueValues = [];
+        var headerRow = 1;
+
+        for (var r = 2; r <= lastRow; r++) {
+            var val = srcSheet.GetRange("A" + r).GetValue();
+            if (val && val.toString().trim() !== "") {
+                var key = val.toString().trim();
+                if (uniqueValues.indexOf(key) === -1) {
+                    uniqueValues.push(key);
+                }
+            }
+        }
+
+        if (uniqueValues.length === 0) {
+            srcSheet.GetRange("Z1").SetValue("Нет уникальных значений в столбце A");
+            return;
+        }
+
+        // ---- 4. Для каждого уникального значения создаём лист и копируем данные ----
+        for (var u = 0; u < uniqueValues.length; u++) {
+            var currentValue = uniqueValues[u];
+            var sheetName = currentValue;
+            if (sheetName.length > 31) sheetName = sheetName.substring(0, 31);
+
+            // Заменяем недопустимые символы в имени листа
+            sheetName = sheetName.replace(/[\\\/\?\*\[\]]/g, '_');
+
+            var destSheet = Api.GetSheet(sheetName);
+            if (!destSheet) {
+                Api.AddSheet(sheetName);
+                destSheet = Api.GetSheet(sheetName);
+            } else {
+                // Очищаем существующий лист
+                for (var clearR = 1; clearR <= 5000; clearR++) {
+                    for (var clearC = 1; clearC <= maxCols; clearC++) {
+                        var clearLetter = String.fromCharCode(64 + clearC);
+                        destSheet.GetRange(clearLetter + clearR).SetValue("");
+                    }
+                }
+            }
+
+            if (!destSheet) {
+                srcSheet.GetRange("Z1").SetValue("Ошибка создания листа: " + sheetName);
+                continue;
+            }
+
+            // Копируем заголовок (первая строка)
+            for (var c = 1; c <= maxCols; c++) {
+                var colLetter = String.fromCharCode(64 + c);
+                var headerVal = srcSheet.GetRange(colLetter + headerRow).GetValue();
+                destSheet.GetRange(colLetter + "1").SetValue(headerVal);
+            }
+
+            // Копируем строки, где в столбце A = currentValue
+            var destRow = 2;
+            for (var r = 2; r <= lastRow; r++) {
+                var val = srcSheet.GetRange("A" + r).GetValue();
+                if (val && val.toString().trim() === currentValue) {
+                    for (var c = 1; c <= maxCols; c++) {
+                        var colLetter = String.fromCharCode(64 + c);
+                        var srcVal = srcSheet.GetRange(colLetter + r).GetValue();
+                        destSheet.GetRange(colLetter + destRow).SetValue(srcVal);
+                    }
+                    destRow++;
+                }
+            }
+        }
+
+        // ---- 5. Итог ----
+        srcSheet.GetRange("Z1").SetValue("Готово! Создано листов: " + uniqueValues.length);
+    }, false);
+};
+```
+
+🚀 Установка плагина
+
+1. Упакуйте папку SplitByColumn в ZIP-архив.
+2. Переименуйте расширение файла с .zip на .plugin.
+3. В Р7-Офис откройте вкладку «Плагины» → «Настройки» → «Добавить плагин».
+4. Выберите ваш файл SplitByColumn.plugin.
+
+После установки на вкладке «Плагины» появится кнопка «Разбить по столбцу А». Её нажатие запустит весь процесс автоматически.
+
+💡 Важные нюансы
+
+· Имена листов: не могут быть длиннее 31 символа и содержать символы \ / ? * [ или ]. Код автоматически обрезает имя и заменяет их на _.
+· Производительность: при большом количестве данных (10 000+ строк) плагин может работать несколько минут.
+· Иконка: для красоты можете добавить в папку файлы icon.png и icon@2x.png.
+
+
+
+
+
+
+
+
+
 (function() {
     var srcSheet = Api.GetActiveSheet();
 
