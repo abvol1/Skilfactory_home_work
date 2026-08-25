@@ -1,4 +1,210 @@
 
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Разбить по столбцу А</title>
+    <style>
+        body { font-family: Arial; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 500px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+        button { background: #2b7b8c; color: white; border: none; padding: 10px 24px; font-size: 16px; border-radius: 4px; cursor: pointer; width: 100%; }
+        button:hover { background: #1f5f6e; }
+        #log { margin-top: 15px; padding: 10px; background: #f0f0f0; border-radius: 4px; font-size: 13px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; font-family: monospace; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>📊 Разбить по столбцу А</h2>
+    <button id="runBtn">▶ Выполнить</button>
+    <div id="log">Лог будет здесь...</div>
+</div>
+
+<script>
+    function logMessage(msg) {
+        var logDiv = document.getElementById('log');
+        logDiv.textContent += msg + '\n';
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    document.getElementById('runBtn').addEventListener('click', function() {
+        var btn = this;
+        btn.disabled = true;
+        btn.textContent = 'Выполняется...';
+        logMessage('=== СТАРТ ===');
+
+        // Проверяем доступность Api
+        if (typeof Api === 'undefined') {
+            logMessage('❌ ОШИБКА: Api не определён!');
+            btn.disabled = false;
+            btn.textContent = '▶ Выполнить';
+            return;
+        }
+        logMessage('✅ Api доступен');
+
+        window.Asc.plugin.callCommand(function() {
+            try {
+                logMessage('▶ callCommand выполняется');
+
+                var srcSheet = Api.GetActiveSheet();
+                if (!srcSheet) {
+                    logMessage('❌ Не удалось получить активный лист');
+                    window.Asc.plugin.executeCommand("close", "error");
+                    return;
+                }
+                logMessage('✅ Активный лист получен');
+
+                // Проверочная запись
+                srcSheet.GetRange("Z1").SetValue("Плагин начал работу");
+                logMessage('✅ Записано в Z1: "Плагин начал работу"');
+
+                // ---- Определяем последнюю строку ----
+                var lastRow = 0;
+                var maxRows = 5000;
+                logMessage('🔍 Поиск последней строки...');
+
+                for (var i = 1; i <= maxRows; i++) {
+                    var val = srcSheet.GetRange("A" + i).GetValue();
+                    if (val !== undefined && val !== null && val !== "") {
+                        lastRow = i;
+                    } else {
+                        var empty = 0;
+                        for (var j = i; j <= i + 4 && j <= maxRows; j++) {
+                            if (!srcSheet.GetRange("A" + j).GetValue()) empty++;
+                        }
+                        if (empty >= 5) break;
+                    }
+                }
+
+                logMessage('📌 Последняя строка: ' + lastRow);
+                srcSheet.GetRange("Z2").SetValue("LastRow: " + lastRow);
+
+                if (lastRow === 0) {
+                    srcSheet.GetRange("Z1").SetValue("Нет данных в столбце A");
+                    logMessage('❌ Нет данных, завершение');
+                    window.Asc.plugin.executeCommand("close", "no data");
+                    return;
+                }
+
+                // ---- Определяем максимальный столбец ----
+                var maxCols = 1;
+                for (var c = 1; c <= 50; c++) {
+                    var colLetter = String.fromCharCode(64 + c);
+                    var val = srcSheet.GetRange(colLetter + "1").GetValue();
+                    if (val !== undefined && val !== null && val !== "") {
+                        maxCols = c;
+                    }
+                }
+                logMessage('📌 Макс колонок: ' + maxCols);
+                srcSheet.GetRange("Z3").SetValue("MaxCols: " + maxCols);
+
+                // ---- Собираем уникальные значения ----
+                var uniqueValues = [];
+                var headerRow = 1;
+                logMessage('🔍 Сбор уникальных значений...');
+
+                for (var r = 2; r <= lastRow; r++) {
+                    var val = srcSheet.GetRange("A" + r).GetValue();
+                    if (val && val.toString().trim() !== "") {
+                        var key = val.toString().trim();
+                        if (uniqueValues.indexOf(key) === -1) {
+                            uniqueValues.push(key);
+                        }
+                    }
+                }
+
+                logMessage('📌 Найдено уникальных: ' + uniqueValues.length);
+                srcSheet.GetRange("Z4").SetValue("Unique: " + uniqueValues.length);
+
+                if (uniqueValues.length === 0) {
+                    srcSheet.GetRange("Z1").SetValue("Нет уникальных значений");
+                    logMessage('❌ Нет уникальных, завершение');
+                    window.Asc.plugin.executeCommand("close", "no unique");
+                    return;
+                }
+
+                // ---- Создаём листы и копируем ----
+                logMessage('🚀 Начинаем создание листов...');
+                for (var u = 0; u < uniqueValues.length; u++) {
+                    var currentValue = uniqueValues[u];
+                    var sheetName = currentValue;
+                    if (sheetName.length > 31) sheetName = sheetName.substring(0, 31);
+                    sheetName = sheetName.replace(/[\\\/\?\*\[\]]/g, '_');
+                    logMessage('▶ Обработка: "' + sheetName + '"');
+
+                    var destSheet = Api.GetSheet(sheetName);
+                    if (!destSheet) {
+                        Api.AddSheet(sheetName);
+                        destSheet = Api.GetSheet(sheetName);
+                        logMessage('✅ Создан новый лист: ' + sheetName);
+                    } else {
+                        logMessage('⚠️ Лист уже существует, очищаем: ' + sheetName);
+                        // Очистка (упрощённая)
+                        for (var clearR = 1; clearR <= 5000; clearR++) {
+                            for (var clearC = 1; clearC <= maxCols; clearC++) {
+                                var clearLetter = String.fromCharCode(64 + clearC);
+                                destSheet.GetRange(clearLetter + clearR).SetValue("");
+                            }
+                        }
+                    }
+
+                    if (!destSheet) {
+                        logMessage('❌ Ошибка создания листа: ' + sheetName);
+                        continue;
+                    }
+
+                    // Копируем заголовок
+                    for (var c = 1; c <= maxCols; c++) {
+                        var colLetter = String.fromCharCode(64 + c);
+                        var headerVal = srcSheet.GetRange(colLetter + headerRow).GetValue();
+                        destSheet.GetRange(colLetter + "1").SetValue(headerVal);
+                    }
+
+                    // Копируем строки
+                    var destRow = 2;
+                    for (var r = 2; r <= lastRow; r++) {
+                        var val = srcSheet.GetRange("A" + r).GetValue();
+                        if (val && val.toString().trim() === currentValue) {
+                            for (var c = 1; c <= maxCols; c++) {
+                                var colLetter = String.fromCharCode(64 + c);
+                                var srcVal = srcSheet.GetRange(colLetter + r).GetValue();
+                                destSheet.GetRange(colLetter + destRow).SetValue(srcVal);
+                            }
+                            destRow++;
+                        }
+                    }
+                    logMessage('✅ Скопировано строк для "' + sheetName + '": ' + (destRow - 2));
+                }
+
+                // ---- Итог ----
+                srcSheet.GetRange("Z1").SetValue("Готово! Создано листов: " + uniqueValues.length);
+                logMessage('✅ ЗАВЕРШЕНО УСПЕШНО! Создано листов: ' + uniqueValues.length);
+                window.Asc.plugin.executeCommand("close", "success");
+
+            } catch (e) {
+                logMessage('❌ ИСКЛЮЧЕНИЕ: ' + e.message);
+                logMessage('Stack: ' + e.stack);
+                var srcSheet = Api.GetActiveSheet();
+                if (srcSheet) srcSheet.GetRange("Z1").SetValue("Ошибка: " + e.message);
+                window.Asc.plugin.executeCommand("close", "error");
+            }
+        }, false);
+
+        // Обработчик закрытия
+        window.Asc.plugin.onClose = function(result) {
+            logMessage('🔚 Плагин завершил работу, результат: ' + result);
+            btn.disabled = false;
+            btn.textContent = '▶ Выполнить';
+        };
+    });
+</script>
+</body>
+</html>
+
+
+
+
+
+
 
 <!DOCTYPE html>
 <html>
