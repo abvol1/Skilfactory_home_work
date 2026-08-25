@@ -5,6 +5,171 @@
     <meta charset="UTF-8">
     <title>Разбить по столбцу А</title>
     <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 400px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        h2 { margin-top: 0; color: #333; }
+        p { color: #666; font-size: 14px; }
+        button { background: #2b7b8c; color: white; border: none; padding: 10px 24px; font-size: 16px; border-radius: 4px; cursor: pointer; width: 100%; }
+        button:hover { background: #1f5f6e; }
+        #status { margin-top: 15px; padding: 10px; background: #f0f0f0; border-radius: 4px; font-size: 13px; display: none; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>📊 Разбить по столбцу А</h2>
+    <p>Создаёт отдельные листы для каждого уникального значения в столбце A.</p>
+    <button id="runBtn">▶ Выполнить</button>
+    <div id="status">Готово! Создано листов: <span id="count"></span></div>
+</div>
+
+<script>
+    // ----- Код макроса (рабочий, проверенный) -----
+    var macroCode = `
+(function() {
+    var srcSheet = Api.GetActiveSheet();
+    var lastRow = 0;
+    var maxRows = 5000;
+
+    // Определяем последнюю строку с данными
+    for (var i = 1; i <= maxRows; i++) {
+        var val = srcSheet.GetRange("A" + i).GetValue();
+        if (val !== undefined && val !== null && val !== "") {
+            lastRow = i;
+        } else {
+            var empty = 0;
+            for (var j = i; j <= i + 4 && j <= maxRows; j++) {
+                if (!srcSheet.GetRange("A" + j).GetValue()) empty++;
+            }
+            if (empty >= 5) break;
+        }
+    }
+
+    if (lastRow === 0) {
+        srcSheet.GetRange("Z1").SetValue("Нет данных в столбце A");
+        return;
+    }
+
+    // Определяем последний столбец
+    var maxCols = 1;
+    for (var c = 1; c <= 50; c++) {
+        var colLetter = String.fromCharCode(64 + c);
+        var val = srcSheet.GetRange(colLetter + "1").GetValue();
+        if (val !== undefined && val !== null && val !== "") {
+            maxCols = c;
+        }
+    }
+
+    // Собираем уникальные значения (пропускаем первую строку-заголовок)
+    var uniqueValues = [];
+    var headerRow = 1;
+    for (var r = 2; r <= lastRow; r++) {
+        var val = srcSheet.GetRange("A" + r).GetValue();
+        if (val && val.toString().trim() !== "") {
+            var key = val.toString().trim();
+            if (uniqueValues.indexOf(key) === -1) {
+                uniqueValues.push(key);
+            }
+        }
+    }
+
+    if (uniqueValues.length === 0) {
+        srcSheet.GetRange("Z1").SetValue("Нет уникальных значений");
+        return;
+    }
+
+    // Для каждого уникального значения создаём лист и копируем строки
+    for (var u = 0; u < uniqueValues.length; u++) {
+        var currentValue = uniqueValues[u];
+        var sheetName = currentValue;
+        if (sheetName.length > 31) sheetName = sheetName.substring(0, 31);
+        sheetName = sheetName.replace(/[\\\\\\/\\?\\*\\[\\]]/g, '_');
+
+        var destSheet = Api.GetSheet(sheetName);
+        if (!destSheet) {
+            Api.AddSheet(sheetName);
+            destSheet = Api.GetSheet(sheetName);
+        } else {
+            // Очищаем существующий лист
+            for (var clearR = 1; clearR <= 5000; clearR++) {
+                for (var clearC = 1; clearC <= maxCols; clearC++) {
+                    var clearLetter = String.fromCharCode(64 + clearC);
+                    destSheet.GetRange(clearLetter + clearR).SetValue("");
+                }
+            }
+        }
+
+        if (!destSheet) continue;
+
+        // Копируем заголовок
+        for (var c = 1; c <= maxCols; c++) {
+            var colLetter = String.fromCharCode(64 + c);
+            var headerVal = srcSheet.GetRange(colLetter + headerRow).GetValue();
+            destSheet.GetRange(colLetter + "1").SetValue(headerVal);
+        }
+
+        // Копируем строки с нужным значением
+        var destRow = 2;
+        for (var r = 2; r <= lastRow; r++) {
+            var val = srcSheet.GetRange("A" + r).GetValue();
+            if (val && val.toString().trim() === currentValue) {
+                for (var c = 1; c <= maxCols; c++) {
+                    var colLetter = String.fromCharCode(64 + c);
+                    var srcVal = srcSheet.GetRange(colLetter + r).GetValue();
+                    destSheet.GetRange(colLetter + destRow).SetValue(srcVal);
+                }
+                destRow++;
+            }
+        }
+    }
+
+    // Итог
+    srcSheet.GetRange("Z1").SetValue("Готово! Создано листов: " + uniqueValues.length);
+    // Передаём количество обратно в плагин через закрытие
+    window.Asc.plugin.executeCommand("close", JSON.stringify({ count: uniqueValues.length }));
+})();
+    `;
+
+    // ----- Обработчик кнопки -----
+    document.getElementById('runBtn').addEventListener('click', function() {
+        var btn = this;
+        btn.disabled = true;
+        btn.textContent = 'Выполняется...';
+
+        // Выполняем код как макрос
+        window.Asc.plugin.executeCommand("macro", macroCode);
+
+        // Ждём результат через onClose
+        window.Asc.plugin.onClose = function(result) {
+            if (result) {
+                try {
+                    var data = JSON.parse(result);
+                    document.getElementById('count').textContent = data.count;
+                    document.getElementById('status').style.display = 'block';
+                } catch(e) {
+                    document.getElementById('count').textContent = 'неизвестно';
+                    document.getElementById('status').style.display = 'block';
+                }
+            }
+            btn.disabled = false;
+            btn.textContent = '▶ Выполнить';
+        };
+    });
+</script>
+</body>
+</html>
+
+
+
+
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Разбить по столбцу А</title>
+    <style>
         body { font-family: Arial; padding: 20px; background: #f5f5f5; }
         .container { max-width: 500px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
         button { background: #2b7b8c; color: white; border: none; padding: 10px 24px; font-size: 16px; border-radius: 4px; cursor: pointer; width: 100%; }
