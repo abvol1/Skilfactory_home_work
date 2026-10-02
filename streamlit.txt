@@ -1,1 +1,129 @@
 
+Чтобы выгрузить входящие письма с корпоративной почты в текстовый файл с помощью Python, нужно подключиться к почтовому серверу по протоколу IMAP. Это стандартный способ, который поддерживают большинство корпоративных почтовых систем (Яндекс 360, Mail.ru для бизнеса, Exchange, Gmail и др.).
+
+🔑 Что понадобится
+
+Прежде всего, вам нужны данные для подключения, которые обычно выдаёт IT-отдел:
+
+· Адрес IMAP-сервера (например, imap.yandex.ru или outlook.office365.com).
+· Порт (обычно 993 для защищённого соединения SSL).
+· Логин и пароль от корпоративной почты.
+
+Важно: Для некоторых сервисов (например, Gmail или Microsoft 365) может потребоваться создание пароля приложения в настройках безопасности аккаунта, так как обычный пароль может не подойти из-за двухфакторной аутентификации.
+
+📝 Пример скрипта на Python
+
+Вот готовый скрипт, который подключается к почте, перебирает все письма в папке «Входящие» и сохраняет каждое из них в отдельный .txt файл:
+
+```python
+import imaplib
+import email
+from email.header import decode_header
+import os
+import re
+
+# --- НАСТРОЙКИ ПОДКЛЮЧЕНИЯ ---
+IMAP_SERVER = "imap.yandex.ru"      # Адрес вашего IMAP-сервера
+IMAP_PORT = 993                     # Порт (обычно 993 для SSL)
+USERNAME = "your_email@company.ru"  # Ваш логин
+PASSWORD = "your_password"          # Пароль или пароль приложения
+
+# Папка для сохранения писем
+OUTPUT_DIR = "emails_output"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# --- ПОДКЛЮЧЕНИЕ К СЕРВЕРУ ---
+try:
+    # Используем IMAP4_SSL для защищённого соединения
+    mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
+    mail.login(USERNAME, PASSWORD)
+    print("✅ Успешное подключение к почте.")
+except Exception as e:
+    print(f"❌ Ошибка подключения: {e}")
+    exit(1)
+
+# --- ВЫБОР ПАПКИ "ВХОДЯЩИЕ" ---
+mail.select("inbox")
+
+# --- ПОИСК ВСЕХ ПИСЕМ ---
+# Критерий 'ALL' означает все письма. Можно заменить на 'UNSEEN' для непрочитанных.
+status, messages = mail.search(None, "ALL")
+if status != "OK":
+    print("❌ Не удалось получить список писем.")
+    mail.logout()
+    exit(1)
+
+# Получаем список ID писем (это байтовые строки, разделённые пробелами)
+email_ids = messages[0].split()
+print(f"📬 Найдено писем: {len(email_ids)}")
+
+# --- ЦИКЛ ПО ПИСЬМАМ И СОХРАНЕНИЕ ---
+for i, e_id in enumerate(email_ids, start=1):
+    # Извлекаем тело письма в формате RFC822
+    status, msg_data = mail.fetch(e_id, "(RFC822)")
+    if status != "OK":
+        continue
+
+    # Парсим письмо
+    raw_email = msg_data[0][1]
+    msg = email.message_from_bytes(raw_email)
+
+    # Декодируем тему письма
+    subject, encoding = decode_header(msg["Subject"])[0]
+    if isinstance(subject, bytes):
+        subject = subject.decode(encoding if encoding else "utf-8")
+    
+    # Очищаем тему от недопустимых символов для имени файла
+    safe_subject = re.sub(r'[\\/*?:"<>|]', "_", subject)
+    if not safe_subject:
+        safe_subject = "no_subject"
+
+    # Формируем имя файла
+    filename = os.path.join(OUTPUT_DIR, f"{i:04d}_{safe_subject}.txt")
+
+    # Извлекаем текст письма
+    body = ""
+    if msg.is_multipart():
+        for part in msg.walk():
+            content_type = part.get_content_type()
+            content_disposition = str(part.get("Content-Disposition"))
+            # Пропускаем вложения и берём только текст
+            if content_type == "text/plain" and "attachment" not in content_disposition:
+                try:
+                    body = part.get_payload(decode=True).decode("utf-8", errors="ignore")
+                except:
+                    body = part.get_payload(decode=True).decode("latin-1", errors="ignore")
+                break
+    else:
+        body = msg.get_payload(decode=True).decode("utf-8", errors="ignore")
+
+    # Записываем в файл
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(f"Тема: {subject}\n")
+        f.write(f"От: {msg.get('From')}\n")
+        f.write(f"Дата: {msg.get('Date')}\n")
+        f.write("-" * 40 + "\n\n")
+        f.write(body)
+    
+    print(f"[{i}/{len(email_ids)}] Сохранено: {filename}")
+
+# --- ЗАВЕРШЕНИЕ РАБОТЫ ---
+mail.logout()
+print("🏁 Готово! Все письма сохранены.")
+```
+
+💡 Пояснения к коду
+
+· Подключение: Используется imaplib.IMAP4_SSL, что обеспечивает шифрование трафика. Если ваш сервер требует обычное соединение (без SSL), замените на imaplib.IMAP4 и порт 143.
+· Поиск писем: Команда mail.search(None, "ALL") возвращает ID всех писем в папке. Если нужно выгрузить только непрочитанные, используйте "UNSEEN".
+· Декодирование: Тема письма может быть закодирована, поэтому используется decode_header. Тело письма может быть в разных кодировках, скрипт пытается декодировать как utf-8, при ошибке — как latin-1.
+· Сохранение: Каждое письмо сохраняется в отдельный файл. Имя файла формируется из порядкового номера и темы (недопустимые символы заменяются на _).
+
+🏢 Особенности для разных корпоративных почт
+
+· Яндекс 360: Сервер imap.yandex.ru, порт 993. В настройках почты нужно разрешить доступ по IMAP.
+· Mail.ru для бизнеса: Сервер imap.mail.ru, порт 993.
+· Microsoft Exchange / Office 365: Сервер outlook.office365.com, порт 993. Важно: Microsoft постепенно отказывается от базовой аутентификации по паролю в пользу OAuth 2.0. Если у вас современный тенант, обычный пароль может не сработать — потребуется регистрация приложения в Azure AD и получение токена доступа. В этом случае можно использовать библиотеку msal и exchangelib, но это отдельная более сложная тема.
+· Корпоративный сервер без SSL: Если IT-отдел сообщил, что используется незащищённое соединение (порт 143), используйте imaplib.IMAP4 вместо IMAP4_SSL.
+
+Если у вас Exchange с OAuth, скажите — я помогу с кодом для этого случая.
