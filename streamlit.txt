@@ -1,3 +1,72 @@
+import imaplib
+import email
+from email.header import decode_header
+
+# --- НАСТРОЙКИ ---
+IMAP_SERVER = "imap.yandex.ru"
+IMAP_PORT = 993
+USERNAME = "your_email@company.ru"
+PASSWORD = "your_password"
+
+OUTPUT_FILE = "subjects.txt"
+
+# --- ПОДКЛЮЧЕНИЕ ---
+mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
+mail.login(USERNAME, PASSWORD)
+mail.select("inbox")
+print("✅ Подключено")
+
+# --- ПОИСК ВСЕХ ПИСЕМ ---
+status, messages = mail.search(None, "ALL")
+email_ids = messages[0].split()
+print(f"📬 Найдено писем: {len(email_ids)}")
+
+# --- СБОР ТЕМ ---
+subjects = []
+for i, e_id in enumerate(email_ids, start=1):
+    # Забираем только заголовки, тело не нужно — это в разы быстрее
+    status, msg_data = mail.fetch(e_id, "(BODY.PEEK[HEADER.FIELDS (SUBJECT)])")
+    if status != "OK":
+        subjects.append(f"{i}. <не удалось получить>")
+        continue
+
+    raw = msg_data[0][1]
+    msg = email.message_from_bytes(raw)
+    raw_subject = msg.get("Subject")
+
+    if raw_subject is None:
+        subject = "<без темы>"
+    else:
+        # Декодируем (может быть несколько частей в разных кодировках)
+        parts = decode_header(raw_subject)
+        subject = ""
+        for part, encoding in parts:
+            if isinstance(part, bytes):
+                try:
+                    subject += part.decode(encoding or "utf-8", errors="ignore")
+                except (LookupError, TypeError):
+                    subject += part.decode("utf-8", errors="ignore")
+            else:
+                subject += part
+
+    subjects.append(f"{i}. {subject}")
+    print(f"[{i}/{len(email_ids)}] {subject}")
+
+# --- ЗАПИСЬ В ФАЙЛ ---
+with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+    f.write("\n".join(subjects))
+
+mail.logout()
+print(f"🏁 Готово! Темы сохранены в {OUTPUT_FILE}")
+
+
+
+
+
+
+
+
+
 
 Чтобы выгрузить входящие письма с корпоративной почты в текстовый файл с помощью Python, нужно подключиться к почтовому серверу по протоколу IMAP. Это стандартный способ, который поддерживают большинство корпоративных почтовых систем (Яндекс 360, Mail.ru для бизнеса, Exchange, Gmail и др.).
 
