@@ -1,3 +1,835 @@
+
+Ниже — полный обновлённый проект с внедрёнными критериями. Все файлы готовы к копированию.
+
+---
+
+Структура проекта
+
+```
+ninebox/
+├── pom.xml
+└── src/main/
+    ├── java/com/example/ninebox/
+    │   ├── Main.java
+    │   ├── model/
+    │   │   ├── Employee.java
+    │   │   ├── NineBoxCriterion.java
+    │   │   └── NineBoxCatalog.java
+    │   ├── storage/
+    │   │   └── XlsxStorage.java
+    │   └── controller/
+    │       └── MainController.java
+    └── resources/com/example/ninebox/
+        └── main.fxml
+```
+
+---
+
+1. pom.xml
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>ninebox</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <properties>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <javafx.version>21.0.2</javafx.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-controls</artifactId>
+            <version>${javafx.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-fxml</artifactId>
+            <version>${javafx.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.2.5</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-maven-plugin</artifactId>
+                <version>0.0.8</version>
+                <configuration>
+                    <mainClass>com.example.ninebox.Main</mainClass>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+```
+
+---
+
+2. Main.java
+
+```java
+package com.example.ninebox;
+
+import com.example.ninebox.controller.MainController;
+import javafx.application.Application;
+import javafx.fxml.FXMLLoader;
+import javafx.scene.Scene;
+import javafx.stage.Stage;
+
+public class Main extends Application {
+    @Override
+    public void start(Stage stage) throws Exception {
+        FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/example/ninebox/main.fxml"));
+        Scene scene = new Scene(loader.load());
+        MainController controller = loader.getController();
+
+        stage.setTitle("Оценка 9 квадратов");
+        stage.setScene(scene);
+        stage.setOnCloseRequest(ev -> controller.saveOnExit());
+        stage.show();
+    }
+
+    public static void main(String[] args) {
+        launch(args);
+    }
+}
+```
+
+---
+
+3. model/Employee.java
+
+```java
+package com.example.ninebox.model;
+
+public class Employee {
+    private String name;
+    private int potential;    // 1..10
+    private int performance;  // 1..10
+
+    public Employee(String name, int potential, int performance) {
+        this.name = name;
+        this.potential = potential;
+        this.performance = performance;
+    }
+
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+
+    public int getPotential() { return potential; }
+    public void setPotential(int potential) { this.potential = potential; }
+
+    public int getPerformance() { return performance; }
+    public void setPerformance(int performance) { this.performance = performance; }
+
+    /** 0=низкий(1-3), 1=средний(4-7), 2=высокий(8-10) */
+    public int getPotentialGroup() { return toGroup(potential); }
+    public int getPerformanceGroup() { return toGroup(performance); }
+
+    private static int toGroup(int score) {
+        if (score <= 3) return 0;
+        if (score <= 7) return 1;
+        return 2;
+    }
+
+    /** Типичный балл для группы: 2, 5, 9 — используется при drop */
+    public static int groupToScore(int group) {
+        return switch (group) {
+            case 0 -> 2;
+            case 1 -> 5;
+            default -> 9;
+        };
+    }
+
+    /** Критерий квадрата, в котором находится сотрудник */
+    public NineBoxCriterion getCriterion() {
+        return NineBoxCatalog.get(getPotentialGroup(), getPerformanceGroup());
+    }
+
+    /** Название квадрата (для таблицы) */
+    public String getBoxName() {
+        NineBoxCriterion c = getCriterion();
+        return c == null ? "" : c.getName();
+    }
+}
+```
+
+---
+
+4. model/NineBoxCriterion.java
+
+```java
+package com.example.ninebox.model;
+
+public class NineBoxCriterion {
+    private final int potentialGroup;   // 0..2
+    private final int performanceGroup; // 0..2
+    private final String name;
+    private final String who;
+    private final String risks;
+    private final String actions;
+
+    public NineBoxCriterion(int potentialGroup, int performanceGroup,
+                            String name, String who, String risks, String actions) {
+        this.potentialGroup = potentialGroup;
+        this.performanceGroup = performanceGroup;
+        this.name = name;
+        this.who = who;
+        this.risks = risks;
+        this.actions = actions;
+    }
+
+    public int getPotentialGroup() { return potentialGroup; }
+    public int getPerformanceGroup() { return performanceGroup; }
+    public String getName() { return name; }
+    public String getWho() { return who; }
+    public String getRisks() { return risks; }
+    public String getActions() { return actions; }
+}
+```
+
+---
+
+5. model/NineBoxCatalog.java
+
+```java
+package com.example.ninebox.model;
+
+import java.util.HashMap;
+import java.util.Map;
+
+public final class NineBoxCatalog {
+
+    private static final Map<String, NineBoxCriterion> MAP = new HashMap<>();
+
+    static {
+        put(new NineBoxCriterion(2, 2, "Звезда",
+                "Лучшие сотрудники: уже дают сильный результат и способны расти дальше — до эксперта или руководителя.",
+                "Выгорание, потеря мотивации, если не давать развития; их легко «перехватывают» конкуренты.",
+                "Удерживать, давать амбициозные проекты, готовить к повышению, обсуждать индивидуальный план развития и преемственность."));
+
+        put(new NineBoxCriterion(1, 2, "Сильный исполнитель",
+                "Надёжно и хорошо выполняет работу, может расширять зону ответственности, но не обязательно готов к резкому карьерному скачку.",
+                "Недооценить и потерять; перегрузить дополнительными задачами без признания.",
+                "Развивать в ширину — новые проекты, наставничество, кросс-функциональные задачи; поощрять и удерживать."));
+
+        put(new NineBoxCriterion(0, 2, "Надёжный профессионал",
+                "Эксперт в своей текущей роли, стабильно даёт результат, но не стремится или объективно ограничен в росте на более высокую должность.",
+                "Воспринимать как «неперспективного» и демотивировать; потерять ценного специалиста.",
+                "Ценить за экспертизу, удерживать, поддерживать статус и условия; развивать не вверх, а в глубину — углубление экспертизы, передача опыта."));
+
+        put(new NineBoxCriterion(2, 1, "Восходящая звезда",
+                "Сотрудник с большим потенциалом, но текущие результаты пока средние — возможно, из-за новизны роли, нехватки опыта или неправильных задач.",
+                "Если не помочь, потенциал останется нереализованным; возможна фрустрация.",
+                "Инвестировать в развитие, давать сложные, но посильные задачи, наставника, чёткие цели и обратную связь."));
+
+        put(new NineBoxCriterion(1, 1, "Ядро команды",
+                "Основная рабочая сила: стабильные, обучаемые сотрудники, которые хорошо выполняют свою роль, но пока без выраженного взлёта.",
+                "Застой; если не развивать, могут постепенно снизить вовлечённость.",
+                "Развивать по точечным навыкам, давать обратную связь, ротацию или расширение задач; искать, что может усилить результативность."));
+
+        put(new NineBoxCriterion(0, 1, "Стабильный специалист",
+                "Выполняет работу на приемлемом уровне, но не проявляет стремления к росту и не имеет выраженного потенциала для более сложных ролей.",
+                "Терпимость к «среднему» результату; постепенное устаревание навыков.",
+                "Удерживать на текущей роли, обеспечивать понятные стандарты и обучение под текущие задачи; не строить долгосрочные планы на повышение."));
+
+        put(new NineBoxCriterion(2, 0, "Загадка",
+                "Способный сотрудник, который почему-то не даёт результата. Причины могут быть разными: не та роль, конфликт, отсутствие мотивации, проблемы с ресурсами, личные обстоятельства.",
+                "Ярлык «неудачник» при недооценке причин; потеря таланта.",
+                "Разобраться в причинах, сменить роль или задачи, дать поддержку и чёткие ожидания; установить срок для улучшения."));
+
+        put(new NineBoxCriterion(1, 0, "Дилемма",
+                "Сотрудник, который пока не справляется, но имеет некоторый потенциал и может вырасти при правильной поддержке.",
+                "Долго терпеть низкий результат; неопределённость для команды.",
+                "Чёткий план улучшения, обучение, наставник, контроль промежуточных результатов; если динамики нет — рассматривать перевод или расставание."));
+
+        put(new NineBoxCriterion(0, 0, "Зона риска",
+                "Сотрудник, который не даёт нужного результата и не показывает потенциала для роста в текущих условиях.",
+                "Снижение стандартов команды, нагрузка на других, демотивация сильных.",
+                "Честная обратная связь, формальный план улучшения; если он не работает — перевод на другую роль или расставание."));
+    }
+
+    private static void put(NineBoxCriterion c) {
+        MAP.put(c.getPotentialGroup() + "-" + c.getPerformanceGroup(), c);
+    }
+
+    public static NineBoxCriterion get(int potentialGroup, int performanceGroup) {
+        return MAP.get(potentialGroup + "-" + performanceGroup);
+    }
+}
+```
+
+---
+
+6. storage/XlsxStorage.java
+
+```java
+package com.example.ninebox.storage;
+
+import com.example.ninebox.model.Employee;
+import com.example.ninebox.model.NineBoxCatalog;
+import com.example.ninebox.model.NineBoxCriterion;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+
+import java.io.*;
+import java.util.ArrayList;
+import java.util.List;
+
+public class XlsxStorage {
+    private static final String FILE = "employees.xlsx";
+
+    public static List<Employee> load() {
+        List<Employee> list = new ArrayList<>();
+        File f = new File(FILE);
+        if (!f.exists()) return list;
+
+        try (Workbook wb = new XSSFWorkbook(new FileInputStream(f))) {
+            Sheet sheet = wb.getSheet("Сотрудники");
+            if (sheet == null) sheet = wb.getSheetAt(0);
+            for (int i = 1; i <= sheet.getLastRowNum(); i++) {
+                Row r = sheet.getRow(i);
+                if (r == null) continue;
+                String name = getString(r.getCell(0));
+                int pot = (int) getNum(r.getCell(1));
+                int perf = (int) getNum(r.getCell(2));
+                if (!name.isBlank()) list.add(new Employee(name, pot, perf));
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return list;
+    }
+
+    public static void saveAndExport(List<Employee> list, String file) {
+        try (Workbook wb = new XSSFWorkbook()) {
+            writeEmployeeSheet(wb, list);
+            writeMatrixSheet(wb, list);
+            writeToFile(wb, file);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void exportMatrixToExisting(List<Employee> list, String file) {
+        File f = new File(file);
+        try {
+            Workbook wb = f.exists()
+                    ? new XSSFWorkbook(new FileInputStream(f))
+                    : new XSSFWorkbook();
+            Sheet old = wb.getSheet("Матрица 9 квадратов");
+            if (old != null) wb.removeSheetAt(wb.getSheetIndex(old));
+            writeMatrixSheet(wb, list);
+            writeToFile(wb, file);
+            wb.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void writeEmployeeSheet(Workbook wb, List<Employee> list) {
+        Sheet sheet = wb.createSheet("Сотрудники");
+        Row header = sheet.createRow(0);
+        header.createCell(0).setCellValue("Имя");
+        header.createCell(1).setCellValue("Потенциал");
+        header.createCell(2).setCellValue("Результативность");
+        header.createCell(3).setCellValue("Квадрат");
+
+        int rowIdx = 1;
+        for (Employee e : list) {
+            Row r = sheet.createRow(rowIdx++);
+            r.createCell(0).setCellValue(e.getName());
+            r.createCell(1).setCellValue(e.getPotential());
+            r.createCell(2).setCellValue(e.getPerformance());
+            r.createCell(3).setCellValue(e.getBoxName());
+        }
+        for (int i = 0; i < 4; i++) sheet.setColumnWidth(i, 5000);
+    }
+
+    private static void writeMatrixSheet(Workbook wb, List<Employee> list) {
+        Sheet matrix = wb.createSheet("Матрица 9 квадратов");
+
+        String[] perfLabels = {"Низкая рез.", "Средняя рез.", "Высокая рез."};
+        String[] potLabels  = {"Низкий потенциал", "Средний потенциал", "Высокий потенциал"};
+
+        CellStyle headerStyle = wb.createCellStyle();
+        Font bold = wb.createFont();
+        bold.setBold(true);
+        headerStyle.setFont(bold);
+
+        Row top = matrix.createRow(0);
+        Cell corner = top.createCell(0);
+        corner.setCellValue("Потенциал \\ Результат");
+        corner.setCellStyle(headerStyle);
+        for (int c = 0; c < 3; c++) {
+            Cell cell = top.createCell(c + 1);
+            cell.setCellValue(perfLabels[c]);
+            cell.setCellStyle(headerStyle);
+        }
+
+        for (int p = 0; p < 3; p++) {
+            int pg = 2 - p;
+            Row row = matrix.createRow(p + 1);
+            Cell left = row.createCell(0);
+            left.setCellValue(potLabels[pg]);
+            left.setCellStyle(headerStyle);
+
+            for (int rg = 0; rg < 3; rg++) {
+                StringBuilder sb = new StringBuilder();
+                for (Employee e : list) {
+                    if (e.getPotentialGroup() == pg && e.getPerformanceGroup() == rg) {
+                        if (sb.length() > 0) sb.append("\n");
+                        sb.append(e.getName())
+                          .append(" (").append(e.getPotential())
+                          .append("/").append(e.getPerformance()).append(")");
+                    }
+                }
+                Cell cell = row.createCell(rg + 1);
+                cell.setCellValue(sb.toString());
+
+                CellStyle style = wb.createCellStyle();
+                style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+                style.setFillForegroundColor(switch (colorOf(pg, rg)) {
+                    case "green"  -> IndexedColors.LIGHT_GREEN.getIndex();
+                    case "yellow" -> IndexedColors.LIGHT_YELLOW.getIndex();
+                    default       -> IndexedColors.ROSE.getIndex();
+                });
+                style.setWrapText(true);
+                cell.setCellStyle(style);
+            }
+        }
+        for (int c = 0; c < 4; c++) matrix.setColumnWidth(c, 7000);
+
+        // Блок критериев
+        int startRow = 6;
+        Row title = matrix.createRow(startRow++);
+        Cell titleCell = title.createCell(0);
+        titleCell.setCellValue("Критерии оценки 9 квадратов");
+        titleCell.setCellStyle(headerStyle);
+
+        String[] headers = {"Квадрат", "Кто это", "Риски", "Что делать"};
+        Row hdr = matrix.createRow(startRow++);
+        for (int i = 0; i < headers.length; i++) {
+            Cell c = hdr.createCell(i);
+            c.setCellValue(headers[i]);
+            c.setCellStyle(headerStyle);
+        }
+
+        for (int pg = 2; pg >= 0; pg--) {
+            for (int rg = 0; rg <= 2; rg++) {
+                NineBoxCriterion c = NineBoxCatalog.get(pg, rg);
+                if (c == null) continue;
+                Row r = matrix.createRow(startRow++);
+                r.createCell(0).setCellValue(c.getName());
+                r.createCell(1).setCellValue(c.getWho());
+                r.createCell(2).setCellValue(c.getRisks());
+                r.createCell(3).setCellValue(c.getActions());
+                for (int i = 0; i < 4; i++) {
+                    Cell cell = r.getCell(i);
+                    if (cell == null) cell = r.createCell(i);
+                    CellStyle wrap = wb.createCellStyle();
+                    wrap.setWrapText(true);
+                    cell.setCellStyle(wrap);
+                }
+            }
+        }
+        matrix.setColumnWidth(1, 14000);
+        matrix.setColumnWidth(2, 14000);
+        matrix.setColumnWidth(3, 14000);
+    }
+
+    private static String colorOf(int pg, int rg) {
+        if (pg == 0) return rg == 0 ? "red" : "yellow";
+        if (pg == 1) return rg == 0 ? "red" : (rg == 1 ? "yellow" : "green");
+        return rg == 0 ? "yellow" : "green";
+    }
+
+    private static void writeToFile(Workbook wb, String file) throws IOException {
+        try (FileOutputStream out = new FileOutputStream(file)) {
+            wb.write(out);
+        }
+    }
+
+    private static String getString(Cell c) {
+        return c == null ? "" : switch (c.getCellType()) {
+            case STRING -> c.getStringCellValue();
+            case NUMERIC -> String.valueOf((long) c.getNumericCellValue());
+            default -> "";
+        };
+    }
+
+    private static double getNum(Cell c) {
+        return c == null ? 0 : c.getNumericCellValue();
+    }
+}
+```
+
+---
+
+7. controller/MainController.java
+
+```java
+package com.example.ninebox.controller;
+
+import com.example.ninebox.model.Employee;
+import com.example.ninebox.model.NineBoxCatalog;
+import com.example.ninebox.model.NineBoxCriterion;
+import com.example.ninebox.storage.XlsxStorage;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.fxml.FXML;
+import javafx.geometry.Insets;
+import javafx.scene.control.*;
+import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.input.*;
+import javafx.scene.layout.*;
+
+import java.util.ArrayList;
+
+public class MainController {
+
+    @FXML private TextField nameField, potentialField, performanceField;
+    @FXML private GridPane matrixGrid;
+    @FXML private TableView<Employee> employeeTable;
+    @FXML private TableColumn<Employee, String> nameCol;
+    @FXML private TableColumn<Employee, Integer> potCol, perfCol;
+    @FXML private TableColumn<Employee, String> boxCol;
+    @FXML private Label infoTitle, infoWho, infoRisks, infoActions;
+
+    private final ObservableList<Employee> employees = FXCollections.observableArrayList();
+    private final VBox[][] cells = new VBox[3][3];
+
+    private static final String[] POT_LABELS  = {"Низкий потенциал", "Средний потенциал", "Высокий потенциал"};
+    private static final String[] PERF_LABELS = {"Низкая рез.", "Средняя рез.", "Высокая рез."};
+    private static final DataFormat EMPLOYEE_FORMAT = new DataFormat("application/x-employee");
+
+    private static final String[][] CELL_COLORS = {
+            {"#f8d7da", "#fff3cd", "#fff3cd"},
+            {"#f8d7da", "#fff3cd", "#d4edda"},
+            {"#fff3cd", "#d4edda", "#d4edda"}
+    };
+
+    @FXML
+    public void initialize() {
+        nameCol.setCellValueFactory(new PropertyValueFactory<>("name"));
+        potCol.setCellValueFactory(new PropertyValueFactory<>("potential"));
+        perfCol.setCellValueFactory(new PropertyValueFactory<>("performance"));
+        boxCol.setCellValueFactory(new PropertyValueFactory<>("boxName"));
+
+        buildMatrix();
+        employees.addAll(XlsxStorage.load());
+        refreshMatrix();
+        employeeTable.setItems(employees);
+
+        employeeTable.getSelectionModel().selectedItemProperty().addListener((obs, o, n) -> {
+            if (n != null) showCriterion(n.getPotentialGroup(), n.getPerformanceGroup());
+        });
+    }
+
+    private void buildMatrix() {
+        for (int p = 0; p < 3; p++) {
+            for (int r = 0; r < 3; r++) {
+                final int pg = 2 - p;
+                final int rg = r;
+
+                VBox cell = new VBox(4);
+                cell.setPadding(new Insets(6));
+                cell.setStyle("-fx-border-color: #888; -fx-border-radius: 4; "
+                        + "-fx-background-color: " + CELL_COLORS[pg][rg] + ";");
+                cell.setMinSize(160, 140);
+
+                NineBoxCriterion crit = NineBoxCatalog.get(pg, rg);
+                Label header = new Label(crit.getName());
+                header.setStyle("-fx-font-weight: bold; -fx-font-size: 11px;");
+                cell.getChildren().add(header);
+
+                cell.setOnDragOver(ev -> {
+                    if (ev.getDragboard().hasContent(EMPLOYEE_FORMAT))
+                        ev.acceptTransferModes(TransferMode.MOVE);
+                    ev.consume();
+                });
+
+                cell.setOnDragDropped(ev -> {
+                    Dragboard db = ev.getDragboard();
+                    if (db.hasContent(EMPLOYEE_FORMAT)) {
+                        Employee e = (Employee) db.getContent(EMPLOYEE_FORMAT);
+                        e.setPotential(Employee.groupToScore(pg));
+                        e.setPerformance(Employee.groupToScore(rg));
+                        refreshMatrix();
+                        employeeTable.refresh();
+                        showCriterion(pg, rg);
+                        ev.setDropCompleted(true);
+                    }
+                    ev.consume();
+                });
+
+                cell.setOnMouseClicked(ev -> showCriterion(pg, rg));
+
+                cells[pg][rg] = cell;
+                matrixGrid.add(cell, r, p);
+            }
+        }
+    }
+
+    private void refreshMatrix() {
+        for (int p = 0; p < 3; p++)
+            for (int r = 0; r < 3; r++)
+                cells[p][r].getChildren().removeIf(n -> n.getUserData() != null);
+
+        for (Employee e : employees) {
+            VBox cell = cells[e.getPotentialGroup()][e.getPerformanceGroup()];
+            Label card = new Label(e.getName() + " (" + e.getPotential() + "/" + e.getPerformance() + ")");
+            card.setUserData(e);
+            card.setStyle("-fx-background-color: #ffffffcc; -fx-padding: 4; "
+                    + "-fx-background-radius: 4; -fx-cursor: hand; -fx-border-color: #999;");
+            card.setMaxWidth(Double.MAX_VALUE);
+
+            card.setOnDragDetected(ev -> {
+                Dragboard db = card.startDragAndDrop(TransferMode.MOVE);
+                ClipboardContent cc = new ClipboardContent();
+                cc.put(EMPLOYEE_FORMAT, e);
+                db.setContent(cc);
+                ev.consume();
+            });
+
+            cell.getChildren().add(card);
+        }
+    }
+
+    private void showCriterion(int pg, int rg) {
+        NineBoxCriterion c = NineBoxCatalog.get(pg, rg);
+        if (c == null) return;
+        infoTitle.setText(c.getName());
+        infoWho.setText("Кто это: " + c.getWho());
+        infoRisks.setText("Риски: " + c.getRisks());
+        infoActions.setText("Что делать: " + c.getActions());
+    }
+
+    @FXML
+    private void onAdd() {
+        String name = nameField.getText().trim();
+        int pot, perf;
+        try {
+            pot = Integer.parseInt(potentialField.getText().trim());
+            perf = Integer.parseInt(performanceField.getText().trim());
+        } catch (NumberFormatException ex) {
+            showError("Потенциал и результативность должны быть числами 1–10");
+            return;
+        }
+        if (name.isEmpty() || pot < 1 || pot > 10 || perf < 1 || perf > 10) {
+            showError("Проверьте имя и баллы (1–10)");
+            return;
+        }
+        employees.add(new Employee(name, pot, perf));
+        nameField.clear(); potentialField.clear(); performanceField.clear();
+        refreshMatrix();
+    }
+
+    @FXML
+    private void onDelete() {
+        Employee sel = employeeTable.getSelectionModel().getSelectedItem();
+        if (sel != null) {
+            employees.remove(sel);
+            refreshMatrix();
+        }
+    }
+
+    @FXML
+    private void onSave() {
+        XlsxStorage.saveAndExport(new ArrayList<>(employees), "employees.xlsx");
+        new Alert(Alert.AlertType.INFORMATION, "Сохранено в employees.xlsx").showAndWait();
+    }
+
+    @FXML
+    private void onExportMatrix() {
+        XlsxStorage.exportMatrixToExisting(new ArrayList<>(employees), "employees.xlsx");
+        new Alert(Alert.AlertType.INFORMATION, "Матрица экспортирована в employees.xlsx").showAndWait();
+    }
+
+    public void saveOnExit() {
+        XlsxStorage.saveAndExport(new ArrayList<>(employees), "employees.xlsx");
+    }
+
+    private void showError(String msg) {
+        new Alert(Alert.AlertType.WARNING, msg).showAndWait();
+    }
+}
+```
+
+---
+
+8. main.fxml
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<BorderPane xmlns="http://javafx.com/javafx"
+            xmlns:fx="http://javafx.com/fxml"
+            fx:controller="com.example.ninebox.controller.MainController"
+            prefWidth="1000" prefHeight="780">
+
+    <top>
+        <HBox spacing="10" alignment="CENTER_LEFT">
+            <padding><Insets top="10" right="10" bottom="10" left="10"/></padding>
+            <TextField fx:id="nameField" promptText="Имя"/>
+            <TextField fx:id="potentialField" promptText="Потенциал (1-10)" prefWidth="130"/>
+            <TextField fx:id="performanceField" promptText="Результат (1-10)" prefWidth="130"/>
+            <Button text="Добавить" onAction="#onAdd"/>
+            <Button text="Удалить" onAction="#onDelete"/>
+            <Button text="Сохранить" onAction="#onSave"/>
+            <Button text="Экспорт матрицы" onAction="#onExportMatrix"/>
+        </HBox>
+    </top>
+
+    <center>
+        <SplitPane dividerPositions="0.6" orientation="VERTICAL">
+            <SplitPane dividerPositions="0.62">
+                <GridPane fx:id="matrixGrid" hgap="5" vgap="5">
+                    <padding><Insets top="10" right="10" bottom="10" left="10"/></padding>
+                </GridPane>
+
+                <TableView fx:id="employeeTable">
+                    <columns>
+                        <TableColumn fx:id="nameCol" text="Имя" prefWidth="110"/>
+                        <TableColumn fx:id="potCol" text="Потенциал" prefWidth="70"/>
+                        <TableColumn fx:id="perfCol" text="Результат" prefWidth="70"/>
+                        <TableColumn fx:id="boxCol" text="Квадрат" prefWidth="150"/>
+                    </columns>
+                </TableView>
+            </SplitPane>
+
+            <VBox spacing="6">
+                <padding><Insets top="10" right="10" bottom="10" left="10"/></padding>
+                <Label fx:id="infoTitle" style="-fx-font-weight: bold; -fx-font-size: 14px;"/>
+                <Label fx:id="infoWho" wrapText="true"/>
+                <Label fx:id="infoRisks" wrapText="true" style="-fx-text-fill: #a00;"/>
+                <Label fx:id="infoActions" wrapText="true" style="-fx-text-fill: #060;"/>
+            </VBox>
+        </SplitPane>
+    </center>
+</BorderPane>
+```
+
+---
+
+Как запустить
+
+Через Maven (из корня проекта):
+
+```bash
+mvn clean javafx:run
+```
+
+В IntelliJ IDEA:
+
+1. Откройте pom.xml как проект.
+2. Установите JDK 21.
+3. Maven → Lifecycle → javafx:run.
+4. Для Scene Builder: Settings → Languages & Frameworks → JavaFX → путь к SceneBuilder.exe.
+
+---
+
+Что проверить при первом запуске
+
+Действие Ожидаемый результат
+Ввод «Иванов, 9, 9» → «Добавить» Карточка в правом верхнем углу (Звезда, зелёная)
+Клик по ячейке «Звезда» Внизу появляется описание: кто это, риски, что делать
+Перетаскивание карточки в «Зона риска» Баллы становятся 2/2, карточка в красной ячейке
+«Сохранить» Создаётся employees.xlsx с двумя листами и блоком критериев
+Закрытие окна Автосохранение
+Повторный запуск Данные подгружаются из XLSX
+
+---
+
+Возможные проблемы и решения
+
+Проблема Решение
+java.lang.IllegalAccessError при запуске Запускайте через mvn javafx:run, а не java -jar
+NullPointerException в initialize Проверьте, что все fx:id в FXML совпадают с полями контроллера
+Кириллица в XLSX «кракозябрами» Файл сохраняется в UTF-8; откройте в Excel → Данные → Из текста, кодировка UTF-8
+Карточки не помещаются в ячейку Увеличьте prefHeight окна или уменьшите шрифт карточек
+
+---
+
+Если что-то не запустится — пришлите текст ошибки, разберём. Когда попробуете, могу добавить FileChooser для выбора пути, прокрутку в ячейках или готовый employees.xlsx с 16 демо-сотрудниками.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import imaplib
 import email
 from email.header import decode_header
