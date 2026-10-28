@@ -588,6 +588,888 @@ function renderEditForm(){
     <div class="row" style="margin-bottom:6px"><b>Ось Потенциала (Раздел 2)</b></div>
     <div class="row" style="margin-bottom:10px">
       ${[3,4,5].map(i=>`<label title="${POT_NAMES[i-3]}">${POT_NAMES[i-3]}: <input type="number" min="1" max="3" step="1" data-param="${i}" value="${emp.p[i]===''?'':emp.p[i]}"></label>`).join('')}
+    </div>
+
+    <div class="form-group">
+      <label>Управленческий портрет (генерируется автоматически):</label>
+      <textarea id="editPortrait" class="portrait" readonly>${escapeHtml(generatePortrait(emp))}</textarea>
+    </div>
+
+    <div class="form-group">
+      <label>Управленческое решение:</label>
+      <input type="text" id="editDecision" class="decision" value="${escapeHtml(emp.decision || '')}">
+    </div>
+
+    <div class="means" id="meansBox"></div>
+  `;
+  updateMeans();
+
+  box.querySelectorAll('input[type=number]').forEach(inp => {
+    inp.addEventListener('input', () => {
+      const v = toNum(inp.value);
+      emp.p[+inp.dataset.param] = v;
+      if (v !== '') inp.value = v;
+      
+      $('#editPortrait').value = generatePortrait(emp);
+      
+      updateMeans(); renderTable(); renderGrid();
+      const rows = document.querySelectorAll('#empTable tbody tr');
+      rows.forEach((tr,i)=>tr.classList.toggle('selected', i===state.selectedIndex));
+    });
+  });
+
+  $('#editFio').addEventListener('input', e => {
+    emp.fio = e.target.value;
+    renderTable(); renderGrid();
+    document.querySelectorAll('#empTable tbody tr')
+      .forEach((tr,i)=>tr.classList.toggle('selected', i===state.selectedIndex));
+  });
+  $('#editPos').addEventListener('input', e => {
+    emp.position = e.target.value;
+    renderTable();
+  });
+  $('#editDecision').addEventListener('input', e => {
+    emp.decision = e.target.value;
+    renderTable();
+  });
+
+  function updateMeans(){
+    const m1 = avg3(emp.p[0],emp.p[1],emp.p[2]);
+    const m2 = avg3(emp.p[3],emp.p[4],emp.p[5]);
+    const info = (m1 && m2) ? squareInfo(m1, m2) : null;
+    $('#meansBox').innerHTML = `Средняя по разделу 1: <b>${m1||'—'}</b> &nbsp;|&nbsp;
+      Средняя по разделу 2: <b>${m2||'—'}</b> &nbsp;|&nbsp;
+      Квадрат: ${info ? `<span class="badge ${info.color}">${info.title}</span>` : '—'}`;
+  }
+}
+
+/* ======================= ДОБАВЛЕНИЕ СОТРУДНИКА ======================= */
+$('#btnAdd').addEventListener('click', () => {
+  if (!state.currentDept) return;
+  const fio = prompt('ФИО нового сотрудника:');
+  if (!fio) return;
+  
+  const newEmp = {
+    fio: fio.trim(),
+    position: '',
+    portrait: '',
+    decision: '',
+    p: ['','','','','',''],
+    isNew: true,
+    isDeleted: false,
+    fioCell: null, posCell: null, portraitCell: null, decisionCell: null,
+    paramCells: [null,null,null,null,null,null],
+  };
+  
+  state.employees[state.currentDept].push(newEmp);
+  // Выделяем нового (он теперь последний в отфильтрованном списке)
+  const activeList = state.employees[state.currentDept].filter(e => !e.isDeleted);
+  state.selectedIndex = activeList.length - 1;
+  
+  renderTable(); renderGrid(); renderEditForm();
+});
+
+/* ======================= СОХРАНЕНИЕ ======================= */
+$('#btnSave').addEventListener('click', async () => {
+  if (!state.workbook) return;
+  let updated = 0, added = 0, deleted = 0;
+
+  ['отдел1','отдел2','отдел3'].forEach(dept => {
+    const realName = findSheet(state.workbook, dept);
+    if (!realName) return;
+    
+    const ws = state.workbook.Sheets[realName];
+    const list = state.employees[dept];
+
+    list.forEach(emp => {
+      // Обработка удаленных
+      if (emp.isDeleted) {
+         clearCell(ws, emp.fioCell);
+         clearCell(ws, emp.posCell);
+         clearCell(ws, emp.portraitCell);
+         clearCell(ws, emp.decisionCell);
+         emp.paramCells.forEach(addr => clearCell(ws, addr));
+         clearCell(ws, XLSX.utils.encode_cell({ r: emp.row, c: COL_AVG_PERF }));
+         clearCell(ws, XLSX.utils.encode_cell({ r: emp.row, c: COL_AVG_POT }));
+         clearCell(ws, XLSX.utils.encode_cell({ r: emp.row, c: COL_SQUARE }));
+         deleted++;
+         return;
+      }
+      
+      // Обработка новых
+      if (emp.isNew) return; // новых добавим отдельно
+
+      // Обработка существующих
+      emp.portrait = generatePortrait(emp);
+      const m1 = avg3(emp.p[0], emp.p[1], emp.p[2]);
+      const m2 = avg3(emp.p[3], emp.p[4], emp.p[5]);
+      const info = squareInfo(m1, m2);
+
+      writeCell(ws, emp.fioCell, emp.fio);
+      writeCell(ws, emp.posCell, emp.position);
+      writeCell(ws, emp.portraitCell, emp.portrait);
+      writeCell(ws, emp.decisionCell, emp.decision);
+      
+      for (let i=0; i<6; i++){
+        writeCell(ws, emp.paramCells[i], emp.p[i] === '' ? '' : Number(emp.p[i]));
+      }
+
+      writeCell(ws, XLSX.utils.encode_cell({ r: emp.row, c: COL_AVG_PERF }), m1 || '');
+      writeCell(ws, XLSX.utils.encode_cell({ r: emp.row, c: COL_AVG_POT }), m2 || '');
+      writeCell(ws, XLSX.utils.encode_cell({ r: emp.row, c: COL_SQUARE }), info.title);
+
+      updated++;
+    });
+
+    // Добавление новых
+    const newOnes = list.filter(e => e.isNew && !e.isDeleted);
+    if (newOnes.length) {
+      let range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
+      let lastRow = 4;
+      for (let r = range.e.r; r >= 4; r--) {
+        const addr = XLSX.utils.encode_cell({ r, c: COL_FIO });
+        const cell = ws[addr];
+        if (cell && String(cell.v||'').trim() !== '') {
+          lastRow = r;
+          break;
+        }
+      }
+
+      newOnes.forEach((emp, k) => {
+        const row = lastRow + 1 + k;
+        const fioAddr = XLSX.utils.encode_cell({ r: row, c: COL_FIO });
+        const posAddr = XLSX.utils.encode_cell({ r: row, c: COL_POS });
+        const portAddr = XLSX.utils.encode_cell({ r: row, c: COL_PORTRAIT });
+        const decAddr = XLSX.utils.encode_cell({ r: row, c: COL_DECISION });
+        
+        emp.portrait = generatePortrait(emp);
+        const m1 = avg3(emp.p[0], emp.p[1], emp.p[2]);
+        const m2 = avg3(emp.p[3], emp.p[4], emp.p[5]);
+        const info = squareInfo(m1, m2);
+        
+        writeCell(ws, fioAddr, emp.fio);
+        writeCell(ws, posAddr, emp.position);
+        writeCell(ws, portAddr, emp.portrait);
+        writeCell(ws, decAddr, emp.decision);
+        emp.fioCell = fioAddr;
+        emp.posCell = posAddr;
+        emp.portraitCell = portAddr;
+        emp.decisionCell = decAddr;
+
+        const addresses = [];
+        COLS_PERF.forEach((c, i) => {
+          const addr = XLSX.utils.encode_cell({ r: row, c });
+          writeCell(ws, addr, emp.p[i] === '' ? '' : Number(emp.p[i]));
+          addresses.push(addr);
+        });
+        COLS_POT.forEach((c, i) => {
+          const addr = XLSX.utils.encode_cell({ r: row, c });
+          writeCell(ws, addr, emp.p[i+3] === '' ? '' : Number(emp.p[i+3]));
+          addresses.push(addr);
+        });
+        emp.paramCells = addresses;
+
+        writeCell(ws, XLSX.utils.encode_cell({ r: row, c: COL_AVG_PERF }), m1 || '');
+        writeCell(ws, XLSX.utils.encode_cell({ r: row, c: COL_AVG_POT }), m2 || '');
+        writeCell(ws, XLSX.utils.encode_cell({ r: row, c: COL_SQUARE }), info.title);
+
+        emp.isNew = false;
+        emp.row = row;
+        added++;
+      });
+
+      range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
+      const maxRow = lastRow + newOnes.length;
+      if (range.e.r < maxRow) {
+        range.e.r = maxRow;
+        ws['!ref'] = XLSX.utils.encode_range(range);
+      }
+    }
+  });
+
+  // Удаляем помеченных из памяти
+  ['отдел1','отдел2','отдел3'].forEach(dept => {
+    state.employees[dept] = state.employees[dept].filter(e => !e.isDeleted);
+  });
+
+  // Формируем бинарные данные
+  const wbout = XLSX.write(state.workbook, { bookType:'xlsx', type:'array' });
+
+  // Пытаемся перезаписать текущий файл через File System Access API (Chrome/Edge)
+  if (window.showSaveFilePicker) {
+    try {
+      if (!state.fileHandle) {
+        // Первый раз просим пользователя выбрать файл для перезаписи
+        state.fileHandle = await window.showSaveFilePicker({
+          suggestedName: state.fileName,
+          types: [{
+            description: 'Excel Files',
+            accept: {'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx']}
+          }]
+        });
+      }
+      
+      const writable = await state.fileHandle.createWritable();
+      await writable.write(wbout);
+      await writable.close();
+      
+      setStatus(`✅ Файл перезаписан на диске. Обновлено: ${updated}, добавлено: ${added}, удалено: ${deleted}.`);
+      renderTable(); renderGrid(); renderEditForm();
+      return;
+    } catch (err) {
+      // Пользователь отменил выбор или ошибка — падаем в обычное скачивание
+      console.log('File System API error:', err);
+      if (err.name === 'AbortError') {
+        setStatus('Сохранение отменено пользователем.', true);
+        return;
+      }
+    }
+  }
+
+  // Фолбэк: обычное скачивание
+  const blob = new Blob([wbout], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = state.fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  setStatus(`Скачано: ${state.fileName}. Обновлено: ${updated}, добавлено: ${added}, удалено: ${deleted}.`);
+  renderTable(); renderGrid(); renderEditForm();
+});
+
+function writeCell(ws, addr, value){
+  if (!addr) return;
+  if (value === '' || value === null || value === undefined){
+    if (ws[addr]) { ws[addr].v = ''; ws[addr].t = 's'; }
+    else { ws[addr] = { t:'s', v:'' }; }
+  } else {
+    if (ws[addr]) { ws[addr].v = value; ws[addr].t = typeof value === 'number' ? 'n' : 's'; }
+    else { ws[addr] = { t: typeof value === 'number' ? 'n' : 's', v: value }; }
+  }
+}
+
+function clearCell(ws, addr) {
+  if (!addr) return;
+  if (ws[addr]) { ws[addr].v = ''; ws[addr].t = 's'; }
+}
+</script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Оценка сотрудников — 9-box grid</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  :root { --border:#d0d5dd; --accent:#2563eb; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, Segoe UI, Arial, sans-serif; margin:0; padding:20px; background:#f5f6f8; color:#222; }
+  h1 { font-size:20px; margin:0 0 12px; }
+  .panel { background:#fff; border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:14px; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+  button { padding:8px 14px; border:1px solid var(--border); background:#fff; border-radius:8px; cursor:pointer; font-size:14px; }
+  button:hover { border-color:var(--accent); color:var(--accent); }
+  button.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+  button.primary { background:#2563eb; color:#fff; border-color:#2563eb; }
+  button:disabled { opacity:.5; cursor:default; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { border:1px solid var(--border); padding:6px 8px; text-align:center; font-size:14px; }
+  th { background:#f0f2f5; }
+  td.name { text-align:left; font-weight:600; cursor:pointer; }
+  td.name:hover { background:#eef4ff; }
+  tr.selected td { background:#e0ecff; }
+  input[type=number] { width:56px; padding:4px; text-align:center; border:1px solid var(--border); border-radius:6px; }
+  input[type=text].fio { width:200px; padding:6px; border:1px solid var(--border); border-radius:6px; }
+  input[type=text].pos { width:200px; padding:6px; border:1px solid var(--border); border-radius:6px; }
+  input[type=text].decision { width:100%; padding:6px; border:1px solid var(--border); border-radius:6px; margin-top:4px; }
+  textarea.portrait { width:100%; padding:6px; border:1px solid var(--border); border-radius:6px; min-height:60px; resize:vertical; font-family:inherit; font-size:13px;}
+  
+  .grid-wrap { display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; max-width:460px; }
+  .cell { position: relative; border:1px solid var(--border); border-radius:10px; padding:10px; min-height:110px; }
+  .cell h4 { margin:0 0 2px; font-size:12px; color:#475467; font-weight:600; text-transform:uppercase; letter-spacing:.3px; }
+  .cell .sq-title { font-size:14px; font-weight:700; color:#1f2937; margin:2px 0 6px; }
+  .cell ul { margin:0; padding-left:16px; font-size:12px; }
+  .cell.hl { outline:3px solid var(--accent); outline-offset:-3px; }
+  
+  .cell.green { background:#d9f2d9; border-color:#86c986; }
+  .cell.yellow{ background:#fff4cc; border-color:#e6c94a; }
+  .cell.red   { background:#fde2e1; border-color:#e58b88; }
+
+  .legend { display:flex; gap:16px; flex-wrap:wrap; margin-top:12px; font-size:13px; color:#333; width:100%; }
+  .legend .item { display:flex; align-items:center; gap:6px; }
+  .legend .swatch { width:16px; height:16px; border-radius:4px; border:1px solid #bbb; }
+  .legend .swatch.green{ background:#d9f2d9; border-color:#86c986; }
+  .legend .swatch.yellow{ background:#fff4cc; border-color:#e6c94a; }
+  .legend .swatch.red{ background:#fde2e1; border-color:#e58b88; }
+
+  .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; font-weight:600; }
+  .badge.green { background:#d9f2d9; color:#166534; }
+  .badge.yellow{ background:#fff4cc; color:#92400e; }
+  .badge.red   { background:#fde2e1; color:#991b1b; }
+  .badge.gray  { background:#f3f4f6; color:#4b5563; }
+
+  .hint { color:#666; font-size:13px; }
+  .status { font-size:13px; color:#166534; }
+  .del { color:#b91c1c; cursor:pointer; font-size:12px; }
+  .means { font-size:14px; margin:6px 0; }
+  .form-group { margin-bottom: 12px; }
+  .form-group label { display:block; font-weight:600; margin-bottom:4px; font-size:13px; color:#475467; }
+  .debug { background:#f8f9fa; border:1px solid #ddd; padding:8px; font-size:12px; font-family:monospace; color:#333; max-height:150px; overflow:auto; margin-top:8px; display:none; white-space:pre-wrap; }
+</style>
+</head>
+<body>
+
+<h1>Оценка сотрудников — 9-box grid</h1>
+
+<div class="panel">
+  <div class="row">
+    <input type="file" id="fileInput" accept=".xlsx,.xls">
+    <button id="btnSave" class="primary" disabled>💾 Сохранить</button>
+    <button id="btnAdd" disabled>➕ Добавить сотрудника</button>
+    <button id="btnDebug" style="font-size:12px;">🐞 Диагностика</button>
+    <span id="status" class="status"></span>
+  </div>
+  <div id="debugBox" class="debug"></div>
+  <p class="hint" style="margin-top:8px;">
+    * В Chrome/Edge при первом сохранении выберите ваш файл — далее он будет перезаписываться без создания копий.
+  </p>
+</div>
+
+<div class="panel">
+  <div class="row" id="deptButtons">
+    <button data-dept="отдел1" disabled>Отдел 1</button>
+    <button data-dept="отдел2" disabled>Отдел 2</button>
+    <button data-dept="отдел3" disabled>Отдел 3</button>
+  </div>
+</div>
+
+<div class="panel">
+  <h3 style="margin-top:0">Сотрудники отдела</h3>
+  <div style="overflow-x:auto;">
+    <table id="empTable">
+      <thead>
+        <tr>
+          <th>ФИО</th><th>Должность</th><th id="th_p1">Р1</th><th id="th_p2">Р2</th><th id="th_p3">Р3</th>
+          <th id="th_p4">П1</th><th id="th_p5">П2</th><th id="th_p6">П3</th>
+          <th>Ср. Эфф.</th><th>Ср. Пот.</th><th>Квадрат</th><th>Портрет</th><th>Решение</th><th></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="panel">
+  <h3 style="margin-top:0">Карта 9 квадратов (текущий отдел)</h3>
+  <div class="grid-wrap" id="grid9"></div>
+</div>
+
+<div class="panel">
+  <h3 style="margin-top:0">Редактирование сотрудника</h3>
+  <div id="editForm" class="hint">Выберите сотрудника в таблице.</div>
+</div>
+
+<script>
+/* ======================= КОНСТАНТЫ ======================= */
+let COL_FIO = 1;
+let COL_POS = 2;
+let COLS_PERF = [3,4,5];
+let COLS_POT  = [7,8,9];
+let COL_PORTRAIT = 12;
+let COL_DECISION = 13;
+
+const COL_AVG_PERF = 6;
+const COL_AVG_POT  = 10;
+const COL_SQUARE   = 11;
+
+let SQUARE_NAMES = {
+  1: '1. Якорь', 2: '2. Пассажир', 3: '3. Звезда',
+  4: '4. Проблемный', 5: '5. Стабильный', 6: '6. Результативный',
+  7: '7. Аутсайдер', 8: '8. Исполнитель', 9: '9. Профессионал'
+};
+let PERF_NAMES = ['Дедлайн ЗОД', 'Качество операц. контроля', 'Дисциплина'];
+let POT_NAMES = ['Оптимизация процессов', 'Наставничество', 'Стрессоустойчивость'];
+
+let PORTRAIT_TEMPLATES = {
+  1: 'Лидер. Максимальная эффективность и высокий потенциал. Готов к повышению.',
+  2: 'Исполнитель с потенциалом. Показывает результат, но нужно развивать инициативность.',
+  3: 'Перспективный сотрудник. Высокий потенциал, но пока не дотягивает до нужных результатов.',
+  4: 'Проблемная зона. Низкая эффективность при среднем потенциале. Требуется контроль.',
+  5: 'Стабильный сотрудник. Надежно выполняет работу, но не стремится к росту.',
+  6: 'Результативный. Отлично справляется с задачами, но потенциал ограничен.',
+  7: 'Зона риска. Высокий потенциал, но крайне низкие результаты.',
+  8: 'Аутсайдер. Низкие показатели по обоим направлениям.',
+  9: 'Специалист. Высокие результаты, но низкий потенциал (достиг потолка).'
+};
+
+function squareInfoForLevels(x, y){
+  const map = {
+    high: { low:['yellow', 7], mid:['green', 3], high:['green', 1] },
+    mid:  { low:['red',    4], mid:['yellow',5], high:['green', 6] },
+    low:  { low:['red',    8], mid:['red',   2], high:['yellow',9] }
+  };
+  const [color, num] = map[y][x];
+  return { color, num, title: SQUARE_NAMES[num] || `Квадрат ${num}` };
+}
+
+function squareInfo(m1, m2){
+  if (!m1 || !m2) return { title: '—', color: 'gray', num: 0 };
+  const lvl = v => v < 1.67 ? 'low' : (v < 2.34 ? 'mid' : 'high');
+  return squareInfoForLevels(lvl(m1), lvl(m2));
+}
+
+function generatePortrait(emp) {
+  const m1 = avg3(emp.p[0],emp.p[1],emp.p[2]);
+  const m2 = avg3(emp.p[3],emp.p[4],emp.p[5]);
+  if (!m1 || !m2) return 'Оценки не выставлены.';
+  
+  const info = squareInfo(m1, m2);
+  const base = PORTRAIT_TEMPLATES[info.num] || `Квадрат: ${info.title}.`;
+  
+  const strengths = [];
+  const weaknesses = [];
+  
+  for (let i=0; i<6; i++) {
+    const val = Number(emp.p[i]);
+    const name = i < 3 ? PERF_NAMES[i] : POT_NAMES[i-3];
+    if (val === 3) strengths.push(name);
+    if (val === 1) weaknesses.push(name);
+  }
+  
+  let text = base;
+  if (strengths.length > 0) text += ` Сильные стороны: ${strengths.join(', ')}.`;
+  if (weaknesses.length > 0) text += ` Зоны развития: ${weaknesses.join(', ')}.`;
+  return text;
+}
+
+/* ======================= СОСТОЯНИЕ ======================= */
+const state = {
+  workbook: null,
+  fileName: 'employees.xlsx',
+  fileHandle: null, // Для File System Access API
+  currentDept: null,
+  employees: { 'отдел1': [], 'отдел2': [], 'отдел3': [] },
+  selectedIndex: null,
+};
+
+const $ = sel => document.querySelector(sel);
+const avg3 = (a,b,c)=> +(((a||0)+(b||0)+(c||0))/3).toFixed(2);
+
+function toNum(v){
+  if (v === '' || v === null || v === undefined) return '';
+  const n = Number(String(v).replace(',', '.'));
+  if (isNaN(n)) return '';
+  return Math.min(3, Math.max(1, Math.round(n)));
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function setStatus(msg, warn){
+  const el = $('#status');
+  el.textContent = msg;
+  el.style.color = warn ? '#92400e' : '#166534';
+  setTimeout(()=>{ if (el.textContent === msg) el.textContent=''; }, 6000);
+}
+function logDebug(msg) {
+  const box = $('#debugBox');
+  box.style.display = 'block';
+  box.textContent += msg + '\n';
+}
+
+function findSheet(wb, name) {
+  const target = name.toLowerCase().replace(/[\s_\-]/g,'');
+  for (const sn of wb.SheetNames) {
+    if (sn.toLowerCase().replace(/[\s_\-]/g,'') === target) return sn;
+  }
+  for (const sn of wb.SheetNames) {
+    if (sn.toLowerCase().includes(target)) return sn;
+  }
+  return null;
+}
+
+/* ======================= ДИАГНОСТИКА ======================= */
+$('#btnDebug').addEventListener('click', () => {
+  const box = $('#debugBox');
+  if (box.style.display === 'block') { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  box.textContent = '--- ДИАГНОСТИКА ---\n';
+  if (!state.workbook) { logDebug('Файл не загружен.'); return; }
+  logDebug('Листы в файле: ' + state.workbook.SheetNames.map(s=>`"${s}"`).join(', '));
+  ['отдел1','отдел2','отдел3','справочник'].forEach(dept => {
+    const found = findSheet(state.workbook, dept);
+    if (found) {
+      logDebug(`[${dept}] -> найден лист "${found}"`);
+      if (dept !== 'справочник') {
+        const rows = state.employees[dept].length;
+        logDebug(`  Прочитано сотрудников: ${rows}`);
+      }
+    } else {
+      logDebug(`[${dept}] -> ЛИСТ НЕ НАЙДЕН`);
+    }
+  });
+});
+
+/* ======================= ЧТЕНИЕ ФАЙЛА ======================= */
+$('#fileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  state.fileName = file.name;
+  state.fileHandle = null; // Сбрасываем старый доступ
+  $('#debugBox').textContent = '';
+
+  try {
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data, { type:'array', cellStyles:true, cellDates:true });
+    state.workbook = wb;
+    logDebug('Файл загружен: ' + file.name);
+    logDebug('Листы: ' + wb.SheetNames.join(', '));
+
+    readReferenceSheet(wb);
+    autoDetectColumns(wb);
+
+    ['отдел1','отдел2','отдел3'].forEach(dept => {
+      state.employees[dept] = readDeptSheet(wb, dept);
+    });
+
+    document.querySelectorAll('#deptButtons button').forEach(b => b.disabled = false);
+    $('#btnSave').disabled = false;
+    $('#btnAdd').disabled = false;
+
+    const total = state.employees['отдел1'].length + state.employees['отдел2'].length + state.employees['отдел3'].length;
+    if (total === 0) {
+      setStatus('Сотрудники не найдены. Откройте 🐞 Диагностику.', true);
+    } else {
+      setStatus(`Файл загружен. Всего сотрудников: ${total}.`);
+    }
+    selectDept('отдел1');
+  } catch (err) {
+    setStatus('Ошибка чтения файла: ' + err.message, true);
+    logDebug('ОШИБКА: ' + err.stack);
+  }
+});
+
+function autoDetectColumns(wb) {
+  const sheetName = findSheet(wb, 'отдел1') || findSheet(wb, 'отдел2') || findSheet(wb, 'отдел3');
+  if (!sheetName) return;
+  const ws = wb.Sheets[sheetName];
+  const aoa = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+  
+  let headerRow = -1;
+  for (let r = 0; r < Math.min(10, aoa.length); r++) {
+    const row = aoa[r] || [];
+    const rowText = row.map(c => String(c).toLowerCase()).join(' ');
+    if (rowText.includes('фио') && (rowText.includes('эффектив') || rowText.includes('потенциал'))) {
+      headerRow = r;
+      break;
+    }
+  }
+  if (headerRow === -1) return;
+  
+  const headerCells = aoa[headerRow] || [];
+  const subHeaderCells = aoa[headerRow + 1] || [];
+  
+  let fioCol = -1, posCol = -1, portraitCol = -1, decisionCol = -1;
+  
+  for (let c = 0; c < headerCells.length; c++) {
+    const text = (String(headerCells[c] || '') + ' ' + String(subHeaderCells[c] || '')).toLowerCase();
+    if (text.includes('фио')) fioCol = c;
+    else if (text.includes('должност')) posCol = c;
+    else if (text.includes('управленческий портрет')) portraitCol = c;
+    else if (text.includes('управленческое решение')) decisionCol = c;
+  }
+  
+  if (fioCol >= 0) COL_FIO = fioCol;
+  if (posCol >= 0) COL_POS = posCol;
+  if (portraitCol >= 0) COL_PORTRAIT = portraitCol;
+  if (decisionCol >= 0) COL_DECISION = decisionCol;
+  
+  if (COL_FIO >= 0) {
+    COLS_PERF = [COL_FIO + 2, COL_FIO + 3, COL_FIO + 4];
+    for (let c = 0; c < headerCells.length; c++) {
+      const t = String(headerCells[c] || '').toLowerCase();
+      if (t.includes('ср. балл') && t.includes('эффектив')) {
+        COLS_POT = [c + 1, c + 2, c + 3];
+        break;
+      }
+    }
+  }
+}
+
+function readReferenceSheet(wb) {
+  const sheetName = findSheet(wb, 'справочник');
+  if (!sheetName) return;
+  
+  const ws = wb.Sheets[sheetName];
+  const aoa = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+  
+  let perfParams = [], potParams = [], currentMode = '';
+
+  for (let r = 0; r < aoa.length; r++) {
+    const row = aoa[r];
+    const col0 = String(row[0] || '').trim();
+    
+    if (col0.includes('Ось Эффективности')) { currentMode = 'perf'; continue; }
+    if (col0.includes('Ось Потенциала')) { currentMode = 'pot'; continue; }
+
+    if (currentMode === 'perf' && col0 && col0 !== 'Показатель') perfParams.push(col0);
+    if (currentMode === 'pot' && col0 && col0 !== 'Показатель') potParams.push(col0);
+  }
+
+  if (perfParams.length >= 3) PERF_NAMES = perfParams.slice(0, 3);
+  if (potParams.length >= 3) POT_NAMES = potParams.slice(0, 3);
+  
+  setTimeout(() => {
+    $('#th_p1').textContent = PERF_NAMES[0];
+    $('#th_p2').textContent = PERF_NAMES[1];
+    $('#th_p3').textContent = PERF_NAMES[2];
+    $('#th_p4').textContent = POT_NAMES[0];
+    $('#th_p5').textContent = POT_NAMES[1];
+    $('#th_p6').textContent = POT_NAMES[2];
+  }, 50);
+}
+
+function readDeptSheet(wb, sheetName){
+  const realName = findSheet(wb, sheetName);
+  if (!realName) return [];
+  
+  const ws = wb.Sheets[realName];
+  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
+  const list = [];
+
+  let startRow = -1;
+  for (let r = 0; r <= Math.min(20, range.e.r); r++) {
+    const fioAddr = XLSX.utils.encode_cell({ r, c: COL_FIO });
+    const fioCell = ws[fioAddr];
+    const fio = fioCell ? String(fioCell.v).trim() : '';
+    if (!fio || fio.toLowerCase() === 'фио' || fio.toLowerCase().includes('сотрудник')) continue;
+    
+    const perfAddr = XLSX.utils.encode_cell({ r, c: COLS_PERF[0] });
+    const perfCell = ws[perfAddr];
+    const perfVal = perfCell ? perfCell.v : '';
+    if (perfVal !== '' && perfVal !== null && !isNaN(Number(perfVal))) {
+      startRow = r;
+      break;
+    }
+  }
+  
+  if (startRow === -1) return [];
+  
+  for (let r = startRow; r <= range.e.r; r++) {
+    const fioAddr = XLSX.utils.encode_cell({ r, c: COL_FIO });
+    const fioCell = ws[fioAddr];
+    const fio = fioCell ? String(fioCell.v).trim() : '';
+    if (!fio) continue;
+
+    const posAddr = XLSX.utils.encode_cell({ r, c: COL_POS });
+    const posCell = ws[posAddr];
+    const position = posCell ? String(posCell.v).trim() : '';
+
+    const portraitAddr = XLSX.utils.encode_cell({ r, c: COL_PORTRAIT });
+    const portraitCell = ws[portraitAddr];
+    const portrait = portraitCell ? String(portraitCell.v).trim() : '';
+
+    const decisionAddr = XLSX.utils.encode_cell({ r, c: COL_DECISION });
+    const decisionCell = ws[decisionAddr];
+    const decision = decisionCell ? String(decisionCell.v).trim() : '';
+
+    const p = [];
+    COLS_PERF.forEach(c => {
+      const addr = XLSX.utils.encode_cell({ r, c });
+      p.push(ws[addr] ? toNum(ws[addr].v) : '');
+    });
+    COLS_POT.forEach(c => {
+      const addr = XLSX.utils.encode_cell({ r, c });
+      p.push(ws[addr] ? toNum(ws[addr].v) : '');
+    });
+
+    const paramCells = [
+      ...COLS_PERF.map(c => XLSX.utils.encode_cell({ r, c })),
+      ...COLS_POT.map(c => XLSX.utils.encode_cell({ r, c }))
+    ];
+
+    list.push({
+      fio, position, portrait, decision, p,
+      fioCell: fioAddr, posCell: posAddr,
+      portraitCell: portraitAddr, decisionCell: decisionAddr,
+      paramCells, isNew: false, isDeleted: false, row: r
+    });
+  }
+
+  return list;
+}
+
+/* ======================= НАВИГАЦИЯ ======================= */
+document.querySelectorAll('#deptButtons button').forEach(btn => {
+  btn.addEventListener('click', () => selectDept(btn.dataset.dept));
+});
+function selectDept(dept){
+  state.currentDept = dept;
+  state.selectedIndex = null;
+  document.querySelectorAll('#deptButtons button').forEach(b =>
+    b.classList.toggle('active', b.dataset.dept === dept));
+  renderTable(); renderGrid(); renderEditForm();
+}
+
+/* ======================= ТАБЛИЦА ======================= */
+function renderTable(){
+  const tbody = $('#empTable tbody');
+  tbody.innerHTML = '';
+  const dept = state.currentDept;
+  if (!dept) return;
+  
+  // Отфильтровываем удаленных для отображения
+  const list = state.employees[dept].filter(e => !e.isDeleted);
+
+  list.forEach((emp, idx) => {
+    const p = emp.p;
+    const m1 = avg3(p[0],p[1],p[2]);
+    const m2 = avg3(p[3],p[4],p[5]);
+    const info = squareInfo(m1, m2);
+    
+    const portraitText = generatePortrait(emp);
+    emp.portrait = portraitText;
+
+    const tr = document.createElement('tr');
+    if (idx === state.selectedIndex) tr.classList.add('selected');
+    tr.innerHTML = `
+      <td class="name">${escapeHtml(emp.fio)}</td>
+      <td>${escapeHtml(emp.position)}</td>
+      ${p.map(v=>`<td>${v===''?'':v}</td>`).join('')}
+      <td>${m1||''}</td>
+      <td>${m2||''}</td>
+      <td><span class="badge ${info.color}">${info.title}</span></td>
+      <td style="max-width:200px;text-align:left;font-size:11px;">${escapeHtml(portraitText)}</td>
+      <td style="max-width:150px;text-align:left;font-size:11px;">${escapeHtml(emp.decision)}</td>
+      <td><span class="del" data-idx="${idx}">удалить</span></td>
+    `;
+    tr.querySelector('.name').addEventListener('click', () => {
+      state.selectedIndex = idx;
+      renderTable(); renderGrid(); renderEditForm();
+    });
+    tr.querySelector('.del').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!confirm(`Удалить сотрудника «${emp.fio}»?`)) return;
+      
+      // Находим этого сотрудника в оригинальном массиве и ставим флаг
+      const originalIdx = state.employees[dept].indexOf(emp);
+      if (originalIdx > -1) {
+        state.employees[dept][originalIdx].isDeleted = true;
+      }
+      
+      // Сбрасываем выделение
+      if (state.selectedIndex === idx) state.selectedIndex = null;
+      else if (state.selectedIndex > idx) state.selectedIndex--;
+      
+      renderTable(); renderGrid(); renderEditForm();
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+/* ======================= 9 КВАДРАТОВ ======================= */
+function renderGrid(){
+  const wrap = $('#grid9');
+  wrap.innerHTML = '';
+  const dept = state.currentDept;
+  if (!dept) return;
+  
+  const list = state.employees[dept].filter(e => !e.isDeleted);
+
+  const rows = ['high','mid','low'];
+  const cols = ['low','mid','high'];
+  const rowLabel = { high:'высокий', mid:'средний', low:'низкий' };
+  const colLabel = { low:'низкий', mid:'средний', high:'высокий' };
+  const lvl = v => v < 1.67 ? 'low' : (v < 2.34 ? 'mid' : 'high');
+
+  for (const y of rows){
+    for (const x of cols){
+      const info = squareInfoForLevels(x, y);
+      const cell = document.createElement('div');
+      cell.className = 'cell ' + info.color;
+
+      const members = list.filter(emp => {
+        const m1 = avg3(emp.p[0],emp.p[1],emp.p[2]);
+        const m2 = avg3(emp.p[3],emp.p[4],emp.p[5]);
+        if (!m1 || !m2) return false;
+        return lvl(m1) === x && lvl(m2) === y;
+      });
+
+      cell.innerHTML = `
+        <h4>Результат: ${colLabel[x]} / Потенциал: ${rowLabel[y]}</h4>
+        <div class="sq-title">${info.title}</div>
+        <ul>${members.map(m=>`<li>${escapeHtml(m.fio)}</li>`).join('')}</ul>
+      `;
+      if (list[state.selectedIndex] && members.includes(list[state.selectedIndex]))
+        cell.classList.add('hl');
+      wrap.appendChild(cell);
+    }
+  }
+
+  const legend = document.createElement('div');
+  legend.className = 'legend';
+  legend.innerHTML = `
+    <div class="item"><span class="swatch green"></span> Сильная зона — кадровый резерв</div>
+    <div class="item"><span class="swatch yellow"></span> Зона внимания / развития</div>
+    <div class="item"><span class="swatch red"></span> Зона риска — требует вмешательства</div>
+  `;
+  wrap.appendChild(legend);
+}
+
+/* ======================= ФОРМА РЕДАКТИРОВАНИЯ ======================= */
+function renderEditForm(){
+  const box = $('#editForm');
+  const dept = state.currentDept;
+  if (!dept) { box.innerHTML = '<span class="hint">Выберите отдел.</span>'; return; }
+  
+  const list = state.employees[dept].filter(e => !e.isDeleted);
+  
+  if (state.selectedIndex === null || !list[state.selectedIndex]){
+    box.innerHTML = '<span class="hint">Выберите сотрудника в таблице.</span>';
+    return;
+  }
+  const emp = list[state.selectedIndex];
+  
+  box.innerHTML = `
+    <div class="row" style="margin-bottom:10px">
+      <label>ФИО: <input id="editFio" class="fio" value="${escapeHtml(emp.fio)}"></label>
+      <label>Должность: <input id="editPos" class="pos" value="${escapeHtml(emp.position || '')}"></label>
+    </div>
+    
+    <div class="row" style="margin-bottom:6px"><b>Ось Эффективность (Раздел 1)</b></div>
+    <div class="row" style="margin-bottom:10px">
+      ${[0,1,2].map(i=>`<label title="${PERF_NAMES[i]}">${PERF_NAMES[i]}: <input type="number" min="1" max="3" step="1" data-param="${i}" value="${emp.p[i]===''?'':emp.p[i]}"></label>`).join('')}
+    </div>
+    
+    <div class="row" style="margin-bottom:6px"><b>Ось Потенциала (Раздел 2)</b></div>
+    <div class="row" style="margin-bottom:10px">
+      ${[3,4,5].map(i=>`<label title="${POT_NAMES[i-3]}">${POT_NAMES[i-3]}: <input type="number" min="1" max="3" step="1" data-param="${i}" value="${emp.p[i]===''?'':emp.p[i]}"></label>`).join('')}
 
 
 
