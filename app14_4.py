@@ -216,7 +216,64 @@ $('#btnAdd').addEventListener('click', () => {
 
 
 
+Понял! Чтобы заголовок менялся в зависимости от выбранной кнопки, нужно добавить небольшой скрипт.
 
+Точечное изменение в HTML
+
+Найдите в коде этот заголовок (он находится над картой 9 квадратов):
+
+```html
+<h3 style="margin-top:0; text-align:center;">Карта 9 квадратов (текущий отдел)</h3>
+```
+
+Замените его на:
+
+```html
+<h3 id="gridTitle" style="margin-top:0; text-align:center;">Карта 9 квадратов (текущий отдел)</h3>
+```
+
+Точечное изменение в JavaScript
+
+Найдите функцию selectDept и добавьте в неё обновление заголовка. Вот как должна выглядеть функция целиком после изменения:
+
+```javascript
+function selectDept(dept){
+  state.currentDept = dept;
+  state.selectedIndex = null;
+  
+  document.querySelectorAll('#deptButtons button').forEach(b =>
+    b.classList.toggle('active', b.dataset.dept === dept));
+  
+  // --- ИЗМЕНЕНИЕ НАЧАЛО ---
+  const titleEl = $('#gridTitle');
+  if (dept === 'Все') {
+    titleEl.textContent = 'Карта 9 квадратов (все отделы)';
+  } else if (dept === 'справочник') {
+    titleEl.textContent = 'Справочник'; // скроется вместе с deptView, но на всякий случай
+  } else {
+    titleEl.textContent = `Карта 9 квадратов (${dept})`;
+  }
+  // --- ИЗМЕНЕНИЕ КОНЕЦ ---
+  
+  if (dept === 'справочник') {
+    $('#deptView').style.display = 'none';
+    $('#refView').style.display = 'block';
+    renderReferenceView();
+  } else {
+    $('#deptView').style.display = 'block';
+    $('#refView').style.display = 'none';
+    renderTable(); renderGrid(); renderEditForm();
+  }
+}
+```
+
+Что получится
+
+· При нажатии на «Кредиты ФЛ» заголовок станет: «Карта 9 квадратов (Кредиты ФЛ)».
+· При нажатии на «Все сотрудники» заголовок станет: «Карта 9 квадратов (все отделы)».
+· При переключении обратно на отдел — снова название отдела.
+
+Это будет работать и при первой загрузке файла, так как selectDept(DEPTS[0]) вызывается автоматически, и заголовок сразу примет вид «Карта 9 квадратов (Кредиты ФЛ)».
 
 
 
