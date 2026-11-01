@@ -1,4 +1,237 @@
 
+Отличная идея. Чтобы добавить кнопку «Все сотрудники», которая объединяет списки из трех вкладок в один общий список, нужно внести точечные изменения в 4 места (без переписывания всего кода).
+
+1. Добавить кнопку в HTML
+
+Найдите блок с кнопками отделов:
+
+```html
+<div class="panel">
+  <div class="row" id="deptButtons">
+    <button data-dept="Кредиты ФЛ" disabled>Кредиты ФЛ</button>
+    <button data-dept="Кредиты ЮЛ" disabled>Кредиты ЮЛ</button>
+    <button data-dept="Транзакт" disabled>Транзакт</button>
+    <button data-dept="справочник" disabled>📖 Справочник</button>
+  </div>
+</div>
+```
+
+И добавьте туда новую кнопку Все сотрудники:
+
+```html
+<div class="panel">
+  <div class="row" id="deptButtons">
+    <button data-dept="Кредиты ФЛ" disabled>Кредиты ФЛ</button>
+    <button data-dept="Кредиты ЮЛ" disabled>Кредиты ЮЛ</button>
+    <button data-dept="Транзакт" disabled>Транзакт</button>
+    <button data-dept="Все" disabled>👥 Все сотрудники</button> <!-- НОВАЯ КНОПКА -->
+    <button data-dept="справочник" disabled>📖 Справочник</button>
+  </div>
+</div>
+```
+
+2. Обновить логику readDeptSheet (чтобы запоминать отдел)
+
+Чтобы при объединении списков мы знали, из какого отдела сотрудник, нужно добавить в объект сотрудника свойство dept.
+
+Найдите в функции readDeptSheet (около строки 450) блок list.push({ ... }) и добавьте туда dept: sheetName:
+
+```javascript
+    list.push({
+      fio, position, p,
+      dept: sheetName, // <-- ДОБАВИТЬ ЭТУ СТРОКУ
+      fioCell: XLSX.utils.encode_cell({ r, c: COL_FIO }),
+      posCell: XLSX.utils.encode_cell({ r, c: COL_POS }),
+      paramCells: [
+        ...COLS_PERF.map(c => XLSX.utils.encode_cell({ r, c })),
+        ...COLS_POT.map(c => XLSX.utils.encode_cell({ r, c }))
+      ],
+      isNew: false, isDeleted: false, row: r
+    });
+```
+
+3. Добавить поддержку режима «Все» в навигацию
+
+Найдите функцию selectDept и замените её на эту:
+
+```javascript
+function selectDept(dept){
+  state.currentDept = dept;
+  state.selectedIndex = null;
+  document.querySelectorAll('#deptButtons button').forEach(b =>
+    b.classList.toggle('active', b.dataset.dept === dept));
+  
+  if (dept === 'справочник') {
+    $('#deptView').style.display = 'none';
+    $('#refView').style.display = 'block';
+    renderReferenceView();
+  } else {
+    $('#deptView').style.display = 'block';
+    $('#refView').style.display = 'none';
+    renderTable(); renderGrid(); renderEditForm();
+  }
+}
+```
+
+(Тут ничего не меняется, selectDept уже готов принимать 'Все').
+
+4. Обновить функцию renderTable
+
+Чтобы при выборе «Все» показывались сотрудники из всех отделов, нужно изменить фильтрацию в renderTable.
+
+Найдите функцию renderTable и замените её начало:
+
+```javascript
+function renderTable(){
+  const tbody = $('#empTable tbody');
+  tbody.innerHTML = '';
+  const dept = state.currentDept;
+  if (!dept || dept === 'справочник') return;
+  
+  // --- ИЗМЕНЕНИЕ НАЧАЛО ---
+  let list = [];
+  if (dept === 'Все') {
+    // Собираем сотрудников из всех отделов
+    DEPTS.forEach(d => {
+      const emps = state.employees[d].filter(e => !e.isDeleted);
+      list.push(...emps);
+    });
+    // Сортируем по алфавиту (по ФИО)
+    list.sort((a,b) => a.fio.localeCompare(b.fio));
+  } else {
+    list = state.employees[dept].filter(e => !e.isDeleted);
+  }
+  // --- ИЗМЕНЕНИЕ КОНЕЦ ---
+
+  list.forEach((emp, idx) => {
+    // ... дальше идет уже существующий код рендера строк (const p = emp.p; и т.д.)
+```
+
+Внутри цикла forEach нужно добавить отображение отдела (чтобы в общей таблице было видно, кто откуда). Добавьте колонку в HTML-таблице и в tr.innerHTML.
+
+В <thead> таблицы найдите <th>ФИО</th> и добавьте после неё <th>Отдел</th> (опционально, но полезно):
+
+```html
+<th>ФИО</th><th>Отдел</th><th>Должность</th>...
+```
+
+А в tr.innerHTML внутри renderTable (там, где формируется строка) добавьте ячейку с отделом:
+
+```javascript
+    tr.innerHTML = `
+      <td class="name">${escapeHtml(emp.fio)}</td>
+      <td>${escapeHtml(emp.dept || '—')}</td> <!-- ДОБАВЛЕНА КОЛОНКА ОТДЕЛА -->
+      <td>${escapeHtml(emp.position)}</td>
+      ...
+```
+
+(Если не хотите добавлять колонку «Отдел», этот шаг можно пропустить, но тогда непонятно, к какому отделу относится сотрудник).
+
+5. Обновить renderEditForm (для режима «Все»)
+
+Когда выбран режим «Все» и вы кликаете на сотрудника, форма должна корректно его отображать. В функции renderEditForm найдите строку:
+
+```javascript
+  const list = state.employees[dept].filter(e => !e.isDeleted);
+```
+
+И замените на:
+
+```javascript
+  let list = [];
+  if (dept === 'Все') {
+    DEPTS.forEach(d => list.push(...state.employees[d].filter(e => !e.isDeleted)));
+    list.sort((a,b) => a.fio.localeCompare(b.fio));
+  } else {
+    list = state.employees[dept].filter(e => !e.isDeleted);
+  }
+```
+
+Также в renderEditForm при сохранении изменений (редактирование ФИО/оценок) поиск emp по индексу сработает только если список отсортирован одинаково. Чтобы не было багов, в обработчиках input вместо state.employees[dept] используйте прямую ссылку на emp (она уже используется — emp.p[...] = v), так что здесь всё будет работать, потому что emp — это ссылка на объект.
+
+Но при удалении (tr.querySelector('.del')) для режима «Все» логика state.employees[dept].indexOf(emp) не сработает (массив другой). Нужно найти отдел сотрудника:
+
+```javascript
+    tr.querySelector('.del').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!confirm(`Удалить сотрудника «${emp.fio}»?`)) return;
+      
+      // --- ИЗМЕНЕНИЕ ---
+      const targetDept = emp.dept || dept;
+      const originalIdx = state.employees[targetDept].indexOf(emp);
+      if (originalIdx > -1) state.employees[targetDept][originalIdx].isDeleted = true;
+      // -----------------
+
+      if (state.selectedIndex === idx) state.selectedIndex = null;
+      else if (state.selectedIndex > idx) state.selectedIndex--;
+      renderTable(); renderGrid(); renderEditForm();
+    });
+```
+
+6. Обновить renderGrid (9-box для «Все»)
+
+Чтобы карта 9 квадратов тоже работала в режиме «Все», найдите в renderGrid:
+
+```javascript
+  const list = state.employees[dept].filter(e => !e.isDeleted);
+```
+
+И замените на:
+
+```javascript
+  let list = [];
+  if (dept === 'Все') {
+    DEPTS.forEach(d => list.push(...state.employees[d].filter(e => !e.isDeleted)));
+  } else {
+    list = state.employees[dept].filter(e => !e.isDeleted);
+  }
+```
+
+7. Кнопка «Добавить сотрудника» в режиме «Все»
+
+В режиме «Все» нельзя добавить сотрудника, потому что непонятно, в какой отдел его писать. Можно либо заблокировать кнопку, либо спросить отдел. Самое простое — в обработчике #btnAdd добавить проверку:
+
+```javascript
+$('#btnAdd').addEventListener('click', () => {
+  if (!state.currentDept || state.currentDept === 'справочник' || state.currentDept === 'Все') {
+    alert('Выберите конкретный отдел, чтобы добавить сотрудника.');
+    return;
+  }
+  // ... остальной код
+```
+
+---
+
+Итог
+
+После этих правок:
+
+1. Появится кнопка 👥 Все сотрудники.
+2. При клике на нее загрузится объединенный список из трех отделов.
+3. В таблице появится колонка «Отдел» (если вы ее добавили в HTML).
+4. Карта 9 квадратов и форма редактирования будут работать корректно для всех.
+5. Удаление и редактирование тоже будут работать (удаление — через поиск в нужном отделе).
+
+Важно: При сохранении в Excel сотрудники из режима «Все» автоматически распределятся по своим вкладкам, потому что у каждого объекта есть свойство emp.dept (добавленное в шаге 2), и цикл сохранения DEPTS.forEach(dept => {...}) обрабатывает их в контексте своего отдела.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <!DOCTYPE html>
 <html lang="ru">
 <head>
