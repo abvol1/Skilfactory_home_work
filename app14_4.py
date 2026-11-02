@@ -1,4 +1,156 @@
 
+Понял, почему перестало работать редактирование. Когда мы добавили фильтрацию и кнопку «Все», мы изменили логику формирования списка list в таблице. Из-за этого индексы idx (номер строки, на которую вы кликаете) больше не совпадают с индексами в исходном массиве state.employees[dept]. Программа пытается найти сотрудника по неправильному индексу и падает.
+
+Чтобы это исправить, нужно привязать редактирование к самому объекту сотрудника, а не к его номеру в отфильтрованном списке.
+
+Вот два точечных изменения в функции renderTable, которые решат проблему.
+
+1. Исправляем клик по имени (выбор сотрудника)
+
+Найдите в renderTable этот блок:
+
+```javascript
+    tr.querySelector('.name').addEventListener('click', () => {
+      state.selectedIndex = idx;
+      renderTable(); renderGrid(); renderEditForm();
+    });
+```
+
+И замените его на:
+
+```javascript
+    tr.querySelector('.name').addEventListener('click', () => {
+      // Находим реальный отдел сотрудника (важно для режима "Все")
+      const targetDept = emp.dept || dept;
+      // Находим его реальный индекс в массиве отдела
+      const realIdx = state.employees[targetDept].indexOf(emp);
+      
+      // Если мы в режиме "Все", временно переключаемся на его отдел для формы
+      if (dept === 'Все') {
+         // Оставляем визуально кнопку "Все" активной, но для формы запоминаем отдел
+         state._editDept = targetDept;
+      } else {
+         state._editDept = dept;
+      }
+      
+      state.selectedIndex = realIdx;
+      renderTable(); renderGrid(); renderEditForm();
+    });
+```
+
+2. Исправляем форму редактирования (чтобы она знала, кого редактировать)
+
+В функции renderEditForm найдите начало:
+
+```javascript
+function renderEditForm(){
+  const box = $('#editForm');
+  const dept = state.currentDept;
+  if (!dept || dept === 'справочник') return;
+  
+  const list = state.employees[dept].filter(e => !e.isDeleted);
+  
+  if (state.selectedIndex === null || !list[state.selectedIndex]){
+    box.innerHTML = '<span class="hint">Выберите сотрудника в таблице.</span>';
+    return;
+  }
+  const emp = list[state.selectedIndex];
+```
+
+И замените его на:
+
+```javascript
+function renderEditForm(){
+  const box = $('#editForm');
+  const dept = state.currentDept;
+  if (!dept || dept === 'справочник') return;
+  
+  // Берем отдел, к которому реально относится сотрудник
+  const realDept = state._editDept || dept;
+  const emp = state.employees[realDept] ? state.employees[realDept][state.selectedIndex] : null;
+  
+  if (!emp || emp.isDeleted){
+    box.innerHTML = '<span class="hint">Выберите сотрудника в таблице.</span>';
+    return;
+  }
+```
+
+3. Исправляем удаление (чтобы удаляло того, кого надо)
+
+Найдите в renderTable обработчик удаления:
+
+```javascript
+    tr.querySelector('.del').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!confirm(`Удалить сотрудника «${emp.fio}»?`)) return;
+      const originalIdx = state.employees[dept].indexOf(emp);
+      if (originalIdx > -1) state.employees[dept][originalIdx].isDeleted = true;
+      if (state.selectedIndex === idx) state.selectedIndex = null;
+      else if (state.selectedIndex > idx) state.selectedIndex--;
+      renderTable(); renderGrid(); renderEditForm();
+    });
+```
+
+И замените его на:
+
+```javascript
+    tr.querySelector('.del').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!confirm(`Удалить сотрудника «${emp.fio}»?`)) return;
+      
+      const targetDept = emp.dept || dept;
+      const originalIdx = state.employees[targetDept].indexOf(emp);
+      if (originalIdx > -1) {
+        state.employees[targetDept][originalIdx].isDeleted = true;
+      }
+      
+      // Сбрасываем выделение, так как список изменится
+      state.selectedIndex = null;
+      state._editDept = null;
+      
+      renderTable(); renderGrid(); renderEditForm();
+    });
+```
+
+4. Сброс состояния при переключении отделов
+
+В функции selectDept добавьте сброс _editDept, чтобы при переключении отделов форма не пыталась показать старого сотрудника:
+
+```javascript
+function selectDept(dept){
+  state.currentDept = dept;
+  state.selectedIndex = null;
+  state._editDept = null; // <-- ДОБАВИТЬ ЭТУ СТРОКУ
+  
+  // ... остальной код selectDept без изменений ...
+```
+
+---
+
+Почему это исправит редактирование
+
+Раньше логика была такой: «Клик по строке №2 → взять сотрудника №2 из массива». Но когда включен фильтр или режим «Все», номер строки в таблице не совпадает с номером в массиве. 
+Теперь логика такая: «Клик по строке → взять именно этого сотрудника (по ссылке) → найти его реальный номер в его отделе → открыть форму».
+
+После этих правок редактирование снова заработает, даже когда включен фильтр или режим «Все сотрудники».
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Отличная идея! Давайте добавим фильтрацию и сортировку.
 
 Поскольку у нас уже есть кнопка «Все сотрудники» и вы хотите управлять списком, самый удобный способ — это сортировка по клику на заголовок и выпадающий фильтр по квадратам.
