@@ -1,4 +1,168 @@
 
+Отличная идея! Давайте добавим фильтрацию и сортировку.
+
+Поскольку у нас уже есть кнопка «Все сотрудники» и вы хотите управлять списком, самый удобный способ — это сортировка по клику на заголовок и выпадающий фильтр по квадратам.
+
+Вот точечные изменения для вашего файла:
+
+1. Добавьте панель фильтров в HTML
+
+Найдите блок с кнопками отделов (<div class="row" id="deptButtons">) и сразу после него добавьте панель для фильтрации:
+
+```html
+<!-- ПАНЕЛЬ ФИЛЬТРОВ -->
+<div class="panel" id="filterPanel">
+  <div class="row">
+    <label>Фильтр по квадрату:
+      <select id="filterSquare" style="padding:6px; border-radius:6px; border:1px solid #ccc;">
+        <option value="all">— Показать всех —</option>
+        <option value="9">9. Мушкетеры</option>
+        <option value="8">8. Самородки</option>
+        <option value="7">7. Фантазеры</option>
+        <option value="6">6. Пчелы-труженицы</option>
+        <option value="5">5. Рабочие муравьи</option>
+        <option value="4">4. Улитки</option>
+        <option value="3">3. Хранители традиций</option>
+        <option value="2">2. Пассажир</option>
+        <option value="1">1. Якорь</option>
+      </select>
+    </label>
+    <label>Поиск по ФИО: 
+      <input type="text" id="searchFio" placeholder="Введите имя..." style="padding:6px; border-radius:6px; border:1px solid #ccc;">
+    </label>
+    <button id="btnResetFilters" style="font-size:12px;">✖ Сбросить фильтры</button>
+  </div>
+</div>
+```
+
+2. Добавьте переменные состояния
+
+В начале скрипта (где const state = { ... }) добавьте переменные для хранения текущих фильтров:
+
+```javascript
+const state = {
+  // ... существующие переменные ...
+  filterSquare: 'all', // текущий выбранный квадрат
+  searchQuery: '',     // текущий поисковый запрос
+};
+```
+
+3. Обработчики событий для фильтров
+
+Добавьте этот код в любое место внутри <script> (например, после кнопок навигации):
+
+```javascript
+$('#filterSquare').addEventListener('change', (e) => {
+  state.filterSquare = e.target.value;
+  renderTable(); // перерисовываем таблицу
+});
+
+$('#searchFio').addEventListener('input', (e) => {
+  state.searchQuery = e.target.value.toLowerCase();
+  renderTable(); // перерисовываем таблицу при каждом вводе буквы
+});
+
+$('#btnResetFilters').addEventListener('click', () => {
+  state.filterSquare = 'all';
+  state.searchQuery = '';
+  $('#filterSquare').value = 'all';
+  $('#searchFio').value = '';
+  renderTable();
+});
+```
+
+4. Обновите логику renderTable
+
+Найдите функцию renderTable и найдите строку, где формируется список list (после добавления кнопки «Все» это должно выглядеть примерно так):
+
+```javascript
+  let list = [];
+  if (dept === 'Все') {
+    DEPTS.forEach(d => list.push(...state.employees[d].filter(e => !e.isDeleted)));
+    list.sort((a,b) => a.fio.localeCompare(b.fio));
+  } else {
+    list = state.employees[dept].filter(e => !e.isDeleted);
+  }
+```
+
+Замените этот блок на следующий (с учетом фильтров):
+
+```javascript
+  let list = [];
+  if (dept === 'Все') {
+    DEPTS.forEach(d => list.push(...state.employees[d].filter(e => !e.isDeleted)));
+  } else {
+    list = state.employees[dept].filter(e => !e.isDeleted);
+  }
+
+  // --- ПРИМЕНЯЕМ ФИЛЬТРЫ ---
+  // 1. Фильтр по тексту (ФИО)
+  if (state.searchQuery) {
+    list = list.filter(emp => emp.fio.toLowerCase().includes(state.searchQuery));
+  }
+
+  // 2. Фильтр по квадрату
+  if (state.filterSquare !== 'all') {
+    const targetNum = parseInt(state.filterSquare);
+    list = list.filter(emp => {
+      const m1 = avg2(emp.p[0], emp.p[1]);
+      const m2 = avg2(emp.p[2], emp.p[3]);
+      const info = squareInfo(m1, m2);
+      return info.num === targetNum;
+    });
+  }
+  // -------------------------
+
+  // Сортировка по алфавиту (если нужно)
+  list.sort((a,b) => a.fio.localeCompare(b.fio));
+```
+
+5. Скрыть панель фильтров во вкладке «Справочник»
+
+Чтобы фильтры не висели, когда вы смотрите справочник, добавьте в функцию selectDept изменение видимости панели:
+
+```javascript
+function selectDept(dept){
+  // ... существующий код ...
+  
+  if (dept === 'справочник') {
+    $('#deptView').style.display = 'none';
+    $('#filterPanel').style.display = 'none'; // СКРЫТЬ ФИЛЬТРЫ
+    $('#refView').style.display = 'block';
+    renderReferenceView();
+  } else {
+    $('#deptView').style.display = 'block';
+    $('#filterPanel').style.display = 'block'; // ПОКАЗАТЬ ФИЛЬТРЫ
+    $('#refView').style.display = 'none';
+    renderTable(); renderGrid(); renderEditForm();
+  }
+}
+```
+
+Как это работает в итоге:
+
+1. Сортировка: При выборе «Все сотрудники» список автоматически сортируется по алфавиту.
+2. Поиск по ФИО: Вы вводите «Иванов», и таблица сразу же показывает только Ивановых.
+3. Фильтр по квадрату: Вы выбираете «9. Мушкетеры», и в таблице остаются только те, чьи оценки соответствуют этому квадрату.
+4. Сброс: Кнопка «✖ Сбросить фильтры» возвращает полный список.
+
+Это очень удобно, если вам нужно, например, распечатать список только «Мушкетеров» или найти конкретного сотрудника по фамилии.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Отличная идея. Чтобы добавить кнопку «Все сотрудники», которая объединяет списки из трех вкладок в один общий список, нужно внести точечные изменения в 4 места (без переписывания всего кода).
 
 1. Добавить кнопку в HTML
