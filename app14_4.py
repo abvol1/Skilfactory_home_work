@@ -1,1095 +1,3 @@
-
-Чтобы вам было проще, я разбил изменения на 5 конкретных шагов. Выполняйте их по порядку, и всё заработает.
-
----
-
-Шаг 1. Находим переменные колонок
-
-В самом начале <script> найдите блок:
-
-```javascript
-let COL_FIO = 1;
-let COL_POS = 2;
-let COLS_PERF = [3,4];
-let COL_AVG_PERF = 5;
-let COLS_POT  = [6,7];
-let COL_AVG_POT  = 8;
-let COL_SQUARE   = 9;
-let COL_PORTRAIT = 10;
-```
-
-Добавьте в самый конец одну строку:
-
-```javascript
-let COL_MARK = 11; // Колонка для метки (цвета). Если у вас портрет в колонке M, то метка — в N
-```
-
----
-
-Шаг 2. Добавляем чтение метки из Excel
-
-Найдите функцию readDeptSheet. Внутри неё найдите блок, где читаются данные сотрудника:
-
-```javascript
-    const position = String(getVal(COL_POS) || '').trim();
-```
-
-Сразу после этой строки добавьте:
-
-```javascript
-    const markVal = String(getVal(COL_MARK) || 'none').trim();
-```
-
-Затем чуть ниже найдите list.push({ и в объект добавьте поле mark:
-
-```javascript
-    list.push({
-      fio, position, p,
-      dept: sheetName,
-      mark: markVal, // <-- ДОБАВИТЬ ЭТУ СТРОКУ
-      fioCell: XLSX.utils.encode_cell({ r, c: COL_FIO }),
-      // ... остальное без изменений
-    });
-```
-
----
-
-Шаг 3. Добавляем выпадающий список в форму редактирования
-
-Найдите функцию renderEditForm. В ней найдите блок с ФИО и Должность:
-
-```javascript
-    <div class="row" style="margin-bottom:10px">
-      <label>ФИО: <input id="editFio" class="fio" value="${escapeHtml(emp.fio)}"></label>
-      <label>Должность: <input id="editPos" class="pos" value="${escapeHtml(emp.position || '')}"></label>
-    </div>
-```
-
-Замените этот блок на:
-
-```javascript
-    <div class="row" style="margin-bottom:10px">
-      <label>ФИО: <input id="editFio" class="fio" value="${escapeHtml(emp.fio)}"></label>
-      <label>Должность: <input id="editPos" class="pos" value="${escapeHtml(emp.position || '')}"></label>
-      <label>Метка: 
-        <select id="editMark" style="padding:6px; border-radius:6px; border:1px solid #ccc;">
-          <option value="none" ${emp.mark === 'none' || !emp.mark ? 'selected' : ''}>— Нет —</option>
-          <option value="red" ${emp.mark === 'red' ? 'selected' : ''}>🔴 Красный</option>
-          <option value="yellow" ${emp.mark === 'yellow' ? 'selected' : ''}>🟡 Жёлтый</option>
-          <option value="green" ${emp.mark === 'green' ? 'selected' : ''}>🟢 Зелёный</option>
-        </select>
-      </label>
-    </div>
-```
-
-Затем найдите в той же функции место, где добавляются обработчики (там есть $('#editFio').addEventListener и $('#editPos').addEventListener). Сразу после обработчика editPos добавьте:
-
-```javascript
-  $('#editMark').addEventListener('change', e => {
-    emp.mark = e.target.value;
-    renderTable(); renderGrid();
-  });
-```
-
----
-
-Шаг 4. Красим ФИО в таблице
-
-Найдите функцию renderTable. В ней найдите ячейку с ФИО:
-
-```javascript
-      <td class="name">${escapeHtml(emp.fio)}</td>
-```
-
-Замените её на:
-
-```javascript
-      <td class="name" style="${emp.mark === 'red' ? 'color:#b91c1c' : emp.mark === 'yellow' ? 'color:#b45309' : emp.mark === 'green' ? 'color:#15803d' : ''}">${escapeHtml(emp.fio)}</td>
-```
-
----
-
-Шаг 5. Красим ФИО в квадрате (9-box)
-
-Найдите функцию renderGrid. В ней есть строка, которая выводит список сотрудников:
-
-```javascript
-        <ul>${members.map(m=>`<li title="${escapeHtml(m.fio)}">${escapeHtml(m.fio)}</li>`).join('')}</ul>
-```
-
-Замените её на:
-
-```javascript
-        <ul>${members.map(m => {
-          let colorStyle = '';
-          if (m.mark === 'red') colorStyle = 'color: #b91c1c; font-weight: 700;';
-          if (m.mark === 'yellow') colorStyle = 'color: #b45309; font-weight: 700;';
-          if (m.mark === 'green') colorStyle = 'color: #15803d; font-weight: 700;';
-          return `<li style="${colorStyle}" title="${escapeHtml(m.fio)}">${escapeHtml(m.fio)}</li>`;
-        }).join('')}</ul>
-```
-
----
-
-Шаг 6. Сохраняем метку в файл Excel
-
-Найдите функцию $('#btnSave'). Внутри неё есть цикл, который формирует dataAOA. Найдите строку:
-
-```javascript
-      rowData[COL_PORTRAIT] = prof.short;
-```
-
-Сразу после неё добавьте:
-
-```javascript
-      rowData[COL_MARK] = emp.mark || 'none';
-```
-
----
-
-Итог: как это работает
-
-1. Открываете форму любого сотрудника. Там появляется выпадающий список «Метка».
-2. Выбираете цвет. ФИО в таблице и на карте 9-box сразу же красится в этот цвет.
-3. Нажимаете «Сохранить». Цвет записывается в Excel (в колонку L или M, в зависимости от COL_MARK).
-4. При следующем открытии файла цвет снова подтягивается.
-
-Если нужно добавить новую колонку в Excel
-
-Если колонки COL_MARK = 11 в вашем файле еще нет (или она занята), создайте в Excel новую колонку под названием «Метка» (например, после «Управленческий портрет») и поставьте COL_MARK равным её индексу:
-
-· A=0, B=1, C=2, D=3, E=4, F=5, G=6, H=7, I=8, J=9, K=10, L=11, M=12, N=13.
-
-
-
-
-
-
-
-
-
-
-
-
-Да, это можно сделать очень красиво! Суть идеи: рядом с ФИО (или вместо него) добавить выпадающий список из 3 цветов (например, 🔴 Красный, 🟡 Жёлтый, 🟢 Зелёный). Выбранный цвет сохраняется в памяти и в файле, а затем этот же цвет применяется к карточке сотрудника в квадрате.
-
-Вот точечные изменения (4 шага), чтобы это заработало.
-
-Шаг 1. Обновляем renderEditForm (добавляем выбор цвета)
-
-Найдите в функции renderEditForm блок с полями «ФИО» и «Должность»:
-
-```javascript
-    <div class="row" style="margin-bottom:10px">
-      <label>ФИО: <input id="editFio" class="fio" value="${escapeHtml(emp.fio)}"></label>
-      <label>Должность: <input id="editPos" class="pos" value="${escapeHtml(emp.position || '')}"></label>
-    </div>
-```
-
-Замените его на это:
-
-```javascript
-    <div class="row" style="margin-bottom:10px">
-      <label>ФИО: <input id="editFio" class="fio" value="${escapeHtml(emp.fio)}"></label>
-      <label>Должность: <input id="editPos" class="pos" value="${escapeHtml(emp.position || '')}"></label>
-      <label>Метка: 
-        <select id="editMark" style="padding:6px; border-radius:6px; border:1px solid #ccc;">
-          <option value="none" ${emp.mark === 'none' || !emp.mark ? 'selected' : ''}>— Нет —</option>
-          <option value="red" ${emp.mark === 'red' ? 'selected' : ''}>🔴 Красный</option>
-          <option value="yellow" ${emp.mark === 'yellow' ? 'selected' : ''}>🟡 Жёлтый</option>
-          <option value="green" ${emp.mark === 'green' ? 'selected' : ''}>🟢 Зелёный</option>
-        </select>
-      </label>
-    </div>
-```
-
-И добавьте обработчик события для этого селекта сразу после обработчика $('#editPos'):
-
-```javascript
-  $('#editMark').addEventListener('change', e => {
-    emp.mark = e.target.value;
-    renderTable(); renderGrid();
-  });
-```
-
-Шаг 2. Обновляем readDeptSheet (чтобы читать цвет из файла)
-
-Так как мы добавили новый параметр, нужно понять, откуда его брать. Давайте запишем его в ту же колонку, где хранится «Портрет» (или выделим для него отдельную, если решите). Но чтобы не усложнять структуру Excel, мы будем хранить цвет прямо в ячейке Портрет (или Решение) в виде специального префикса, либо выделим новую колонку.
-
-Самое простое: добавить колонку «Метка» в Excel. В readDeptSheet добавьте чтение этой колонки.
-Найдите const position = ... и добавьте рядом:
-
-```javascript
-    const markVal = String(getVal(COL_MARK) || '').trim(); // COL_MARK - индекс колонки
-```
-
-А в list.push добавьте mark: markVal || 'none'.
-
-Чтобы всё заработало, нужно добавить переменную COL_MARK в начало скрипта. Найдите блок с переменными COL_FIO, COL_POS и добавьте:
-
-```javascript
-let COL_MARK = 11; // Предположим, это колонка L (сдвиг из-за портрета)
-```
-
-(Проверьте свой Excel: если у вас портрет в колонке M, то метка будет в N. Установите правильный индекс. Индексы начинаются с 0: A=0, B=1, C=2, D=3, E=4, F=5, G=6, H=7, I=8, J=9, K=10, L=11, M=12, N=13).
-
-Шаг 3. Обновляем renderGrid (отображение цвета в квадрате)
-
-Найдите в renderGrid цикл формирования <li>:
-
-```javascript
-        <ul>${members.map(m=>`<li title="${escapeHtml(m.fio)}">${escapeHtml(m.fio)}</li>`).join('')}</ul>
-```
-
-Замените его на это:
-
-```javascript
-        <ul>${members.map(m => {
-          let colorStyle = '';
-          if (m.mark === 'red') colorStyle = 'color: #b91c1c; font-weight: 700;';
-          if (m.mark === 'yellow') colorStyle = 'color: #b45309; font-weight: 700;';
-          if (m.mark === 'green') colorStyle = 'color: #15803d; font-weight: 700;';
-          return `<li style="${colorStyle}" title="${escapeHtml(m.fio)}">${escapeHtml(m.fio)}</li>`;
-        }).join('')}</ul>
-```
-
-Шаг 4. Обновляем renderTable (отображение цвета в таблице)
-
-Найдите в renderTable ячейку с ФИО:
-
-```javascript
-      <td class="name">${escapeHtml(emp.fio)}</td>
-```
-
-Замените её на:
-
-```javascript
-      <td class="name" style="${emp.mark === 'red' ? 'color:#b91c1c' : emp.mark === 'yellow' ? 'color:#b45309' : emp.mark === 'green' ? 'color:#15803d' : ''}">${escapeHtml(emp.fio)}</td>
-```
-
-Шаг 5. Добавляем сохранение в Excel (опционально)
-
-Чтобы цвет сохранялся в файл, в функции $('#btnSave') при формировании rowData добавьте запись rowData[COL_MARK] = emp.mark || 'none';.
-
----
-
-Итог:
-
-1. В форме появляется выпадающий список.
-2. При выборе «Красный» — ФИО в таблице становится красным.
-3. На карте 9-box это ФИО тоже становится красным.
-4. (Если добавите сохранение) При следующем открытии файла цвет сохранится.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Да, это можно сделать очень красиво! Суть идеи: рядом с ФИО (или вместо него) добавить выпадающий список из 3 цветов (например, 🔴 Красный, 🟡 Жёлтый, 🟢 Зелёный). Выбранный цвет сохраняется в памяти и в файле, а затем этот же цвет применяется к карточке сотрудника в квадрате.
-
-Вот точечные изменения (4 шага), чтобы это заработало.
-
-Шаг 1. Обновляем renderEditForm (добавляем выбор цвета)
-
-Найдите в функции renderEditForm блок с полями «ФИО» и «Должность»:
-
-```javascript
-    <div class="row" style="margin-bottom:10px">
-      <label>ФИО: <input id="editFio" class="fio" value="${escapeHtml(emp.fio)}"></label>
-      <label>Должность: <input id="editPos" class="pos" value="${escapeHtml(emp.position || '')}"></label>
-    </div>
-```
-
-Замените его на это:
-
-```javascript
-    <div class="row" style="margin-bottom:10px">
-      <label>ФИО: <input id="editFio" class="fio" value="${escapeHtml(emp.fio)}"></label>
-      <label>Должность: <input id="editPos" class="pos" value="${escapeHtml(emp.position || '')}"></label>
-      <label>Метка: 
-        <select id="editMark" style="padding:6px; border-radius:6px; border:1px solid #ccc;">
-          <option value="none" ${emp.mark === 'none' || !emp.mark ? 'selected' : ''}>— Нет —</option>
-          <option value="red" ${emp.mark === 'red' ? 'selected' : ''}>🔴 Красный</option>
-          <option value="yellow" ${emp.mark === 'yellow' ? 'selected' : ''}>🟡 Жёлтый</option>
-          <option value="green" ${emp.mark === 'green' ? 'selected' : ''}>🟢 Зелёный</option>
-        </select>
-      </label>
-    </div>
-```
-
-И добавьте обработчик события для этого селекта сразу после обработчика $('#editPos'):
-
-```javascript
-  $('#editMark').addEventListener('change', e => {
-    emp.mark = e.target.value;
-    renderTable(); renderGrid();
-  });
-```
-
-Шаг 2. Обновляем readDeptSheet (чтобы читать цвет из файла)
-
-Так как мы добавили новый параметр, нужно понять, откуда его брать. Давайте запишем его в ту же колонку, где хранится «Портрет» (или выделим для него отдельную, если решите). Но чтобы не усложнять структуру Excel, мы будем хранить цвет прямо в ячейке Портрет (или Решение) в виде специального префикса, либо выделим новую колонку.
-
-Самое простое: добавить колонку «Метка» в Excel. В readDeptSheet добавьте чтение этой колонки.
-Найдите const position = ... и добавьте рядом:
-
-```javascript
-    const markVal = String(getVal(COL_MARK) || '').trim(); // COL_MARK - индекс колонки
-```
-
-А в list.push добавьте mark: markVal || 'none'.
-
-Чтобы всё заработало, нужно добавить переменную COL_MARK в начало скрипта. Найдите блок с переменными COL_FIO, COL_POS и добавьте:
-
-```javascript
-let COL_MARK = 11; // Предположим, это колонка L (сдвиг из-за портрета)
-```
-
-(Проверьте свой Excel: если у вас портрет в колонке M, то метка будет в N. Установите правильный индекс. Индексы начинаются с 0: A=0, B=1, C=2, D=3, E=4, F=5, G=6, H=7, I=8, J=9, K=10, L=11, M=12, N=13).
-
-Шаг 3. Обновляем renderGrid (отображение цвета в квадрате)
-
-Найдите в renderGrid цикл формирования <li>:
-
-```javascript
-        <ul>${members.map(m=>`<li title="${escapeHtml(m.fio)}">${escapeHtml(m.fio)}</li>`).join('')}</ul>
-```
-
-Замените его на это:
-
-```javascript
-        <ul>${members.map(m => {
-          let colorStyle = '';
-          if (m.mark === 'red') colorStyle = 'color: #b91c1c; font-weight: 700;';
-          if (m.mark === 'yellow') colorStyle = 'color: #b45309; font-weight: 700;';
-          if (m.mark === 'green') colorStyle = 'color: #15803d; font-weight: 700;';
-          return `<li style="${colorStyle}" title="${escapeHtml(m.fio)}">${escapeHtml(m.fio)}</li>`;
-        }).join('')}</ul>
-```
-
-Шаг 4. Обновляем renderTable (отображение цвета в таблице)
-
-Найдите в renderTable ячейку с ФИО:
-
-```javascript
-      <td class="name">${escapeHtml(emp.fio)}</td>
-```
-
-Замените её на:
-
-```javascript
-      <td class="name" style="${emp.mark === 'red' ? 'color:#b91c1c' : emp.mark === 'yellow' ? 'color:#b45309' : emp.mark === 'green' ? 'color:#15803d' : ''}">${escapeHtml(emp.fio)}</td>
-```
-
-Шаг 5. Добавляем сохранение в Excel (опционально)
-
-Чтобы цвет сохранялся в файл, в функции $('#btnSave') при формировании rowData добавьте запись rowData[COL_MARK] = emp.mark || 'none';.
-
----
-
-Итог:
-
-1. В форме появляется выпадающий список.
-2. При выборе «Красный» — ФИО в таблице становится красным.
-3. На карте 9-box это ФИО тоже становится красным.
-4. (Если добавите сохранение) При следующем открытии файла цвет сохранится.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Причина в том, что после добавления фильтров и режима «Все» кнопка «Добавить» пытается добавить сотрудника в отдел, но из-за сброса _editDept или неправильного индекса новый сотрудник не отображается.
-
-Чтобы это исправить, нужно напрямую привязать добавление к текущему выбранному отделу и сбрасывать фильтры, чтобы новый сотрудник сразу появился в таблице.
-
-Вот точечное изменение. Найдите в коде обработчик $('#btnAdd') и замените его целиком на этот:
-
-```javascript
-$('#btnAdd').addEventListener('click', () => {
-  // 1. Проверяем, выбран ли конкретный отдел
-  if (!state.currentDept || state.currentDept === 'справочник' || state.currentDept === 'Все') {
-    alert('Чтобы добавить сотрудника, выберите конкретный отдел (Кредиты ФЛ, Кредиты ЮЛ или Транзакт).');
-    return;
-  }
-  
-  const fio = prompt('ФИО нового сотрудника:');
-  if (!fio) return;
-  
-  // 2. Создаем сотрудника
-  const newEmp = {
-    fio: fio.trim(),
-    position: '',
-    p: ['','','',''], // 4 оценки
-    isNew: true,
-    isDeleted: false,
-    dept: state.currentDept, // Привязываем к текущему отделу
-    fioCell: null, posCell: null,
-    paramCells: [null,null,null,null],
-  };
-  
-  // 3. Добавляем в массив выбранного отдела
-  state.employees[state.currentDept].push(newEmp);
-  
-  // 4. Сбрасываем фильтры, чтобы новый сотрудник точно появился в таблице
-  state.searchQuery = '';
-  state.filterSquare = 'all';
-  if ($('#searchFio')) $('#searchFio').value = '';
-  if ($('#filterSquare')) $('#filterSquare').value = 'all';
-  
-  // 5. Выделяем нового сотрудника в форме
-  state._editDept = state.currentDept;
-  // Индекс берем из полного массива (без фильтров)
-  state.selectedIndex = state.employees[state.currentDept].length - 1;
-  
-  // 6. Перерисовываем интерфейс
-  renderTable(); 
-  renderGrid(); 
-  renderEditForm();
-});
-```
-
-Что изменилось:
-
-1. Проверка отдела: Теперь нельзя добавить сотрудника, находясь во вкладке «Все» или «Справочник». Появится предупреждение.
-2. Явное указание отдела: В объект newEmp добавлено свойство dept: state.currentDept.
-3. Сброс фильтров: Если у вас был включен фильтр по квадрату или поиск по ФИО, они сбросятся, чтобы новый сотрудник (у которого пока нет оценок) не «потерялся» в отфильтрованном списке.
-4. Правильный индекс: state.selectedIndex теперь берется как последний индекс в полном массиве отдела, а не в отфильтрованном.
-
-
-
-
-
-
-
-Понял, почему перестало работать редактирование. Когда мы добавили фильтрацию и кнопку «Все», мы изменили логику формирования списка list в таблице. Из-за этого индексы idx (номер строки, на которую вы кликаете) больше не совпадают с индексами в исходном массиве state.employees[dept]. Программа пытается найти сотрудника по неправильному индексу и падает.
-
-Чтобы это исправить, нужно привязать редактирование к самому объекту сотрудника, а не к его номеру в отфильтрованном списке.
-
-Вот два точечных изменения в функции renderTable, которые решат проблему.
-
-1. Исправляем клик по имени (выбор сотрудника)
-
-Найдите в renderTable этот блок:
-
-```javascript
-    tr.querySelector('.name').addEventListener('click', () => {
-      state.selectedIndex = idx;
-      renderTable(); renderGrid(); renderEditForm();
-    });
-```
-
-И замените его на:
-
-```javascript
-    tr.querySelector('.name').addEventListener('click', () => {
-      // Находим реальный отдел сотрудника (важно для режима "Все")
-      const targetDept = emp.dept || dept;
-      // Находим его реальный индекс в массиве отдела
-      const realIdx = state.employees[targetDept].indexOf(emp);
-      
-      // Если мы в режиме "Все", временно переключаемся на его отдел для формы
-      if (dept === 'Все') {
-         // Оставляем визуально кнопку "Все" активной, но для формы запоминаем отдел
-         state._editDept = targetDept;
-      } else {
-         state._editDept = dept;
-      }
-      
-      state.selectedIndex = realIdx;
-      renderTable(); renderGrid(); renderEditForm();
-    });
-```
-
-2. Исправляем форму редактирования (чтобы она знала, кого редактировать)
-
-В функции renderEditForm найдите начало:
-
-```javascript
-function renderEditForm(){
-  const box = $('#editForm');
-  const dept = state.currentDept;
-  if (!dept || dept === 'справочник') return;
-  
-  const list = state.employees[dept].filter(e => !e.isDeleted);
-  
-  if (state.selectedIndex === null || !list[state.selectedIndex]){
-    box.innerHTML = '<span class="hint">Выберите сотрудника в таблице.</span>';
-    return;
-  }
-  const emp = list[state.selectedIndex];
-```
-
-И замените его на:
-
-```javascript
-function renderEditForm(){
-  const box = $('#editForm');
-  const dept = state.currentDept;
-  if (!dept || dept === 'справочник') return;
-  
-  // Берем отдел, к которому реально относится сотрудник
-  const realDept = state._editDept || dept;
-  const emp = state.employees[realDept] ? state.employees[realDept][state.selectedIndex] : null;
-  
-  if (!emp || emp.isDeleted){
-    box.innerHTML = '<span class="hint">Выберите сотрудника в таблице.</span>';
-    return;
-  }
-```
-
-3. Исправляем удаление (чтобы удаляло того, кого надо)
-
-Найдите в renderTable обработчик удаления:
-
-```javascript
-    tr.querySelector('.del').addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (!confirm(`Удалить сотрудника «${emp.fio}»?`)) return;
-      const originalIdx = state.employees[dept].indexOf(emp);
-      if (originalIdx > -1) state.employees[dept][originalIdx].isDeleted = true;
-      if (state.selectedIndex === idx) state.selectedIndex = null;
-      else if (state.selectedIndex > idx) state.selectedIndex--;
-      renderTable(); renderGrid(); renderEditForm();
-    });
-```
-
-И замените его на:
-
-```javascript
-    tr.querySelector('.del').addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (!confirm(`Удалить сотрудника «${emp.fio}»?`)) return;
-      
-      const targetDept = emp.dept || dept;
-      const originalIdx = state.employees[targetDept].indexOf(emp);
-      if (originalIdx > -1) {
-        state.employees[targetDept][originalIdx].isDeleted = true;
-      }
-      
-      // Сбрасываем выделение, так как список изменится
-      state.selectedIndex = null;
-      state._editDept = null;
-      
-      renderTable(); renderGrid(); renderEditForm();
-    });
-```
-
-4. Сброс состояния при переключении отделов
-
-В функции selectDept добавьте сброс _editDept, чтобы при переключении отделов форма не пыталась показать старого сотрудника:
-
-```javascript
-function selectDept(dept){
-  state.currentDept = dept;
-  state.selectedIndex = null;
-  state._editDept = null; // <-- ДОБАВИТЬ ЭТУ СТРОКУ
-  
-  // ... остальной код selectDept без изменений ...
-```
-
----
-
-Почему это исправит редактирование
-
-Раньше логика была такой: «Клик по строке №2 → взять сотрудника №2 из массива». Но когда включен фильтр или режим «Все», номер строки в таблице не совпадает с номером в массиве. 
-Теперь логика такая: «Клик по строке → взять именно этого сотрудника (по ссылке) → найти его реальный номер в его отделе → открыть форму».
-
-После этих правок редактирование снова заработает, даже когда включен фильтр или режим «Все сотрудники».
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Отличная идея! Давайте добавим фильтрацию и сортировку.
-
-Поскольку у нас уже есть кнопка «Все сотрудники» и вы хотите управлять списком, самый удобный способ — это сортировка по клику на заголовок и выпадающий фильтр по квадратам.
-
-Вот точечные изменения для вашего файла:
-
-1. Добавьте панель фильтров в HTML
-
-Найдите блок с кнопками отделов (<div class="row" id="deptButtons">) и сразу после него добавьте панель для фильтрации:
-
-```html
-<!-- ПАНЕЛЬ ФИЛЬТРОВ -->
-<div class="panel" id="filterPanel">
-  <div class="row">
-    <label>Фильтр по квадрату:
-      <select id="filterSquare" style="padding:6px; border-radius:6px; border:1px solid #ccc;">
-        <option value="all">— Показать всех —</option>
-        <option value="9">9. Мушкетеры</option>
-        <option value="8">8. Самородки</option>
-        <option value="7">7. Фантазеры</option>
-        <option value="6">6. Пчелы-труженицы</option>
-        <option value="5">5. Рабочие муравьи</option>
-        <option value="4">4. Улитки</option>
-        <option value="3">3. Хранители традиций</option>
-        <option value="2">2. Пассажир</option>
-        <option value="1">1. Якорь</option>
-      </select>
-    </label>
-    <label>Поиск по ФИО: 
-      <input type="text" id="searchFio" placeholder="Введите имя..." style="padding:6px; border-radius:6px; border:1px solid #ccc;">
-    </label>
-    <button id="btnResetFilters" style="font-size:12px;">✖ Сбросить фильтры</button>
-  </div>
-</div>
-```
-
-2. Добавьте переменные состояния
-
-В начале скрипта (где const state = { ... }) добавьте переменные для хранения текущих фильтров:
-
-```javascript
-const state = {
-  // ... существующие переменные ...
-  filterSquare: 'all', // текущий выбранный квадрат
-  searchQuery: '',     // текущий поисковый запрос
-};
-```
-
-3. Обработчики событий для фильтров
-
-Добавьте этот код в любое место внутри <script> (например, после кнопок навигации):
-
-```javascript
-$('#filterSquare').addEventListener('change', (e) => {
-  state.filterSquare = e.target.value;
-  renderTable(); // перерисовываем таблицу
-});
-
-$('#searchFio').addEventListener('input', (e) => {
-  state.searchQuery = e.target.value.toLowerCase();
-  renderTable(); // перерисовываем таблицу при каждом вводе буквы
-});
-
-$('#btnResetFilters').addEventListener('click', () => {
-  state.filterSquare = 'all';
-  state.searchQuery = '';
-  $('#filterSquare').value = 'all';
-  $('#searchFio').value = '';
-  renderTable();
-});
-```
-
-4. Обновите логику renderTable
-
-Найдите функцию renderTable и найдите строку, где формируется список list (после добавления кнопки «Все» это должно выглядеть примерно так):
-
-```javascript
-  let list = [];
-  if (dept === 'Все') {
-    DEPTS.forEach(d => list.push(...state.employees[d].filter(e => !e.isDeleted)));
-    list.sort((a,b) => a.fio.localeCompare(b.fio));
-  } else {
-    list = state.employees[dept].filter(e => !e.isDeleted);
-  }
-```
-
-Замените этот блок на следующий (с учетом фильтров):
-
-```javascript
-  let list = [];
-  if (dept === 'Все') {
-    DEPTS.forEach(d => list.push(...state.employees[d].filter(e => !e.isDeleted)));
-  } else {
-    list = state.employees[dept].filter(e => !e.isDeleted);
-  }
-
-  // --- ПРИМЕНЯЕМ ФИЛЬТРЫ ---
-  // 1. Фильтр по тексту (ФИО)
-  if (state.searchQuery) {
-    list = list.filter(emp => emp.fio.toLowerCase().includes(state.searchQuery));
-  }
-
-  // 2. Фильтр по квадрату
-  if (state.filterSquare !== 'all') {
-    const targetNum = parseInt(state.filterSquare);
-    list = list.filter(emp => {
-      const m1 = avg2(emp.p[0], emp.p[1]);
-      const m2 = avg2(emp.p[2], emp.p[3]);
-      const info = squareInfo(m1, m2);
-      return info.num === targetNum;
-    });
-  }
-  // -------------------------
-
-  // Сортировка по алфавиту (если нужно)
-  list.sort((a,b) => a.fio.localeCompare(b.fio));
-```
-
-5. Скрыть панель фильтров во вкладке «Справочник»
-
-Чтобы фильтры не висели, когда вы смотрите справочник, добавьте в функцию selectDept изменение видимости панели:
-
-```javascript
-function selectDept(dept){
-  // ... существующий код ...
-  
-  if (dept === 'справочник') {
-    $('#deptView').style.display = 'none';
-    $('#filterPanel').style.display = 'none'; // СКРЫТЬ ФИЛЬТРЫ
-    $('#refView').style.display = 'block';
-    renderReferenceView();
-  } else {
-    $('#deptView').style.display = 'block';
-    $('#filterPanel').style.display = 'block'; // ПОКАЗАТЬ ФИЛЬТРЫ
-    $('#refView').style.display = 'none';
-    renderTable(); renderGrid(); renderEditForm();
-  }
-}
-```
-
-Как это работает в итоге:
-
-1. Сортировка: При выборе «Все сотрудники» список автоматически сортируется по алфавиту.
-2. Поиск по ФИО: Вы вводите «Иванов», и таблица сразу же показывает только Ивановых.
-3. Фильтр по квадрату: Вы выбираете «9. Мушкетеры», и в таблице остаются только те, чьи оценки соответствуют этому квадрату.
-4. Сброс: Кнопка «✖ Сбросить фильтры» возвращает полный список.
-
-Это очень удобно, если вам нужно, например, распечатать список только «Мушкетеров» или найти конкретного сотрудника по фамилии.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Отличная идея. Чтобы добавить кнопку «Все сотрудники», которая объединяет списки из трех вкладок в один общий список, нужно внести точечные изменения в 4 места (без переписывания всего кода).
-
-1. Добавить кнопку в HTML
-
-Найдите блок с кнопками отделов:
-
-```html
-<div class="panel">
-  <div class="row" id="deptButtons">
-    <button data-dept="Кредиты ФЛ" disabled>Кредиты ФЛ</button>
-    <button data-dept="Кредиты ЮЛ" disabled>Кредиты ЮЛ</button>
-    <button data-dept="Транзакт" disabled>Транзакт</button>
-    <button data-dept="справочник" disabled>📖 Справочник</button>
-  </div>
-</div>
-```
-
-И добавьте туда новую кнопку Все сотрудники:
-
-```html
-<div class="panel">
-  <div class="row" id="deptButtons">
-    <button data-dept="Кредиты ФЛ" disabled>Кредиты ФЛ</button>
-    <button data-dept="Кредиты ЮЛ" disabled>Кредиты ЮЛ</button>
-    <button data-dept="Транзакт" disabled>Транзакт</button>
-    <button data-dept="Все" disabled>👥 Все сотрудники</button> <!-- НОВАЯ КНОПКА -->
-    <button data-dept="справочник" disabled>📖 Справочник</button>
-  </div>
-</div>
-```
-
-2. Обновить логику readDeptSheet (чтобы запоминать отдел)
-
-Чтобы при объединении списков мы знали, из какого отдела сотрудник, нужно добавить в объект сотрудника свойство dept.
-
-Найдите в функции readDeptSheet (около строки 450) блок list.push({ ... }) и добавьте туда dept: sheetName:
-
-```javascript
-    list.push({
-      fio, position, p,
-      dept: sheetName, // <-- ДОБАВИТЬ ЭТУ СТРОКУ
-      fioCell: XLSX.utils.encode_cell({ r, c: COL_FIO }),
-      posCell: XLSX.utils.encode_cell({ r, c: COL_POS }),
-      paramCells: [
-        ...COLS_PERF.map(c => XLSX.utils.encode_cell({ r, c })),
-        ...COLS_POT.map(c => XLSX.utils.encode_cell({ r, c }))
-      ],
-      isNew: false, isDeleted: false, row: r
-    });
-```
-
-3. Добавить поддержку режима «Все» в навигацию
-
-Найдите функцию selectDept и замените её на эту:
-
-```javascript
-function selectDept(dept){
-  state.currentDept = dept;
-  state.selectedIndex = null;
-  document.querySelectorAll('#deptButtons button').forEach(b =>
-    b.classList.toggle('active', b.dataset.dept === dept));
-  
-  if (dept === 'справочник') {
-    $('#deptView').style.display = 'none';
-    $('#refView').style.display = 'block';
-    renderReferenceView();
-  } else {
-    $('#deptView').style.display = 'block';
-    $('#refView').style.display = 'none';
-    renderTable(); renderGrid(); renderEditForm();
-  }
-}
-```
-
-(Тут ничего не меняется, selectDept уже готов принимать 'Все').
-
-4. Обновить функцию renderTable
-
-Чтобы при выборе «Все» показывались сотрудники из всех отделов, нужно изменить фильтрацию в renderTable.
-
-Найдите функцию renderTable и замените её начало:
-
-```javascript
-function renderTable(){
-  const tbody = $('#empTable tbody');
-  tbody.innerHTML = '';
-  const dept = state.currentDept;
-  if (!dept || dept === 'справочник') return;
-  
-  // --- ИЗМЕНЕНИЕ НАЧАЛО ---
-  let list = [];
-  if (dept === 'Все') {
-    // Собираем сотрудников из всех отделов
-    DEPTS.forEach(d => {
-      const emps = state.employees[d].filter(e => !e.isDeleted);
-      list.push(...emps);
-    });
-    // Сортируем по алфавиту (по ФИО)
-    list.sort((a,b) => a.fio.localeCompare(b.fio));
-  } else {
-    list = state.employees[dept].filter(e => !e.isDeleted);
-  }
-  // --- ИЗМЕНЕНИЕ КОНЕЦ ---
-
-  list.forEach((emp, idx) => {
-    // ... дальше идет уже существующий код рендера строк (const p = emp.p; и т.д.)
-```
-
-Внутри цикла forEach нужно добавить отображение отдела (чтобы в общей таблице было видно, кто откуда). Добавьте колонку в HTML-таблице и в tr.innerHTML.
-
-В <thead> таблицы найдите <th>ФИО</th> и добавьте после неё <th>Отдел</th> (опционально, но полезно):
-
-```html
-<th>ФИО</th><th>Отдел</th><th>Должность</th>...
-```
-
-А в tr.innerHTML внутри renderTable (там, где формируется строка) добавьте ячейку с отделом:
-
-```javascript
-    tr.innerHTML = `
-      <td class="name">${escapeHtml(emp.fio)}</td>
-      <td>${escapeHtml(emp.dept || '—')}</td> <!-- ДОБАВЛЕНА КОЛОНКА ОТДЕЛА -->
-      <td>${escapeHtml(emp.position)}</td>
-      ...
-```
-
-(Если не хотите добавлять колонку «Отдел», этот шаг можно пропустить, но тогда непонятно, к какому отделу относится сотрудник).
-
-5. Обновить renderEditForm (для режима «Все»)
-
-Когда выбран режим «Все» и вы кликаете на сотрудника, форма должна корректно его отображать. В функции renderEditForm найдите строку:
-
-```javascript
-  const list = state.employees[dept].filter(e => !e.isDeleted);
-```
-
-И замените на:
-
-```javascript
-  let list = [];
-  if (dept === 'Все') {
-    DEPTS.forEach(d => list.push(...state.employees[d].filter(e => !e.isDeleted)));
-    list.sort((a,b) => a.fio.localeCompare(b.fio));
-  } else {
-    list = state.employees[dept].filter(e => !e.isDeleted);
-  }
-```
-
-Также в renderEditForm при сохранении изменений (редактирование ФИО/оценок) поиск emp по индексу сработает только если список отсортирован одинаково. Чтобы не было багов, в обработчиках input вместо state.employees[dept] используйте прямую ссылку на emp (она уже используется — emp.p[...] = v), так что здесь всё будет работать, потому что emp — это ссылка на объект.
-
-Но при удалении (tr.querySelector('.del')) для режима «Все» логика state.employees[dept].indexOf(emp) не сработает (массив другой). Нужно найти отдел сотрудника:
-
-```javascript
-    tr.querySelector('.del').addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (!confirm(`Удалить сотрудника «${emp.fio}»?`)) return;
-      
-      // --- ИЗМЕНЕНИЕ ---
-      const targetDept = emp.dept || dept;
-      const originalIdx = state.employees[targetDept].indexOf(emp);
-      if (originalIdx > -1) state.employees[targetDept][originalIdx].isDeleted = true;
-      // -----------------
-
-      if (state.selectedIndex === idx) state.selectedIndex = null;
-      else if (state.selectedIndex > idx) state.selectedIndex--;
-      renderTable(); renderGrid(); renderEditForm();
-    });
-```
-
-6. Обновить renderGrid (9-box для «Все»)
-
-Чтобы карта 9 квадратов тоже работала в режиме «Все», найдите в renderGrid:
-
-```javascript
-  const list = state.employees[dept].filter(e => !e.isDeleted);
-```
-
-И замените на:
-
-```javascript
-  let list = [];
-  if (dept === 'Все') {
-    DEPTS.forEach(d => list.push(...state.employees[d].filter(e => !e.isDeleted)));
-  } else {
-    list = state.employees[dept].filter(e => !e.isDeleted);
-  }
-```
-
-7. Кнопка «Добавить сотрудника» в режиме «Все»
-
-В режиме «Все» нельзя добавить сотрудника, потому что непонятно, в какой отдел его писать. Можно либо заблокировать кнопку, либо спросить отдел. Самое простое — в обработчике #btnAdd добавить проверку:
-
-```javascript
-$('#btnAdd').addEventListener('click', () => {
-  if (!state.currentDept || state.currentDept === 'справочник' || state.currentDept === 'Все') {
-    alert('Выберите конкретный отдел, чтобы добавить сотрудника.');
-    return;
-  }
-  // ... остальной код
-```
-
----
-
-Итог
-
-После этих правок:
-
-1. Появится кнопка 👥 Все сотрудники.
-2. При клике на нее загрузится объединенный список из трех отделов.
-3. В таблице появится колонка «Отдел» (если вы ее добавили в HTML).
-4. Карта 9 квадратов и форма редактирования будут работать корректно для всех.
-5. Удаление и редактирование тоже будут работать (удаление — через поиск в нужном отделе).
-
-Важно: При сохранении в Excel сотрудники из режима «Все» автоматически распределятся по своим вкладкам, потому что у каждого объекта есть свойство emp.dept (добавленное в шаге 2), и цикл сохранения DEPTS.forEach(dept => {...}) обрабатывает их в контексте своего отдела.
-
-
-
-Понял! Чтобы заголовок менялся в зависимости от выбранной кнопки, нужно добавить небольшой скрипт.
-
-Точечное изменение в HTML
-
-Найдите в коде этот заголовок (он находится над картой 9 квадратов):
-
-```html
-<h3 style="margin-top:0; text-align:center;">Карта 9 квадратов (текущий отдел)</h3>
-```
-
-Замените его на:
-
-```html
-<h3 id="gridTitle" style="margin-top:0; text-align:center;">Карта 9 квадратов (текущий отдел)</h3>
-```
-
-Точечное изменение в JavaScript
-
-Найдите функцию selectDept и добавьте в неё обновление заголовка. Вот как должна выглядеть функция целиком после изменения:
-
-```javascript
-function selectDept(dept){
-  state.currentDept = dept;
-  state.selectedIndex = null;
-  
-  document.querySelectorAll('#deptButtons button').forEach(b =>
-    b.classList.toggle('active', b.dataset.dept === dept));
-  
-  // --- ИЗМЕНЕНИЕ НАЧАЛО ---
-  const titleEl = $('#gridTitle');
-  if (dept === 'Все') {
-    titleEl.textContent = 'Карта 9 квадратов (все отделы)';
-  } else if (dept === 'справочник') {
-    titleEl.textContent = 'Справочник'; // скроется вместе с deptView, но на всякий случай
-  } else {
-    titleEl.textContent = `Карта 9 квадратов (${dept})`;
-  }
-  // --- ИЗМЕНЕНИЕ КОНЕЦ ---
-  
-  if (dept === 'справочник') {
-    $('#deptView').style.display = 'none';
-    $('#refView').style.display = 'block';
-    renderReferenceView();
-  } else {
-    $('#deptView').style.display = 'block';
-    $('#refView').style.display = 'none';
-    renderTable(); renderGrid(); renderEditForm();
-  }
-}
-```
-
-Что получится
-
-· При нажатии на «Кредиты ФЛ» заголовок станет: «Карта 9 квадратов (Кредиты ФЛ)».
-· При нажатии на «Все сотрудники» заголовок станет: «Карта 9 квадратов (все отделы)».
-· При переключении обратно на отдел — снова название отдела.
-
-Это будет работать и при первой загрузке файла, так как selectDept(DEPTS[0]) вызывается автоматически, и заголовок сразу примет вид «Карта 9 квадратов (Кредиты ФЛ)».
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -1111,55 +19,55 @@ function selectDept(dept){
   table { width:100%; border-collapse:collapse; }
   th, td { border:1px solid var(--border); padding:6px 8px; text-align:center; font-size:14px; }
   th { background:#f0f2f5; }
-  td.name { text-align:left; font-weight:600; cursor:pointer; }
+  td.name { text-align:left; font-weight:400; cursor:pointer; }
   td.name:hover { background:#eef4ff; }
   tr.selected td { background:#e0ecff; }
   input[type=number] { width:56px; padding:4px; text-align:center; border:1px solid var(--border); border-radius:6px; }
   input[type=text].fio { width:200px; padding:6px; border:1px solid var(--border); border-radius:6px; }
   input[type=text].pos { width:200px; padding:6px; border:1px solid var(--border); border-radius:6px; }
-  
+
   /* Портрет в форме */
-  textarea.portrait { 
-    width:100%; 
-    padding:10px; 
-    border:1px solid var(--border); 
-    border-radius:6px; 
-    min-height:80px; 
-    resize:vertical; 
+  textarea.portrait {
+    width:100%;
+    padding:10px;
+    border:1px solid var(--border);
+    border-radius:6px;
+    min-height:80px;
+    resize:vertical;
     font-family: ui-monospace, Consolas, monospace;
-    font-size:12px; 
-    line-height:1.5; 
-    background:#f9fafb; 
-    white-space:pre-wrap; 
+    font-size:12px;
+    line-height:1.5;
+    background:#f9fafb;
+    white-space:pre-wrap;
     overflow-y:auto;
   }
-  
+
   /* Карта 9 квадратов (увеличена и по центру) */
-  .grid-wrap { 
-    display:grid; 
-    grid-template-columns: repeat(3, 1fr); 
-    gap:12px; 
-    max-width: 900px; 
+  .grid-wrap {
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap:12px;
+    max-width: 900px;
     margin: 0 auto;
   }
-  
-  .cell { 
-    position: relative; 
-    border:1px solid var(--border); 
-    border-radius:12px; 
-    padding:14px; 
-    min-height:130px; 
+
+  .cell {
+    position: relative;
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:14px;
+    min-height:130px;
     cursor: help;
     transition: transform 0.1s;
   }
   .cell:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-  
+
   .cell h4 { margin:0 0 4px; font-size:12px; color:#475467; font-weight:600; text-transform:uppercase; letter-spacing:.3px; }
   .cell .sq-title { font-size:16px; font-weight:700; color:#1f2937; margin:2px 0 8px; }
   .cell ul { margin:0; padding-left:0; list-style:none; font-size:13px; }
   .cell ul li { margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cell.hl { outline:3px solid var(--accent); outline-offset:-3px; }
-  
+
   /* Цвета */
   .cell.green { background:#d9f2d9; border-color:#86c986; }
   .cell.yellow{ background:#fff4cc; border-color:#e6c94a; }
@@ -1233,22 +141,23 @@ function selectDept(dept){
 
 <div class="panel">
   <div class="row" id="deptButtons">
-    <button data-dept="Кредиты ФЛ" disabled>Кредиты ФЛ</button>
-    <button data-dept="Кредиты ЮЛ" disabled>Кредиты ЮЛ</button>
-    <button data-dept="Транзакт" disabled>Транзакт</button>
+    <button data-dept="Кредиты ФЛ" disabled>👤Кредиты ФЛ</button>
+    <button data-dept="Кредиты ЮЛ" disabled>👤Кредиты ЮЛ</button>
+    <button data-dept="Транзакт" disabled>👤Транзакт</button>
+    <button data-dept="Все" disabled>👥 Все сотрудники ЦЗО</button> <!-- НОВАЯ КНОПКА -->
     <button data-dept="справочник" disabled>📖 Справочник</button>
   </div>
 </div>
 
 <div id="deptView">
   <div class="panel">
-    <h3 style="margin-top:0">Сотрудники отдела</h3>
+    <h3 style="margin-top:0">🙋🏻‍♂️ Сотрудники отдела</h3>
     <div style="overflow-x:auto;">
       <table id="empTable">
         <thead>
           <tr>
-            <th>ФИО</th><th>Должность</th><th id="th_p1">Р1</th><th id="th_p2">Р2</th>
-            <th id="th_p4">П1</th><th id="th_p5">П2</th>
+            <th>ФИО</th><th>Отдел</th><th>Должность</th><th id="th_p1">Дедлайн ЗОД</th><th id="th_p2">Качество ЗОД</th>
+            <th id="th_p4">Новаторство</th><th id="th_p5">Командность</th>
             <th>Ср. Прд.</th><th>Ср. Пот.</th><th>Квадрат</th><th>Портрет</th><th></th>
           </tr>
         </thead>
@@ -1258,7 +167,7 @@ function selectDept(dept){
   </div>
 
   <div class="panel">
-    <h3 style="margin-top:0; text-align:center;">Карта 9 квадратов (текущий отдел)</h3>
+    <h3 id="gridTitle" style="margin-top:0; text-align:center;">Карта 9 квадратов (текущий отдел)</h3>
     <div class="grid-wrap" id="grid9"></div>
   </div>
 
@@ -1297,14 +206,14 @@ let COL_PORTRAIT = 10;
 const DEPTS = ['Кредиты ФЛ', 'Кредиты ЮЛ', 'Транзакт'];
 
 let SQUARE_NAMES = {
-  1: '1. Якорь', 
-  2: '2. Пассажир', 
+  1: '1. Якорь',
+  2: '2. Пассажир',
   3: '3. Хранители традиций',
-  4: '4. Улитки', 
-  5: '5. Рабочие муравьи', 
+  4: '4. Улитки',
+  5: '5. Рабочие муравьи',
   6: '6. Пчелы-труженицы',
-  7: '7. Фантазеры', 
-  8: '8. Самородки', 
+  7: '7. Фантазеры',
+  8: '8. Самородки',
   9: '9. Мушкетеры'
 };
 
@@ -1313,59 +222,59 @@ let POT_NAMES = ['Новаторство', 'Командность'];
 
 // Профили: короткий портрет (для таблицы), подробный (для тултипа), риски, решения
 const SQUARE_PROFILES = {
-  1: { 
-    short: 'Самый тяжелый случай.', 
-    portrait: 'Сотрудник, который не даёт нужного результата и не показывает потенциала для роста.',
-    risks: 'Снижение стандартов команды, нагрузка на других.', 
-    decision: 'Честная обратная связь, план улучшения или расставание.' 
+  1: {
+    short: 'Самый тяжелый случай. ',
+    portrait: 'Баланс стабильно завален, дедлайн 12:00 сорван, ошибок куча. При этом учиться не хотят, на любые замечания отвечают агрессией или токсичным нытьем: «За такую зарплату скажите спасибо, что вообще прихожу».',
+    risks: 'Тянут весь отдел на дно, демотивируют абсолютно всех вокруг.',
+    decision: 'План повышения эффективности (испытательный срок) на 3–4 недели. Четко под подпись: «Вот чек-лист. Сдача до 12:00. Максимум 2 ошибки за месяц. Если не выполняешь — мы расстаемся». В вашей ситуации их увольнение — это благо: на их оклад можно догрузить или удержать «Мушкетеров».'
   },
-  2: { 
-    short: 'Сотрудники, которые ментально уже уволились.', 
-    portrait: 'Сотрудник, который пока не справляется, но имеет некоторый потенциал.',
-    risks: 'Неопределённость для команды, потеря времени.', 
-    decision: 'Чёткий план улучшения, наставник; если нет динамики — расставание.' 
+  2: {
+    short: 'Сотрудники, которые ментально уже уволились.',
+    portrait: 'Делают необходимый минимум, чтобы не уволили прямо сегодня. Шаг влево, шаг вправо — отказ. Никаких идей, полная апатия.',
+    risks: 'Заражают коллектив своим пофигизмом («А зачем напрягаться за эти деньги?»). При малейшем увеличении объемов завалят дедлайн.',
+    decision: 'Прямой разговор по душам. «Я вижу, что ты выполняешь норму, но огонь пропал. Что происходит? Ты устал от бэк-офиса? Давай определимся, как мы работаем дальше, потому что мне нужна включенность в процесс закрытия».'
   },
-  3: { 
-    short: 'Мега-опытные «зубры».', 
-    portrait: 'Способный сотрудник, который почему-то не даёт результата.',
-    risks: 'Ярлык «неудачник»; потеря таланта.', 
-    decision: 'Разобраться в причинах, сменить роль, дать поддержку.' 
+  3: {
+    short: 'Мега-опытные «зубры».',
+    portrait: 'Ручную проверку знают наизусть, баланс у них всегда идеален. Но потенциал нулевой: любые изменения в софте или чек-листах встречают в штыки («Мы 10 лет так проверяли, зачем вы придумываете ерунду?!»).',
+    risks: 'Могут тормозить автоматизацию отдела и ворчанием демотивировать новичков.',
+    decision: 'Встреча-уважение. Не пытаться их переделать. Сказать: «Вы наш главный щит от ошибок, ваш опыт бесценен». При внедрении нового контроля просить их стать «главными критиками»: «Посмотрите своим опытным взглядом, где в этой новой схеме могут быть слабые места?» (это снизит их сопротивление).'
   },
-  4: { 
-    short: 'Стараются, не бунтуют, но работают очень медленно.', 
-    portrait: 'Выполняет работу на приемлемом уровне, но не проявляет стремления к росту.',
-    risks: 'Устаревание навыков.', 
-    decision: 'Стандарты, обучение под текущие задачи.' 
+  4: {
+    short: 'Стараются, не бунтуют, но работают очень медленно.',
+    portrait: 'До 12:00 вечно не успевают, из-за спешки в последний момент начинают совершать глупые ошибки. При этом готовы учиться, но темп мышления/работы не позволяет ускориться.',
+    risks: 'Будут постоянно тянуть время закрытия дня всего филиала.',
+    decision: 'Разбор хронометража. Сесть вместе и посмотреть, на каких именно пунктах чек-листа «Улитка» зависает. Возможно, закрепить за ней на неделю «Пчелу-труженицу», чтобы та показала свои лайфхаки по скорости.'
   },
-  5: { 
-    short: 'Костяк бэк-офиса.', 
-    portrait: 'Стабильные, обучаемые сотрудники, которые хорошо выполняют свою роль.',
-    risks: 'Застой, снижение вовлечённости.', 
-    decision: 'Точечное развитие, ротация задач, обратная связь.' 
+  5: {
+    short: 'Костяк бэк-офиса.',
+    portrait: 'Работают стабильно, баланс сдают вовремя в 95% случаев, ошибки редкие. Чужие идеи принимают, работают строго по инструкции.',
+    risks: 'Завязнуть в рутине, устать от монотонности и начать потихоньку снижать показатели до уровня «Пассажиров».',
+    decision: 'Плановая беседа-сверка. Спросить: «Как дела? На каком этапе чек-листа чаще всего спотыкаешься? Какая помощь нужна от меня, чтобы закрываться еще легче?»Оказывать поддержку.'
   },
-  6: { 
-    short: 'Супер-надежные исполнители с хорошей гибкостью.', 
-    portrait: 'Сотрудник с большим потенциалом, но текущие результаты пока средние.',
-    risks: 'Фрустрация, если потенциал не реализуется.', 
-    decision: 'Сложные задачи, наставник, чёткие цели.' 
+  6: {
+    short: 'Супер-надежные исполнители с хорошей гибкостью.',
+    portrait: 'До 12:00 всё закрывают идеально. Сами новые макросы не пишут, но если «Мушкетеры» придумали новую Excel-таблицу для контроля — «Пчелы» первыми без ворчания внедряют её в свою работу.',
+    risks: 'Относиться к ним как к должному и забывать хвалить. Без поддержки они могут загрустить и снизить планку.',
+    decision: 'Встреча-благодарность. Закрепить их стабильность, похвалить за легкую адаптацию к изменениям: «Нам очень ценно, что ты так быстро подхватываешь новые правила».'
   },
-  7: { 
-    short: 'Активные сотрудники, но регулярно косячат.', 
-    portrait: 'Эксперт в своей текущей роли, но не стремится к росту.',
-    risks: 'Демотивация и потеря специалиста.', 
-    decision: 'Ценить за экспертизу, развивать в глубину.' 
+  7: {
+    short: 'Активные сотрудники, но регулярно косячат.',
+    portrait: 'Очень активные сотрудники, постоянно фонтанируют идеями: «А давайте всё переделаем!». Но при этом сами регулярно косячат в балансе и сдают его после 12:00, потому что отвлекаются от чек-листа на свои «воздушные замки».',
+    risks: 'Могут дезорганизовать работу отдела своими бесконечными разговорами об улучшениях при полном отсутствии личного результата.',
+    decision: 'Жесткое заземление. «Твои идеи классные, но давай договоримся: сначала мы выходим на 100% сдачу баланса до 12:00 без ошибок в течение месяца. Как только подтянешь базу — мы сядем обсуждать твои предложения».'
   },
-  8: { 
-    short: 'Генераторы идей с горящими глазами.', 
-    portrait: 'Надёжно и хорошо выполняет работу, может расширять зону ответственности.',
-    risks: 'Перегрузка без признания.', 
-    decision: 'Развивать в ширину: проекты, наставничество.' 
+  8: {
+    short: 'Генераторы идей с горящими глазами.',
+    portrait: 'Предлагают отличные инструменты контроля, но в текущей рутине из-за невнимательности могут сдать баланс в 11:58 или допустить пару мелких ошибок.',
+    risks: 'Если забивать их идеи и заставлять только механически кликать по чек-листу, они потеряют интерес, перестанут предлагать улучшения и скатятся в «Пассажиров».',
+    decision: 'Направить их потенциал на исправление их же продуктивности. «У тебя отличные идеи, давай ты применишь свой инструмент контроля, чтобы у тебя самого было 0 ошибок в балансе?»'
   },
-  9: { 
-    short: 'Главная элита.', 
-    portrait: 'Лучшие сотрудники: уже дают сильный результат и способны расти дальше.',
-    risks: 'Выгорание, потеря мотивации, перехват конкурентами.', 
-    decision: 'Удерживать, амбициозные проекты, готовить к повышению.' 
+  9: {
+    short: 'Главная элита.',
+    portrait: 'Баланс сдают до 12:00 без единой ошибки. Постоянно предлагают, как автоматизировать ручную проверку, пишут макросы, оптимизируют чек-листы.',
+    risks: 'Поскольку должностей и прибавок нет, им быстро станет скучно перемалывать рутину. Они уйдут туда, где платят больше.',
+    decision: ' Сказать честно: «Я вижу твой уровень, ты перерос рутину». Вовлечь в проектную работу — дать им задачу возглавить мини-автоматизацию процесса. Сделать наставниками.'
   }
 };
 
@@ -1449,7 +358,7 @@ $('#btnDebug').addEventListener('click', () => {
   box.textContent = '--- ДИАГНОСТИКА ---\n';
   if (!state.workbook) { logDebug('Файл не загружен.'); return; }
   logDebug('Листы: ' + state.workbook.SheetNames.join(', '));
-  
+
   DEPTS.forEach(dept => {
     const realName = findSheet(state.workbook, dept);
     logDebug(`\n[${dept}] -> "${realName || 'НЕ НАЙДЕН'}"`);
@@ -1475,7 +384,7 @@ $('#fileInput').addEventListener('change', async (e) => {
     const data = await file.arrayBuffer();
     const wb = XLSX.read(data, { type:'array', cellStyles:true, cellDates:true });
     state.workbook = wb;
-    
+
     detectColumnsFromHeader(wb);
     readReferenceSheet(wb);
 
@@ -1498,10 +407,10 @@ function detectColumnsFromHeader(wb) {
   let sheetName = null;
   for (const d of DEPTS) { const s = findSheet(wb, d); if (s) { sheetName = s; break; } }
   if (!sheetName) return;
-  
+
   const ws = wb.Sheets[sheetName];
   const aoa = XLSX.utils.sheet_to_json(ws, { header:1, defval:'', raw:false });
-  
+
   let headerRow = -1;
   for (let r = 0; r < Math.min(15, aoa.length); r++) {
     const row = aoa[r] || [];
@@ -1511,7 +420,7 @@ function detectColumnsFromHeader(wb) {
     if (headerRow !== -1) break;
   }
   if (headerRow === -1) return;
-  
+
   const headerText = {};
   for (let r = headerRow; r <= Math.min(headerRow + 3, aoa.length - 1); r++) {
     const row = aoa[r] || [];
@@ -1519,7 +428,7 @@ function detectColumnsFromHeader(wb) {
       if (row[c]) headerText[c] = (headerText[c] || '') + ' ' + String(row[c]).toLowerCase();
     }
   }
-  
+
   const found = {};
   for (let c in headerText) {
     const text = headerText[c]; const cNum = parseInt(c);
@@ -1527,14 +436,14 @@ function detectColumnsFromHeader(wb) {
     else if (text.includes('должност')) found.pos = cNum;
     else if (text.includes('дедлайн')) found.p1 = cNum;
     else if (text.includes('качество')) found.p2 = cNum;
-    else if (text.includes('новаторство')) found.p3 = cNum; 
-    else if (text.includes('командность')) found.p4 = cNum; 
+    else if (text.includes('новаторство')) found.p3 = cNum;
+    else if (text.includes('командность')) found.p4 = cNum;
     else if (text.includes('ср. балл') && text.includes('эффектив')) found.avg1 = cNum;
     else if (text.includes('ср. балл') && text.includes('потенциал')) found.avg2 = cNum;
     else if (text.includes('итоговый квадрат') || text.includes('квадрат')) found.sq = cNum;
     else if (text.includes('портрет')) found.portrait = cNum;
   }
-  
+
   if (found.fio !== undefined) COL_FIO = found.fio;
   if (found.pos !== undefined) COL_POS = found.pos;
   if (found.p1 !== undefined && found.p2 !== undefined) COLS_PERF = [found.p1, found.p2];
@@ -1548,10 +457,10 @@ function detectColumnsFromHeader(wb) {
 function readReferenceSheet(wb) {
   const sheetName = findSheet(wb, 'справочник');
   if (!sheetName) return;
-  
+
   const ws = wb.Sheets[sheetName];
   const aoa = XLSX.utils.sheet_to_json(ws, { header:1, defval:'', raw:false });
-  
+
   const sections = [];
   let currentSection = null;
   let currentCriterion = null;
@@ -1562,16 +471,16 @@ function readReferenceSheet(wb) {
     const col1 = String(row[1] || '').trim();
     const col2 = String(row[2] || '').trim();
     const col3 = String(row[3] || '').trim();
-    
+
     if (col0.includes('Ось Эффективности') || col0.includes('Ось Потенциала')) {
       currentSection = { title: col0, criteria: [] };
       sections.push(currentSection);
       currentCriterion = null;
       continue;
     }
-    
+
     if (col0 === 'Показатель' || col1 === '1 балл (Низкий уровень)') continue;
-    
+
     if (currentSection && col0) {
       if (col1 || col2 || col3) {
         currentCriterion = { name: col0, level1: col1, level2: col2, level3: col3 };
@@ -1581,7 +490,7 @@ function readReferenceSheet(wb) {
       }
     }
   }
-  
+
   referenceData = sections;
   renderReferenceView();
 }
@@ -1592,7 +501,7 @@ function renderReferenceView() {
     container.innerHTML = '<p class="hint">Справочник не загружен или пуст.</p>';
     return;
   }
-  
+
   let html = '';
   referenceData.forEach(sec => {
     html += `<div class="ref-section">
@@ -1607,7 +516,7 @@ function renderReferenceView() {
           </tr>
         </thead>
         <tbody>`;
-    
+
     sec.criteria.forEach(c => {
       html += `<tr>
         <td>${escapeHtml(c.name)}</td>
@@ -1616,17 +525,17 @@ function renderReferenceView() {
         <td class="ref-level-3">${escapeHtml(c.level3 || '—')}</td>
       </tr>`;
     });
-    
+
     html += `</tbody></table></div>`;
   });
-  
+
   container.innerHTML = html;
 }
 
 function readDeptSheet(wb, sheetName){
   const realName = findSheet(wb, sheetName);
   if (!realName) return [];
-  
+
   const ws = wb.Sheets[realName];
   const aoa = XLSX.utils.sheet_to_json(ws, { header:1, defval:'', raw:false });
   const list = [];
@@ -1639,9 +548,9 @@ function readDeptSheet(wb, sheetName){
     }
     if (startRow !== -1) break;
   }
-  
+
   if (startRow === -1) return [];
-  
+
   for (let r = startRow; r < aoa.length; r++) {
     const row = aoa[r] || [];
     const fio = String(row[COL_FIO] || '').trim();
@@ -1657,6 +566,7 @@ function readDeptSheet(wb, sheetName){
     };
 
     const position = String(getVal(COL_POS) || '').trim();
+    const markVal = String(getVal(COL_MARK) || '').trim(); // COL_MARK - индекс колонки
 
     const p = [];
     COLS_PERF.forEach(c => p.push(toNum(getVal(c))));
@@ -1664,6 +574,8 @@ function readDeptSheet(wb, sheetName){
 
     list.push({
       fio, position, p,
+      dept: sheetName, // <-- ДОБАВИТЬ ЭТУ СТРОКУ
+      mark: markVal,
       fioCell: XLSX.utils.encode_cell({ r, c: COL_FIO }),
       posCell: XLSX.utils.encode_cell({ r, c: COL_POS }),
       paramCells: [
@@ -1683,9 +595,21 @@ document.querySelectorAll('#deptButtons button').forEach(btn => {
 function selectDept(dept){
   state.currentDept = dept;
   state.selectedIndex = null;
+
   document.querySelectorAll('#deptButtons button').forEach(b =>
     b.classList.toggle('active', b.dataset.dept === dept));
-  
+
+  // --- ИЗМЕНЕНИЕ НАЧАЛО ---
+  const titleEl = $('#gridTitle');
+  if (dept === 'Все') {
+    titleEl.textContent = 'Карта 9 квадратов (весь ЦЗО)';
+  } else if (dept === 'справочник') {
+    titleEl.textContent = 'Справочник'; // скроется вместе с deptView, но на всякий случай
+  } else {
+    titleEl.textContent = `Карта 9 квадратов (${dept})`;
+  }
+  // --- ИЗМЕНЕНИЕ КОНЕЦ ---
+
   if (dept === 'справочник') {
     $('#deptView').style.display = 'none';
     $('#refView').style.display = 'block';
@@ -1703,8 +627,23 @@ function renderTable(){
   tbody.innerHTML = '';
   const dept = state.currentDept;
   if (!dept || dept === 'справочник') return;
-  
-  const list = state.employees[dept].filter(e => !e.isDeleted);
+
+  // --- ИЗМЕНЕНИЕ НАЧАЛО ---
+  let list = [];
+  if (dept === 'Все') {
+    // Собираем сотрудников из всех отделов
+    DEPTS.forEach(d => {
+      const emps = state.employees[d].filter(e => !e.isDeleted);
+      list.push(...emps);
+    });
+    // Сортируем по алфавиту (по ФИО)
+    list.sort((a,b) => a.fio.localeCompare(b.fio));
+  } else {
+    list = state.employees[dept].filter(e => !e.isDeleted);
+  }
+  // --- ИЗМЕНЕНИЕ КОНЕЦ ---
+
+
 
   list.forEach((emp, idx) => {
     const p = emp.p;
@@ -1716,14 +655,15 @@ function renderTable(){
     const tr = document.createElement('tr');
     if (idx === state.selectedIndex) tr.classList.add('selected');
     tr.innerHTML = `
-      <td class="name">${escapeHtml(emp.fio)}</td>
+      <td class="name" style="${emp.mark === 'red' ? 'color:#b91c1c' : emp.mark === 'yellow' ? 'color:#b45309' : emp.mark === 'green' ? 'color:#15803d' : ''}">${escapeHtml(emp.fio)}</td>
+      <td>${escapeHtml(emp.dept || '—')}</td> <!-- ДОБАВЛЕНА КОЛОНКА ОТДЕЛА -->
       <td>${escapeHtml(emp.position)}</td>
       ${p.map(v=>`<td>${v===''?'':v}</td>`).join('')}
       <td>${m1||''}</td>
       <td>${m2||''}</td>
       <td><span class="badge ${info.color}">${info.title}</span></td>
       <td style="max-width:200px;text-align:left;font-size:12px;">${escapeHtml(prof.short)}</td>
-      <td><span class="del" data-idx="${idx}">удалить</span></td>
+      <td><span class="del" data-idx="${idx}">❌удалить</span></td>
     `;
     tr.querySelector('.name').addEventListener('click', () => {
       state.selectedIndex = idx;
@@ -1732,8 +672,12 @@ function renderTable(){
     tr.querySelector('.del').addEventListener('click', (e) => {
       e.stopPropagation();
       if (!confirm(`Удалить сотрудника «${emp.fio}»?`)) return;
-      const originalIdx = state.employees[dept].indexOf(emp);
-      if (originalIdx > -1) state.employees[dept][originalIdx].isDeleted = true;
+  // --- ИЗМЕНЕНИЕ ---
+      const targetDept = emp.dept || dept;
+      const originalIdx = state.employees[targetDept].indexOf(emp);
+      if (originalIdx > -1) state.employees[targetDept][originalIdx].isDeleted = true;
+      // -----------------
+
       if (state.selectedIndex === idx) state.selectedIndex = null;
       else if (state.selectedIndex > idx) state.selectedIndex--;
       renderTable(); renderGrid(); renderEditForm();
@@ -1749,8 +693,14 @@ function renderGrid(){
   wrap.innerHTML = '';
   const dept = state.currentDept;
   if (!dept || dept === 'справочник') return;
-  
-  const list = state.employees[dept].filter(e => !e.isDeleted);
+
+  let list = [];
+  if (dept === 'Все') {
+    DEPTS.forEach(d => list.push(...state.employees[d].filter(e => !e.isDeleted)));
+    list.sort((a,b) => a.fio.localeCompare(b.fio));
+  } else {
+    list = state.employees[dept].filter(e => !e.isDeleted);
+  }
 
   const rows = ['high','mid','low'];
   const cols = ['low','mid','high'];
@@ -1775,29 +725,35 @@ function renderGrid(){
       cell.innerHTML = `
         <h4>Результат: ${colLabel[x]} / Потенциал: ${rowLabel[y]}</h4>
         <div class="sq-title">${info.title}</div>
-        <ul>${members.map(m=>`<li title="${escapeHtml(m.fio)}">${escapeHtml(m.fio)}</li>`).join('')}</ul>
+        <ul>${members.map(m => {
+          let colorStyle = '';
+          if (m.mark === 'red') colorStyle = 'color: #b91c1c; font-weight: 700;';
+          if (m.mark === 'yellow') colorStyle = 'color: #b45309; font-weight: 700;';
+          if (m.mark === 'green') colorStyle = 'color: #15803d; font-weight: 700;';
+          return `<li style="${colorStyle}" title="${escapeHtml(m.fio)}">${escapeHtml(m.fio)}</li>`;
+        }).join('')}</ul>
       `;
       if (list[state.selectedIndex] && members.includes(list[state.selectedIndex]))
         cell.classList.add('hl');
-        
+
       // Тултип
       cell.addEventListener('mouseenter', (e) => {
         const prof = SQUARE_PROFILES[info.num];
         if (!prof) return;
-        
+
         $('#tt-title').textContent = info.title;
         $('#tt-portrait').textContent = prof.portrait;
         $('#tt-risks').textContent = prof.risks;
         $('#tt-decision').textContent = prof.decision;
-        
+
         const tt = $('#tooltip');
         tt.classList.add('active');
-        
+
         const rect = e.target.getBoundingClientRect();
         tt.style.left = Math.min(window.innerWidth - 340, rect.left + 20) + 'px';
         tt.style.top = (rect.top + 20) + 'px';
       });
-      
+
       cell.addEventListener('mouseleave', () => {
         $('#tooltip').classList.remove('active');
       });
@@ -1823,31 +779,44 @@ function renderEditForm(){
   const box = $('#editForm');
   const dept = state.currentDept;
   if (!dept || dept === 'справочник') return;
-  
-  const list = state.employees[dept].filter(e => !e.isDeleted);
-  
+
+  let list = [];
+  if (dept === 'Все') {
+    DEPTS.forEach(d => list.push(...state.employees[d].filter(e => !e.isDeleted)));
+  } else {
+    list = state.employees[dept].filter(e => !e.isDeleted);
+  }
+
   if (state.selectedIndex === null || !list[state.selectedIndex]){
     box.innerHTML = '<span class="hint">Выберите сотрудника в таблице.</span>';
     return;
   }
   const emp = list[state.selectedIndex];
-  
+
   const m1 = avg2(emp.p[0],emp.p[1]);
   const m2 = avg2(emp.p[2],emp.p[3]);
   const info = squareInfo(m1, m2);
   const prof = SQUARE_PROFILES[info.num] || { portrait: '—' };
-  
+
   box.innerHTML = `
     <div class="row" style="margin-bottom:10px">
       <label>ФИО: <input id="editFio" class="fio" value="${escapeHtml(emp.fio)}"></label>
       <label>Должность: <input id="editPos" class="pos" value="${escapeHtml(emp.position || '')}"></label>
+      <label>Метка:
+        <select id="editMark" style="padding:6px; border-radius:6px; border:1px solid #ccc;">
+          <option value="none" ${emp.mark === 'none' || !emp.mark ? 'selected' : ''}>— Нет —</option>
+          <option value="red" ${emp.mark === 'red' ? 'selected' : ''}>🔴 Красный</option>
+          <option value="yellow" ${emp.mark === 'yellow' ? 'selected' : ''}>🟡 Жёлтый</option>
+          <option value="green" ${emp.mark === 'green' ? 'selected' : ''}>🟢 Зелёный</option>
+        </select>
+      </label>
     </div>
-    
+
     <div class="row" style="margin-bottom:6px"><b>Ось Эффективность (Раздел 1)</b></div>
     <div class="row" style="margin-bottom:10px">
       ${[0,1].map(i=>`<label title="${PERF_NAMES[i]}">${PERF_NAMES[i]}: <input type="number" min="1" max="3" step="1" data-param="${i}" value="${emp.p[i]===''?'':emp.p[i]}"></label>`).join('')}
     </div>
-    
+
     <div class="row" style="margin-bottom:6px"><b>Ось Потенциала (Раздел 2)</b></div>
     <div class="row" style="margin-bottom:10px">
       ${[2,3].map(i=>`<label title="${POT_NAMES[i-2]}">${POT_NAMES[i-2]}: <input type="number" min="1" max="3" step="1" data-param="${i}" value="${emp.p[i]===''?'':emp.p[i]}"></label>`).join('')}
@@ -1867,14 +836,14 @@ function renderEditForm(){
       const v = toNum(inp.value);
       emp.p[+inp.dataset.param] = v;
       if (v !== '') inp.value = v;
-      
+
       const newM1 = avg2(emp.p[0],emp.p[1]);
       const newM2 = avg2(emp.p[2],emp.p[3]);
       const newInfo = squareInfo(newM1, newM2);
       const newProf = SQUARE_PROFILES[newInfo.num] || { portrait: '—' };
-      
+
       $('#editPortrait').value = newProf.portrait;
-      
+
       updateMeans(); renderTable(); renderGrid();
       const rows = document.querySelectorAll('#empTable tbody tr');
       rows.forEach((tr,i)=>tr.classList.toggle('selected', i===state.selectedIndex));
@@ -1892,6 +861,11 @@ function renderEditForm(){
     renderTable();
   });
 
+  $('#editMark').addEventListener('change', e => {
+    emp.mark = e.target.value;
+    renderTable(); renderGrid();
+  });
+
   function updateMeans(){
     const m1 = avg2(emp.p[0],emp.p[1]);
     const m2 = avg2(emp.p[2],emp.p[3]);
@@ -1905,25 +879,45 @@ function renderEditForm(){
 
 /* ======================= ДОБАВЛЕНИЕ СОТРУДНИКА ======================= */
 $('#btnAdd').addEventListener('click', () => {
-  if (!state.currentDept || state.currentDept === 'справочник') return;
+  // 1. Проверяем, выбран ли конкретный отдел
+  if (!state.currentDept || state.currentDept === 'справочник' || state.currentDept === 'Все') {
+    alert('Чтобы добавить сотрудника, выберите конкретный отдел (Кредиты ФЛ, Кредиты ЮЛ или Транзакт).');
+    return;
+  }
+
   const fio = prompt('ФИО нового сотрудника:');
   if (!fio) return;
-  
+
+  // 2. Создаем сотрудника
   const newEmp = {
     fio: fio.trim(),
     position: '',
-    p: ['','','',''],
+    p: ['','','',''], // 4 оценки
     isNew: true,
     isDeleted: false,
+    dept: state.currentDept, // Привязываем к текущему отделу
     fioCell: null, posCell: null,
     paramCells: [null,null,null,null],
   };
-  
+
+  // 3. Добавляем в массив выбранного отдела
   state.employees[state.currentDept].push(newEmp);
-  const activeList = state.employees[state.currentDept].filter(e => !e.isDeleted);
-  state.selectedIndex = activeList.length - 1;
-  
-  renderTable(); renderGrid(); renderEditForm();
+
+  // 4. Сбрасываем фильтры, чтобы новый сотрудник точно появился в таблице
+  state.searchQuery = '';
+  state.filterSquare = 'all';
+  if ($('#searchFio')) $('#searchFio').value = '';
+  if ($('#filterSquare')) $('#filterSquare').value = 'all';
+
+  // 5. Выделяем нового сотрудника в форме
+  state._editDept = state.currentDept;
+  // Индекс берем из полного массива (без фильтров)
+  state.selectedIndex = state.employees[state.currentDept].length - 1;
+
+  // 6. Перерисовываем интерфейс
+  renderTable();
+  renderGrid();
+  renderEditForm();
 });
 
 /* ======================= СОХРАНЕНИЕ ======================= */
@@ -1934,13 +928,13 @@ $('#btnSave').addEventListener('click', async () => {
   DEPTS.forEach(dept => {
     const realName = findSheet(state.workbook, dept);
     if (!realName) return;
-    
+
     const ws = state.workbook.Sheets[realName];
     const allList = state.employees[dept];
-    
+
     deleted += allList.filter(e => e.isDeleted).length;
     const activeList = allList.filter(e => !e.isDeleted);
-    
+
     let startRow = 4;
     const oldEmp = allList.find(e => !e.isNew && !e.isDeleted);
     if (oldEmp && oldEmp.row !== undefined) startRow = oldEmp.row;
@@ -1970,14 +964,15 @@ $('#btnSave').addEventListener('click', async () => {
       rowData[0] = '';
       rowData[COL_FIO] = emp.fio;
       rowData[COL_POS] = emp.position;
-      
+
       COLS_PERF.forEach((c, i) => { rowData[c] = p[i] === '' ? '' : Number(p[i]); });
       COLS_POT.forEach((c, i) => { rowData[c] = p[i+2] === '' ? '' : Number(p[i+2]); });
-      
+
       rowData[COL_AVG_PERF] = m1 || '';
       rowData[COL_AVG_POT] = m2 || '';
       rowData[COL_SQUARE] = info.title;
       rowData[COL_PORTRAIT] = prof.short; // Сохраняем КОРОТКИЙ портрет в файл
+      rowData[COL_MARK] = emp.mark || 'none';
 
       dataAOA.push(rowData);
       updated++;
@@ -1985,13 +980,13 @@ $('#btnSave').addEventListener('click', async () => {
 
     const finalAOA = headerAOA.concat(dataAOA);
     const newWs = XLSX.utils.aoa_to_sheet(finalAOA, { origin: 'A1' });
-    
+
     const range = {
       s: { r: 0, c: 0 },
       e: { r: finalAOA.length - 1, c: maxCol }
     };
     newWs['!ref'] = XLSX.utils.encode_range(range);
-    
+
     for (let r = 0; r < startRow; r++) {
       for (let c = 0; c <= maxCol; c++) {
         const oldAddr = XLSX.utils.encode_cell({ r, c });
@@ -2002,17 +997,17 @@ $('#btnSave').addEventListener('click', async () => {
         }
       }
     }
-    
+
     for (let r = startRow; r < startRow + activeList.length; r++) {
       const addr = XLSX.utils.encode_cell({ r, c: COL_PORTRAIT });
       if (!newWs[addr]) newWs[addr] = { t:'s', v:'' };
       newWs[addr].s = { alignment: { wrapText: true, vertical: 'top' } };
     }
-    
+
     if (ws['!cols']) newWs['!cols'] = ws['!cols'];
     if (ws['!merges']) newWs['!merges'] = ws['!merges'];
     if (ws['!rows']) newWs['!rows'] = ws['!rows'];
-    
+
     state.workbook.Sheets[realName] = newWs;
   });
 
@@ -2038,11 +1033,11 @@ $('#btnSave').addEventListener('click', async () => {
           }]
         });
       }
-      
+
       const writable = await state.fileHandle.createWritable();
       await writable.write(wbout);
       await writable.close();
-      
+
       setStatus(`✅ Файл перезаписан. Обновлено: ${updated}, удалено: ${deleted}.`);
       renderTable(); renderGrid(); renderEditForm();
       return;
@@ -2070,83 +1065,3 @@ $('#btnSave').addEventListener('click', async () => {
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-После того как изменили количество показателей, наверное нужно изменить расчет квадратов.
-
-Например выше указала все высокие баллы, а он рассчитал как средние показатели у Барановой Иры, хотя если везде высший бал, то это это Мушкетер должен быть. 
-
-2.) Вот в таблицу еще нужно добавить вот это. 
-В колонку портрет,в зависимости от квадрата необходимо заполнить вот так:
- 
-9. Мушкетеры :  Главная элита.
-8. Самородки: Генераторы идей с горящими глазами.
-7. Фантазеры : Активные сотрудники,но регулярно косячат.
-6. Пчелы-труженицы :Супер-надежные исполнители с хорошей гибкостью.
-5. Рабочие муравьи: Костяк бэк-офиса. 
-4. Улитки: Стараются, не бунтуют, но работают очень медленно.
-3. Хранители традиций:Мега-опытные «зубры».
-2. Пассажир: Сотрудники, которые ментально уже уволились.
-1. Якоря :  Самый тяжелый случай. 
-
-Чтобы в таблице был и квадрат и краткий портрет.
-
- 3.) А вот  уже на квадратах мы расписываем подробно в всплывающих окнах 
-ПОРТРЕТ :
-9. Мушкетеры :  портрет_мушк
-8. Самородки: портрет_сам
-7. Фантазеры : портрет_фант
-6. Пчелы-труженицы :портрет_пч
-5. Рабочие муравьи: портрет_мур
-4. Улитки: портрет_ул
-3. Хранители традиций:портрет_хр
-2. Пассажир: портрет_пас
-1. Якоря :  портрет_як
-
-РИСК :
-9. Мушкетеры :  риск_мушк
-8. Самородки: риск_сам
-7. Фантазеры : риск_фант
-6. Пчелы-труженицы :риск_пч
-5. Рабочие муравьи: риск_мур
-4. Улитки: риск_ул
-3. Хранители традиций:риск_хр
-2. Пассажир: риск_пас
-1. Якоря :  риск_як
-
-Решение :
-9. Мушкетеры :  реш_мушк
-8. Самородки: реш_сам
-7. Фантазеры : реш_фант
-6. Пчелы-труженицы :реш_пч
-5. Рабочие муравьи: реш_мур
-4. Улитки: реш_ул
-3. Хранители традиций:реш_хр
-2. Пассажир: реш_пас
-1. Якоря :  реш_як
-
- 
-3.) Ср.Эфф нужно заменить на Ср. Прд
