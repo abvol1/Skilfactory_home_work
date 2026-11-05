@@ -1,4 +1,131 @@
 
+Да, это можно сделать очень красиво! Суть идеи: рядом с ФИО (или вместо него) добавить выпадающий список из 3 цветов (например, 🔴 Красный, 🟡 Жёлтый, 🟢 Зелёный). Выбранный цвет сохраняется в памяти и в файле, а затем этот же цвет применяется к карточке сотрудника в квадрате.
+
+Вот точечные изменения (4 шага), чтобы это заработало.
+
+Шаг 1. Обновляем renderEditForm (добавляем выбор цвета)
+
+Найдите в функции renderEditForm блок с полями «ФИО» и «Должность»:
+
+```javascript
+    <div class="row" style="margin-bottom:10px">
+      <label>ФИО: <input id="editFio" class="fio" value="${escapeHtml(emp.fio)}"></label>
+      <label>Должность: <input id="editPos" class="pos" value="${escapeHtml(emp.position || '')}"></label>
+    </div>
+```
+
+Замените его на это:
+
+```javascript
+    <div class="row" style="margin-bottom:10px">
+      <label>ФИО: <input id="editFio" class="fio" value="${escapeHtml(emp.fio)}"></label>
+      <label>Должность: <input id="editPos" class="pos" value="${escapeHtml(emp.position || '')}"></label>
+      <label>Метка: 
+        <select id="editMark" style="padding:6px; border-radius:6px; border:1px solid #ccc;">
+          <option value="none" ${emp.mark === 'none' || !emp.mark ? 'selected' : ''}>— Нет —</option>
+          <option value="red" ${emp.mark === 'red' ? 'selected' : ''}>🔴 Красный</option>
+          <option value="yellow" ${emp.mark === 'yellow' ? 'selected' : ''}>🟡 Жёлтый</option>
+          <option value="green" ${emp.mark === 'green' ? 'selected' : ''}>🟢 Зелёный</option>
+        </select>
+      </label>
+    </div>
+```
+
+И добавьте обработчик события для этого селекта сразу после обработчика $('#editPos'):
+
+```javascript
+  $('#editMark').addEventListener('change', e => {
+    emp.mark = e.target.value;
+    renderTable(); renderGrid();
+  });
+```
+
+Шаг 2. Обновляем readDeptSheet (чтобы читать цвет из файла)
+
+Так как мы добавили новый параметр, нужно понять, откуда его брать. Давайте запишем его в ту же колонку, где хранится «Портрет» (или выделим для него отдельную, если решите). Но чтобы не усложнять структуру Excel, мы будем хранить цвет прямо в ячейке Портрет (или Решение) в виде специального префикса, либо выделим новую колонку.
+
+Самое простое: добавить колонку «Метка» в Excel. В readDeptSheet добавьте чтение этой колонки.
+Найдите const position = ... и добавьте рядом:
+
+```javascript
+    const markVal = String(getVal(COL_MARK) || '').trim(); // COL_MARK - индекс колонки
+```
+
+А в list.push добавьте mark: markVal || 'none'.
+
+Чтобы всё заработало, нужно добавить переменную COL_MARK в начало скрипта. Найдите блок с переменными COL_FIO, COL_POS и добавьте:
+
+```javascript
+let COL_MARK = 11; // Предположим, это колонка L (сдвиг из-за портрета)
+```
+
+(Проверьте свой Excel: если у вас портрет в колонке M, то метка будет в N. Установите правильный индекс. Индексы начинаются с 0: A=0, B=1, C=2, D=3, E=4, F=5, G=6, H=7, I=8, J=9, K=10, L=11, M=12, N=13).
+
+Шаг 3. Обновляем renderGrid (отображение цвета в квадрате)
+
+Найдите в renderGrid цикл формирования <li>:
+
+```javascript
+        <ul>${members.map(m=>`<li title="${escapeHtml(m.fio)}">${escapeHtml(m.fio)}</li>`).join('')}</ul>
+```
+
+Замените его на это:
+
+```javascript
+        <ul>${members.map(m => {
+          let colorStyle = '';
+          if (m.mark === 'red') colorStyle = 'color: #b91c1c; font-weight: 700;';
+          if (m.mark === 'yellow') colorStyle = 'color: #b45309; font-weight: 700;';
+          if (m.mark === 'green') colorStyle = 'color: #15803d; font-weight: 700;';
+          return `<li style="${colorStyle}" title="${escapeHtml(m.fio)}">${escapeHtml(m.fio)}</li>`;
+        }).join('')}</ul>
+```
+
+Шаг 4. Обновляем renderTable (отображение цвета в таблице)
+
+Найдите в renderTable ячейку с ФИО:
+
+```javascript
+      <td class="name">${escapeHtml(emp.fio)}</td>
+```
+
+Замените её на:
+
+```javascript
+      <td class="name" style="${emp.mark === 'red' ? 'color:#b91c1c' : emp.mark === 'yellow' ? 'color:#b45309' : emp.mark === 'green' ? 'color:#15803d' : ''}">${escapeHtml(emp.fio)}</td>
+```
+
+Шаг 5. Добавляем сохранение в Excel (опционально)
+
+Чтобы цвет сохранялся в файл, в функции $('#btnSave') при формировании rowData добавьте запись rowData[COL_MARK] = emp.mark || 'none';.
+
+---
+
+Итог:
+
+1. В форме появляется выпадающий список.
+2. При выборе «Красный» — ФИО в таблице становится красным.
+3. На карте 9-box это ФИО тоже становится красным.
+4. (Если добавите сохранение) При следующем открытии файла цвет сохранится.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Причина в том, что после добавления фильтров и режима «Все» кнопка «Добавить» пытается добавить сотрудника в отдел, но из-за сброса _editDept или неправильного индекса новый сотрудник не отображается.
 
 Чтобы это исправить, нужно напрямую привязать добавление к текущему выбранному отделу и сбрасывать фильтры, чтобы новый сотрудник сразу появился в таблице.
