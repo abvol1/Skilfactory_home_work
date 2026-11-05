@@ -1,4 +1,176 @@
 
+Чтобы вам было проще, я разбил изменения на 5 конкретных шагов. Выполняйте их по порядку, и всё заработает.
+
+---
+
+Шаг 1. Находим переменные колонок
+
+В самом начале <script> найдите блок:
+
+```javascript
+let COL_FIO = 1;
+let COL_POS = 2;
+let COLS_PERF = [3,4];
+let COL_AVG_PERF = 5;
+let COLS_POT  = [6,7];
+let COL_AVG_POT  = 8;
+let COL_SQUARE   = 9;
+let COL_PORTRAIT = 10;
+```
+
+Добавьте в самый конец одну строку:
+
+```javascript
+let COL_MARK = 11; // Колонка для метки (цвета). Если у вас портрет в колонке M, то метка — в N
+```
+
+---
+
+Шаг 2. Добавляем чтение метки из Excel
+
+Найдите функцию readDeptSheet. Внутри неё найдите блок, где читаются данные сотрудника:
+
+```javascript
+    const position = String(getVal(COL_POS) || '').trim();
+```
+
+Сразу после этой строки добавьте:
+
+```javascript
+    const markVal = String(getVal(COL_MARK) || 'none').trim();
+```
+
+Затем чуть ниже найдите list.push({ и в объект добавьте поле mark:
+
+```javascript
+    list.push({
+      fio, position, p,
+      dept: sheetName,
+      mark: markVal, // <-- ДОБАВИТЬ ЭТУ СТРОКУ
+      fioCell: XLSX.utils.encode_cell({ r, c: COL_FIO }),
+      // ... остальное без изменений
+    });
+```
+
+---
+
+Шаг 3. Добавляем выпадающий список в форму редактирования
+
+Найдите функцию renderEditForm. В ней найдите блок с ФИО и Должность:
+
+```javascript
+    <div class="row" style="margin-bottom:10px">
+      <label>ФИО: <input id="editFio" class="fio" value="${escapeHtml(emp.fio)}"></label>
+      <label>Должность: <input id="editPos" class="pos" value="${escapeHtml(emp.position || '')}"></label>
+    </div>
+```
+
+Замените этот блок на:
+
+```javascript
+    <div class="row" style="margin-bottom:10px">
+      <label>ФИО: <input id="editFio" class="fio" value="${escapeHtml(emp.fio)}"></label>
+      <label>Должность: <input id="editPos" class="pos" value="${escapeHtml(emp.position || '')}"></label>
+      <label>Метка: 
+        <select id="editMark" style="padding:6px; border-radius:6px; border:1px solid #ccc;">
+          <option value="none" ${emp.mark === 'none' || !emp.mark ? 'selected' : ''}>— Нет —</option>
+          <option value="red" ${emp.mark === 'red' ? 'selected' : ''}>🔴 Красный</option>
+          <option value="yellow" ${emp.mark === 'yellow' ? 'selected' : ''}>🟡 Жёлтый</option>
+          <option value="green" ${emp.mark === 'green' ? 'selected' : ''}>🟢 Зелёный</option>
+        </select>
+      </label>
+    </div>
+```
+
+Затем найдите в той же функции место, где добавляются обработчики (там есть $('#editFio').addEventListener и $('#editPos').addEventListener). Сразу после обработчика editPos добавьте:
+
+```javascript
+  $('#editMark').addEventListener('change', e => {
+    emp.mark = e.target.value;
+    renderTable(); renderGrid();
+  });
+```
+
+---
+
+Шаг 4. Красим ФИО в таблице
+
+Найдите функцию renderTable. В ней найдите ячейку с ФИО:
+
+```javascript
+      <td class="name">${escapeHtml(emp.fio)}</td>
+```
+
+Замените её на:
+
+```javascript
+      <td class="name" style="${emp.mark === 'red' ? 'color:#b91c1c' : emp.mark === 'yellow' ? 'color:#b45309' : emp.mark === 'green' ? 'color:#15803d' : ''}">${escapeHtml(emp.fio)}</td>
+```
+
+---
+
+Шаг 5. Красим ФИО в квадрате (9-box)
+
+Найдите функцию renderGrid. В ней есть строка, которая выводит список сотрудников:
+
+```javascript
+        <ul>${members.map(m=>`<li title="${escapeHtml(m.fio)}">${escapeHtml(m.fio)}</li>`).join('')}</ul>
+```
+
+Замените её на:
+
+```javascript
+        <ul>${members.map(m => {
+          let colorStyle = '';
+          if (m.mark === 'red') colorStyle = 'color: #b91c1c; font-weight: 700;';
+          if (m.mark === 'yellow') colorStyle = 'color: #b45309; font-weight: 700;';
+          if (m.mark === 'green') colorStyle = 'color: #15803d; font-weight: 700;';
+          return `<li style="${colorStyle}" title="${escapeHtml(m.fio)}">${escapeHtml(m.fio)}</li>`;
+        }).join('')}</ul>
+```
+
+---
+
+Шаг 6. Сохраняем метку в файл Excel
+
+Найдите функцию $('#btnSave'). Внутри неё есть цикл, который формирует dataAOA. Найдите строку:
+
+```javascript
+      rowData[COL_PORTRAIT] = prof.short;
+```
+
+Сразу после неё добавьте:
+
+```javascript
+      rowData[COL_MARK] = emp.mark || 'none';
+```
+
+---
+
+Итог: как это работает
+
+1. Открываете форму любого сотрудника. Там появляется выпадающий список «Метка».
+2. Выбираете цвет. ФИО в таблице и на карте 9-box сразу же красится в этот цвет.
+3. Нажимаете «Сохранить». Цвет записывается в Excel (в колонку L или M, в зависимости от COL_MARK).
+4. При следующем открытии файла цвет снова подтягивается.
+
+Если нужно добавить новую колонку в Excel
+
+Если колонки COL_MARK = 11 в вашем файле еще нет (или она занята), создайте в Excel новую колонку под названием «Метка» (например, после «Управленческий портрет») и поставьте COL_MARK равным её индексу:
+
+· A=0, B=1, C=2, D=3, E=4, F=5, G=6, H=7, I=8, J=9, K=10, L=11, M=12, N=13.
+
+
+
+
+
+
+
+
+
+
+
+
 Да, это можно сделать очень красиво! Суть идеи: рядом с ФИО (или вместо него) добавить выпадающий список из 3 цветов (например, 🔴 Красный, 🟡 Жёлтый, 🟢 Зелёный). Выбранный цвет сохраняется в памяти и в файле, а затем этот же цвет применяется к карточке сотрудника в квадрате.
 
 Вот точечные изменения (4 шага), чтобы это заработало.
