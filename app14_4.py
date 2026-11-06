@@ -1,4 +1,192 @@
 
+Отличная идея! Кнопка «📄 Характеристика» позволит сформировать красивый документ по конкретному сотруднику — с ФИО, должностью, оценками, квадратом, портретом, рисками и решением. Это удобно для печати или отправки руководителю.
+
+Вот точечные изменения (4 шага):
+
+---
+
+Шаг 1. Добавьте кнопку в форму редактирования
+
+Найдите в функции renderEditForm блок с кнопками (там, где поля ФИО, должность, метка). В самом низу формы, сразу после <div class="means" id="meansBox"></div>, добавьте:
+
+```html
+    <div class="row" style="margin-top:12px;">
+      <button id="btnPrintCharacter" class="primary" style="padding:10px 18px;">📄 Сформировать характеристику</button>
+    </div>
+```
+
+Итоговый блок в renderEditForm будет выглядеть так (конец):
+
+```javascript
+    <div class="means" id="meansBox"></div>
+
+    <div class="row" style="margin-top:12px;">
+      <button id="btnPrintCharacter" class="primary" style="padding:10px 18px;">📄 Сформировать характеристику</button>
+    </div>
+  `;
+  updateMeans();
+```
+
+---
+
+Шаг 2. Добавьте обработчик кнопки
+
+Сразу после updateMeans(); в renderEditForm (перед box.querySelectorAll('input[type=number]')...) добавьте:
+
+```javascript
+  // Обработчик кнопки "Характеристика"
+  const printBtn = $('#btnPrintCharacter');
+  if (printBtn) {
+    printBtn.addEventListener('click', () => {
+      printCharacteristic(emp);
+    });
+  }
+```
+
+---
+
+Шаг 3. Добавьте саму функцию printCharacteristic
+
+Вставьте эту функцию в любое место скрипта (например, после renderEditForm):
+
+```javascript
+/* ======================= ПЕЧАТЬ ХАРАКТЕРИСТИКИ ======================= */
+function printCharacteristic(emp) {
+  const p = emp.p;
+  const m1 = avg2(p[0], p[1]);
+  const m2 = avg2(p[2], p[3]);
+  const info = squareInfo(m1, m2);
+  const prof = SQUARE_PROFILES[info.num] || {};
+
+  // Формируем красивую HTML-страницу для печати
+  const html = `
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+      <meta charset="UTF-8">
+      <title>Характеристика — ${escapeHtml(emp.fio)}</title>
+      <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 30px; color: #222; line-height: 1.5; }
+        h1 { font-size: 22px; margin: 0 0 4px 0; }
+        h2 { font-size: 14px; color: #666; font-weight: 400; margin: 0 0 20px 0; }
+        .section { margin-bottom: 20px; }
+        .section h3 { font-size: 14px; text-transform: uppercase; color: #2563eb; margin: 0 0 8px 0; border-bottom: 2px solid #2563eb; padding-bottom: 4px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+        th, td { border: 1px solid #ddd; padding: 8px 10px; text-align: left; font-size: 13px; }
+        th { background: #f5f6f8; width: 40%; }
+        .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+        .badge.green { background: #d9f2d9; color: #166534; }
+        .badge.yellow{ background: #fff4cc; color: #92400e; }
+        .badge.red   { background: #fde2e1; color: #991b1b; }
+        .badge.dark-green { background: #c1d6c6; color: #2f4a37; }
+        .badge.dark-red   { background: #d9b3b3; color: #6b2b2b; }
+        .badge.gray  { background: #f3f4f6; color: #4b5563; }
+        .portrait { background: #f9fafb; border-left: 4px solid #2563eb; padding: 12px 16px; font-style: italic; margin-bottom: 12px; }
+        .footer { margin-top: 40px; font-size: 11px; color: #999; text-align: center; }
+        @media print {
+          body { margin: 15mm; }
+          button { display: none; }
+        }
+        .no-print { text-align: center; margin-top: 20px; }
+        .no-print button { padding: 10px 24px; font-size: 14px; border-radius: 8px; border: 1px solid #2563eb; background: #2563eb; color: white; cursor: pointer; }
+      </style>
+    </head>
+    <body>
+      <h1>Характеристика сотрудника</h1>
+      <h2>Сформировано: ${new Date().toLocaleDateString('ru-RU')}</h2>
+
+      <div class="section">
+        <h3>Общие сведения</h3>
+        <table>
+          <tr><th>ФИО</th><td>${escapeHtml(emp.fio)}</td></tr>
+          <tr><th>Должность</th><td>${escapeHtml(emp.position || '—')}</td></tr>
+          <tr><th>Отдел</th><td>${escapeHtml(emp.dept || '—')}</td></tr>
+        </table>
+      </div>
+
+      <div class="section">
+        <h3>Оценки</h3>
+        <table>
+          <tr><th>Ср. продуктивность</th><td><b>${m1 || '—'}</b></td></tr>
+          <tr><th>Ср. потенциал</th><td><b>${m2 || '—'}</b></td></tr>
+          <tr><th>Квадрат</th><td><span class="badge ${info.color}">${info.title}</span></td></tr>
+        </table>
+      </div>
+
+      <div class="section">
+        <h3>Управленческий портрет</h3>
+        <div class="portrait">${escapeHtml(prof.portrait || '—')}</div>
+      </div>
+
+      <div class="section">
+        <h3>Риски</h3>
+        <p>${escapeHtml(prof.risks || '—')}</p>
+      </div>
+
+      <div class="section">
+        <h3>Рекомендуемое управленческое решение</h3>
+        <p>${escapeHtml(prof.decision || '—')}</p>
+      </div>
+
+      <div class="no-print">
+        <button onclick="window.print()">🖨 Печать / Сохранить в PDF</button>
+      </div>
+
+      <div class="footer">
+        Документ сформирован автоматически в системе оценки персонала.
+      </div>
+    </body>
+    </html>
+  `;
+
+  // Открываем в новом окне
+  const win = window.open('', '_blank');
+  if (!win) {
+    alert('Браузер заблокировал всплывающее окно. Разрешите всплывающие окна для этого сайта.');
+    return;
+  }
+  win.document.write(html);
+  win.document.close();
+}
+```
+
+---
+
+Шаг 4. Проверка
+
+1. Откройте файл в браузере, загрузите .xlsx.
+2. Кликните по любому сотруднику в таблице — откроется форма.
+3. Внизу формы появится синяя кнопка «📄 Сформировать характеристику».
+4. Нажмите её — откроется новое окно с готовой характеристикой:
+   · ФИО, должность, отдел
+   · Средние оценки, квадрат
+   · Портрет (описание из справочника)
+   · Риски
+   · Рекомендуемое решение
+5. В открывшемся окне можно нажать «🖨 Печать / Сохранить в PDF» — браузер предложит распечатать или сохранить как PDF.
+
+---
+
+Что можно улучшить (по желанию)
+
+· Добавить логотип компании — вставьте <img src="logo.png" ...> в <body> HTML-шаблона.
+· Добавить подпись руководителя — внизу добавьте <br><br>_______________ / ________________.
+· Поменять цвета под корпоративный стиль — измените #2563eb на ваш фирменный цвет.
+· Добавить ФИО руководителя — если он есть в форме оценки, можно передать его в printCharacteristic(emp, manager).
+
+Если нужно — могу доработать: добавить логотип, блок с подписями или сделать кнопку «Скачать в Word» (.docx).
+
+
+
+
+
+
+
+
+
+
+
+
 Чтобы под картой 9 квадратов появилась легенда по цветам фамилий (🔴 Красный, 🟡 Жёлтый, 🟢 Зелёный), нужно добавить всего один блок HTML и немного подправить CSS. Вот точечные изменения:
 
 Шаг 1. Добавьте CSS для легенды цветов
