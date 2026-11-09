@@ -1,4 +1,155 @@
 
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Проверка разницы времени</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 450px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        h2 { margin-top: 0; color: #333; font-size: 18px; }
+        p { color: #666; font-size: 13px; line-height: 1.5; }
+        button { background: #2b7b8c; color: white; border: none; padding: 10px 24px; font-size: 16px; border-radius: 4px; cursor: pointer; width: 100%; margin-top: 10px; }
+        button:hover { background: #1f5f6e; }
+        #status { margin-top: 15px; padding: 10px; background: #f0f0f0; border-radius: 4px; font-size: 13px; display: none; white-space: pre-wrap; }
+        .ok { color: #2e7d32; }
+        .err { color: #c62828; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>⏱ Проверка разницы времени</h2>
+    <p>Сравнивает разницу между строками в столбце <strong>A</strong> со значением в столбце <strong>C</strong>. Строки с расхождением закрашиваются красным.</p>
+    <button id="runBtn">▶ Выполнить проверку</button>
+    <div id="status"></div>
+</div>
+
+<script>
+    document.getElementById('runBtn').addEventListener('click', function() {
+        var btn = this;
+        var status = document.getElementById('status');
+        btn.disabled = true;
+        btn.textContent = 'Выполняется...';
+        status.style.display = 'block';
+        status.textContent = 'Выполняется...';
+        status.className = '';
+
+        // Используем callCommand для выполнения в контексте документа
+        window.Asc.plugin.callCommand(function() {
+            var sheet = Api.GetActiveSheet();
+            var maxRows = 5000;
+            var lastRow = 1;
+
+            // ---- 1. Определяем последнюю строку по столбцу A ----
+            for (var i = 2; i <= maxRows; i++) {
+                var v = sheet.GetRange("A" + i).GetValue();
+                if (v !== undefined && v !== null && v !== "") {
+                    lastRow = i;
+                } else {
+                    var empty = 0;
+                    for (var j = i; j <= i + 4 && j <= maxRows; j++) {
+                        if (!sheet.GetRange("A" + j).GetValue()) empty++;
+                    }
+                    if (empty >= 5) break;
+                }
+            }
+
+            if (lastRow < 3) {
+                sheet.GetRange("Z1").SetValue("Недостаточно данных (нужно минимум 3 строки)");
+                window.Asc.plugin.executeCommand("close", JSON.stringify({error: "Мало данных"}));
+                return;
+            }
+
+            // ---- 2. Функция парсинга даты ----
+            function parseDate(str) {
+                if (!str) return null;
+                var s = str.toString().trim();
+                var m = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+                if (!m) return null;
+                return new Date(
+                    parseInt(m[1]), parseInt(m[2])-1, parseInt(m[3]),
+                    parseInt(m[4]), parseInt(m[5]), parseInt(m[6])
+                );
+            }
+
+            var mismatches = 0;
+            var totalChecked = 0;
+
+            // ---- 3. Проходим по строкам, начиная с 3-й ----
+            for (var r = 3; r <= lastRow; r++) {
+                var prevVal = sheet.GetRange("A" + (r-1)).GetValue();
+                var currVal = sheet.GetRange("A" + r).GetValue();
+                var cVal = sheet.GetRange("C" + r).GetValue();
+
+                var prevDate = parseDate(prevVal);
+                var currDate = parseDate(currVal);
+
+                if (!prevDate || !currDate) continue;
+
+                var diffSec = Math.round((currDate - prevDate) / 1000);
+                var expected = parseFloat(cVal);
+                totalChecked++;
+
+                var isMismatch = false;
+                if (isNaN(expected)) {
+                    isMismatch = true;
+                } else if (diffSec !== expected) {
+                    isMismatch = true;
+                }
+
+                if (isMismatch) {
+                    mismatches++;
+                    // Закрашиваем строку (столбцы A..T)
+                    for (var c = 1; c <= 20; c++) {
+                        var colLetter = String.fromCharCode(64 + c);
+                        var cell = sheet.GetRange(colLetter + r);
+                        cell.SetFillColor(Api.CreateColorFromRGB(255, 200, 200));
+                    }
+                }
+            }
+
+            // ---- 4. Итог ----
+            sheet.GetRange("Z1").SetValue("Проверено строк: " + totalChecked + ", расхождений: " + mismatches);
+            window.Asc.plugin.executeCommand("close", JSON.stringify({
+                total: totalChecked,
+                mismatches: mismatches
+            }));
+        }, false);
+    });
+
+    // Обработчик закрытия (результат)
+    window.Asc.plugin.onClose = function(result) {
+        var btn = document.getElementById('runBtn');
+        var status = document.getElementById('status');
+        try {
+            var data = JSON.parse(result);
+            if (data.error) {
+                status.textContent = '⚠️ ' + data.error;
+                status.className = 'err';
+            } else {
+                status.textContent = '✅ Проверено строк: ' + data.total + '\n❌ Расхождений: ' + data.mismatches;
+                status.className = data.mismatches > 0 ? 'err' : 'ok';
+            }
+        } catch(e) {
+            status.textContent = 'Готово (результат: ' + result + ')';
+        }
+        btn.disabled = false;
+        btn.textContent = '▶ Выполнить проверку';
+    };
+</script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
 Понял задачу. Давайте разберём её формально, чтобы плагин работал именно так, как вы ожидаете.
 
 ---
