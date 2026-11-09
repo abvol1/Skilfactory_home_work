@@ -1,3 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Установить макрос</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+        #status { margin-top: 10px; color: green; }
+    </style>
+</head>
+<body>
+    <h3>Проверка разницы времени</h3>
+    <p>Нажмите кнопку, чтобы добавить макрос в документ.</p>
+    <button id="installBtn">Установить макрос</button>
+    <div id="status"></div>
+
+    <script>
+        // Код макроса, который будет установлен
+        var macroCode = `(function() {
+    var sheet = Api.GetActiveSheet();
+    var maxRows = 5000;
+    var lastRow = 1;
+
+    for (var i = 2; i <= maxRows; i++) {
+        var v = sheet.GetRange("A" + i).GetValue();
+        if (v !== undefined && v !== null && v !== "") {
+            lastRow = i;
+        } else {
+            var empty = 0;
+            for (var j = i; j <= i + 4 && j <= maxRows; j++) {
+                if (!sheet.GetRange("A" + j).GetValue()) empty++;
+            }
+            if (empty >= 5) break;
+        }
+    }
+
+    if (lastRow < 3) {
+        sheet.GetRange("Z1").SetValue("Недостаточно данных");
+        return;
+    }
+
+    function parseDate(str) {
+        if (!str) return null;
+        var s = str.toString().trim();
+        var m = s.match(/^(\\d{4})-(\\d{2})-(\\d{2})[ T](\\d{2}):(\\d{2}):(\\d{2})/);
+        if (!m) return null;
+        return new Date(parseInt(m[1]), parseInt(m[2])-1, parseInt(m[3]), parseInt(m[4]), parseInt(m[5]), parseInt(m[6]));
+    }
+
+    var mismatches = 0;
+    for (var r = 3; r <= lastRow; r++) {
+        var prevDate = parseDate(sheet.GetRange("A" + (r-1)).GetValue());
+        var currDate = parseDate(sheet.GetRange("A" + r).GetValue());
+        var cVal = sheet.GetRange("C" + r).GetValue();
+        
+        if (!prevDate || !currDate) continue;
+        
+        var diffSec = Math.round((currDate - prevDate) / 1000);
+        var expected = parseFloat(cVal);
+        
+        if (isNaN(expected) || diffSec !== expected) {
+            mismatches++;
+            for (var c = 1; c <= 20; c++) {
+                var colLetter = String.fromCharCode(64 + c);
+                sheet.GetRange(colLetter + r).SetFillColor(Api.CreateColorFromRGB(255, 200, 200));
+            }
+        }
+    }
+    sheet.GetRange("Z1").SetValue("Расхождений: " + mismatches);
+})();`;
+
+        document.getElementById('installBtn').addEventListener('click', function() {
+            var status = document.getElementById('status');
+            try {
+                // Формируем объект для SetMacros
+                var macrosData = {
+                    "macrosArray": [
+                        {
+                            "name": "Проверка времени",
+                            "value": macroCode
+                        }
+                    ],
+                    "current": 1
+                };
+                
+                // Вызываем метод установки макросов
+                window.Asc.plugin.executeMethod("SetMacros", [macrosData], function() {
+                    status.textContent = "Макрос установлен! Откройте 'Плагины' -> 'Макросы' и запустите 'Проверка времени'.";
+                });
+            } catch (e) {
+                status.textContent = "Ошибка: " + e.message;
+                status.style.color = "red";
+            }
+        });
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
 
 <!DOCTYPE html>
 <html>
