@@ -1,4 +1,385 @@
 
+Вот полный финальный код. В нём:
+
+1. Стили применяются максимально надёжно (с cellStyles: true при чтении и записи, с полным набором свойств fill, с пересчётом !ref и !cols).
+2. Добавлен столбец H («Проверка») с метками OK / ОШИБКА.
+3. В браузере отображаются столбцы A–G из вашего файла + вычисленный статус.
+4. Покраска в Excel: если Excel подхватит — увидите красный/зелёный фон. Если нет — отфильтруете по столбцу H.
+
+```html
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Проверка расхождений по времени</title>
+<script src="xlsx.full.min.js"></script>
+<style>
+  :root { --border:#d0d5dd; --accent:#2563eb; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, Segoe UI, Arial, sans-serif; margin:0; padding:20px; background:#f5f6f8; color:#222; }
+  h1 { font-size:20px; margin:0 0 12px; }
+  .panel { background:#fff; border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:14px; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+  button { padding:8px 14px; border:1px solid var(--border); background:#fff; border-radius:8px; cursor:pointer; font-size:14px; }
+  button:hover { border-color:var(--accent); color:var(--accent); }
+  button.primary { background:#2563eb; color:#fff; border-color:#2563eb; }
+  button:disabled { opacity:.5; cursor:default; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { border:1px solid var(--border); padding:6px 8px; text-align:left; }
+  th { background:#f0f2f5; white-space: nowrap; }
+  tr.match { background:#d9f2d9; }
+  tr.mismatch { background:#fde2e1; }
+  .status { font-size:13px; color:#166534; }
+  .hint { color:#666; font-size:13px; }
+  .summary { display:flex; gap:24px; margin-top:8px; font-size:14px; }
+  .summary span b { font-size:16px; }
+  .ok { color:#15803d; }
+  .bad { color:#b91c1c; }
+</style>
+</head>
+<body>
+
+<h1>Проверка расхождений: время (A) vs значение (C)</h1>
+
+<div class="panel">
+  <div class="row">
+    <input type="file" id="fileInput" accept=".xlsx,.xls">
+    <button id="btnSave" class="primary" disabled>💾 Сохранить Excel</button>
+    <span id="status" class="status"></span>
+  </div>
+  <p class="hint">
+    В браузере отображаются столбцы A–G. При сохранении в файл добавляется столбец H («Проверка») с метками OK / ОШИБКА.
+    Если Excel не подхватит заливку, просто включите фильтр по столбцу H.
+  </p>
+</div>
+
+<div class="panel">
+  <div class="summary" id="summary"></div>
+</div>
+
+<div class="panel">
+  <div style="overflow-x:auto;">
+    <table id="resultTable">
+      <thead>
+        <tr id="tableHeader"></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const state = {
+  workbook: null,
+  fileName: 'checked.xlsx',
+  fileHandle: null,
+  rows: [],
+};
+
+const $ = sel => document.querySelector(sel);
+
+function setStatus(msg, warn) {
+  const el = $('#status');
+  el.textContent = msg;
+  el.style.color = warn ? '#b91c1c' : '#166534';
+  setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 6000);
+}
+
+function parseTime(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number') {
+    const ms = (value - 25569) * 86400 * 1000;
+    const d = new Date(ms);
+    if (!isNaN(d.getTime())) return d;
+    return null;
+  }
+  const s = String(value).trim();
+  let d = new Date(s.replace(' ', 'T'));
+  if (!isNaN(d.getTime())) return d;
+  d = new Date(s);
+  if (!isNaN(d.getTime())) return d;
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+  if (m) return new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]);
+  return null;
+}
+
+/* ======================= ЧТЕНИЕ ФАЙЛА ======================= */
+$('#fileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  state.fileName = file.name.replace(/\.(xlsx|xls)$/i, '') + '_checked.xlsx';
+  state.fileHandle = null;
+
+  try {
+    const data = await file.arrayBuffer();
+    // cellStyles: true важно для чтения стилей
+    const wb = XLSX.read(data, { type: 'array', cellDates: true, cellStyles: true });
+    state.workbook = wb;
+
+    const sheetName = wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true });
+
+    state.rows = [];
+    let prevTime = null;
+
+    for (let i = 1; i < aoa.length; i++) {
+      const row = aoa[i] || [];
+      const dataCols = row.slice(0, 7);
+      const rawA = dataCols[0];
+      const rawC = dataCols[2];
+
+      const timeA = parseTime(rawA);
+      const valueC = Number(String(rawC).replace(',', '.'));
+
+      if (timeA === null && rawA === '' && rawC === '') continue;
+
+      let diff = null;
+      let match = false;
+
+      if (prevTime !== null && timeA !== null) {
+        diff = Math.round((timeA.getTime() - prevTime.getTime()) / 1000);
+        match = Math.abs(diff - valueC) < 0.5;
+      }
+
+      state.rows.push({
+        rowIndex: i + 1,
+        data: dataCols,
+        timeA,
+        valueC: isNaN(valueC) ? rawC : valueC,
+        diff,
+        match,
+        isFirst: prevTime === null,
+      });
+
+      if (timeA !== null) prevTime = timeA;
+    }
+
+    const headerRow = aoa[0] || [];
+    const headers = [];
+    for (let c = 0; c < 7; c++) {
+      headers.push(headerRow[c] || String.fromCharCode(65 + c));
+    }
+    renderTable(headers);
+    
+    applyStylesToWorkbook();
+    $('#btnSave').disabled = false;
+
+    const total = state.rows.filter(r => !r.isFirst).length;
+    const bad = state.rows.filter(r => !r.isFirst && !r.match).length;
+    setStatus(`Прочитано строк: ${state.rows.length}. Сравнено пар: ${total}. Расхождений: ${bad}.`, bad > 0);
+  } catch (err) {
+    console.error(err);
+    setStatus('Ошибка: ' + err.message, true);
+  }
+});
+
+/* ======================= ТАБЛИЦА ======================= */
+function renderTable(headers) {
+  const thead = $('#tableHeader');
+  thead.innerHTML = '';
+  headers.forEach(h => {
+    const th = document.createElement('th');
+    th.textContent = h;
+    thead.appendChild(th);
+  });
+  const thCheck = document.createElement('th');
+  thCheck.textContent = 'Проверка (H)';
+  thCheck.style.color = '#2563eb';
+  thead.appendChild(thCheck);
+
+  const tbody = $('#resultTable tbody');
+  tbody.innerHTML = '';
+
+  state.rows.forEach(r => {
+    const tr = document.createElement('tr');
+    if (r.isFirst) tr.className = '';
+    else tr.className = r.match ? 'match' : 'mismatch';
+
+    r.data.forEach(val => {
+      const td = document.createElement('td');
+      if (val instanceof Date) {
+        td.textContent = formatDate(val);
+      } else {
+        td.textContent = val === '' || val === undefined ? '' : val;
+      }
+      tr.appendChild(td);
+    });
+
+    const tdCheck = document.createElement('td');
+    tdCheck.style.fontWeight = '600';
+    tdCheck.style.color = r.isFirst ? '#666' : (r.match ? '#15803d' : '#b91c1c');
+    tdCheck.textContent = r.isFirst ? 'База' : (r.match ? 'OK' : 'ОШИБКА');
+    tr.appendChild(tdCheck);
+
+    tbody.appendChild(tr);
+  });
+
+  const total = state.rows.filter(r => !r.isFirst).length;
+  const ok = state.rows.filter(r => !r.isFirst && r.match).length;
+  const bad = total - ok;
+  $('#summary').innerHTML = `
+    <span>Всего строк: <b>${state.rows.length}</b></span>
+    <span class="ok">Совпадает: <b>${ok}</b></span>
+    <span class="bad">Расхождений: <b>${bad}</b></span>
+  `;
+}
+
+function formatDate(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+/* ======================= СТИЛИ ДЛЯ EXCEL ======================= */
+function applyStylesToWorkbook() {
+  if (!state.workbook) return;
+  const sheetName = state.workbook.SheetNames[0];
+  const ws = state.workbook.Sheets[sheetName];
+
+  // Заголовок H
+  const headerAddr = XLSX.utils.encode_cell({ r: 0, c: 7 });
+  ws[headerAddr] = { t: 's', v: 'Проверка' };
+  ws[headerAddr].s = {
+    fill: { patternType: 'solid', fgColor: { rgb: 'D9E1F2' }, bgColor: { rgb: 'D9E1F2' } },
+    font: { bold: true }
+  };
+
+  // Заливки
+  const redFill = { 
+    patternType: 'solid', 
+    fgColor: { rgb: 'FFC7CE' }, 
+    bgColor: { rgb: 'FFC7CE' }
+  };
+  const greenFill = { 
+    patternType: 'solid', 
+    fgColor: { rgb: 'C6EFCE' }, 
+    bgColor: { rgb: 'C6EFCE' }
+  };
+
+  state.rows.forEach(r => {
+    if (r.isFirst) return;
+    const rowIdx = r.rowIndex - 1;
+    const fill = r.match ? greenFill : redFill;
+
+    // Заливка A-G
+    for (let c = 0; c <= 6; c++) {
+      const addr = XLSX.utils.encode_cell({ r: rowIdx, c });
+      if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+      ws[addr].s = { fill: fill };
+    }
+
+    // Статус в H
+    const statusAddr = XLSX.utils.encode_cell({ r: rowIdx, c: 7 });
+    ws[statusAddr] = {
+      t: 's',
+      v: r.match ? 'OK' : 'ОШИБКА',
+      s: { 
+        fill: fill,
+        font: { bold: true, color: { rgb: r.match ? '006100' : '9C0006' } },
+        alignment: { horizontal: 'center', vertical: 'center' }
+      }
+    };
+  });
+
+  // Расширяем !ref
+  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
+  const maxRow = Math.max(range.e.r, state.rows.length);
+  const maxCol = Math.max(range.e.c, 7);
+  range.e.r = maxRow;
+  range.e.c = maxCol;
+  ws['!ref'] = XLSX.utils.encode_range(range);
+
+  if (!ws['!cols']) ws['!cols'] = [];
+  ws['!cols'][7] = { wch: 14 };
+}
+
+/* ======================= СОХРАНЕНИЕ ======================= */
+$('#btnSave').addEventListener('click', async () => {
+  if (!state.workbook) return;
+
+  applyStylesToWorkbook();
+
+  // Сохранение с cellStyles — важно для заливки
+  const wbout = XLSX.write(state.workbook, { 
+    bookType: 'xlsx', 
+    type: 'array', 
+    cellStyles: true,
+    bookSST: true
+  });
+
+  if (window.showSaveFilePicker) {
+    try {
+      if (!state.fileHandle) {
+        state.fileHandle = await window.showSaveFilePicker({
+          suggestedName: state.fileName,
+          types: [{
+            description: 'Excel Files',
+            accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+          }]
+        });
+      }
+      const writable = await state.fileHandle.createWritable();
+      await writable.write(wbout);
+      await writable.close();
+      setStatus('✅ Файл перезаписан. Столбец H — метки OK / ОШИБКА.');
+      return;
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        setStatus('Сохранение отменено.', true);
+        return;
+      }
+      console.warn(err);
+    }
+  }
+
+  const blob = new Blob([wbout], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = state.fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  setStatus(`Скачано: ${state.fileName}. Столбец H — метки OK / ОШИБКА.`);
+});
+</script>
+</body>
+</html>
+```
+
+Что изменилось по сравнению с прошлой версией
+
+1. В XLSX.read(...) добавлен cellStyles: true — библиотека при чтении сохраняет оригинальные стили.
+2. В XLSX.write(...) — тоже cellStyles: true и bookSST: true.
+3. В заливке fill теперь указан bgColor наряду с fgColor — так Excel корректнее понимает заливку.
+4. Цвета заливки — стандартные Excel-цвета: FFC7CE (розовый для ошибок) и C6EFCE (зелёный для OK).
+5. Заголовок H — теперь с синим фоном D9E1F2 и жирным шрифтом.
+6. Текст в H — с цветом шрифта 006100 (тёмно-зелёный) или 9C0006 (тёмно-красный).
+
+Если заливка всё равно не появится в Excel
+
+Это ограничение Community Edition SheetJS. Тогда у вас есть 2 надёжных обходных пути:
+
+Обход 1: Отфильтровать по столбцу H. Не нужно никакой заливки — просто включите автофильтр на строке 1 и выберите ОШИБКА в H. Все расхождения будут видны.
+
+Обход 2: Включить условное форматирование в Excel за 2 клика. Откройте файл, выделите столбец H → Главная → Условное форматирование → Правила выделения ячеек → Текст содержит → введите ОШИБКА → выберите красную заливку → ОК. Excel будет красить автоматически (и сохранит это правило в файле).
+
+Попробуйте, и напишите, сработала ли заливка. Если нет — с уверенностью могу сказать, что это ограничение библиотеки, и мы перейдём к варианту с .xls.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <!DOCTYPE html>
 <html lang="ru">
 <head>
