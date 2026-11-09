@@ -1,4 +1,420 @@
 
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Проверка расхождений по времени</title>
+<script src="xlsx.full.min.js"></script>
+<style>
+  :root { --border:#d0d5dd; --accent:#2563eb; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, Segoe UI, Arial, sans-serif; margin:0; padding:20px; background:#f5f6f8; color:#222; }
+  h1 { font-size:20px; margin:0 0 12px; }
+  .panel { background:#fff; border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:14px; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+  button { padding:8px 14px; border:1px solid var(--border); background:#fff; border-radius:8px; cursor:pointer; font-size:14px; }
+  button:hover { border-color:var(--accent); color:var(--accent); }
+  button.primary { background:#2563eb; color:#fff; border-color:#2563eb; }
+  button:disabled { opacity:.5; cursor:default; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { border:1px solid var(--border); padding:6px 8px; text-align:left; }
+  th { background:#f0f2f5; white-space: nowrap; }
+  tr.match { background:#d9f2d9; }
+  tr.mismatch { background:#fde2e1; }
+  .status { font-size:13px; color:#166534; }
+  .hint { color:#666; font-size:13px; }
+  .summary { display:flex; gap:24px; margin-top:8px; font-size:14px; flex-wrap: wrap; }
+  .summary span b { font-size:16px; }
+  .ok { color:#15803d; }
+  .bad { color:#b91c1c; }
+  .filter-label { font-size:13px; color:#475467; display:flex; align-items:center; gap:6px; }
+</style>
+</head>
+<body>
+
+<h1>Проверка расхождений: время (A) vs значение (C)</h1>
+
+<div class="panel">
+  <div class="row">
+    <input type="file" id="fileInput" accept=".xlsx,.xls">
+    <button id="btnSave" class="primary" disabled>💾 Сохранить Excel</button>
+    <span id="status" class="status"></span>
+  </div>
+  <p class="hint">
+    В браузере отображаются столбцы A–G. При сохранении в файл добавляется столбец H («Проверка») с метками OK / ОШИБКА.
+    Используйте фильтры, чтобы быстро найти нужные строки.
+  </p>
+</div>
+
+<div class="panel">
+  <div class="row">
+    <label class="filter-label">Статус:
+      <select id="filterStatus" style="padding:6px; border-radius:6px; border:1px solid #ccc;">
+        <option value="all">Все</option>
+        <option value="ok">Только OK</option>
+        <option value="bad">Только ОШИБКА</option>
+      </select>
+    </label>
+    <label class="filter-label">Время (A):
+      <input type="text" id="searchA" placeholder="2026-11-05" style="padding:6px; border-radius:6px; border:1px solid #ccc; width:180px;">
+    </label>
+    <label class="filter-label">Значение (C):
+      <input type="text" id="searchC" placeholder="7" style="padding:6px; border-radius:6px; border:1px solid #ccc; width:80px;">
+    </label>
+    <button id="btnResetFilters" style="font-size:12px;">✖ Сбросить фильтры</button>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="summary" id="summary"></div>
+</div>
+
+<div class="panel">
+  <div style="overflow-x:auto;">
+    <table id="resultTable">
+      <thead>
+        <tr id="tableHeader"></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const state = {
+  workbook: null,
+  fileName: 'checked.xlsx',
+  fileHandle: null,
+  rows: [],
+  _headers: [],
+  filterStatus: 'all',
+  searchA: '',
+  searchC: ''
+};
+
+const $ = sel => document.querySelector(sel);
+
+function setStatus(msg, warn) {
+  const el = $('#status');
+  el.textContent = msg;
+  el.style.color = warn ? '#b91c1c' : '#166534';
+  setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 6000);
+}
+
+function parseTime(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number') {
+    const ms = (value - 25569) * 86400 * 1000;
+    const d = new Date(ms);
+    if (!isNaN(d.getTime())) return d;
+    return null;
+  }
+  const s = String(value).trim();
+  let d = new Date(s.replace(' ', 'T'));
+  if (!isNaN(d.getTime())) return d;
+  d = new Date(s);
+  if (!isNaN(d.getTime())) return d;
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+  if (m) return new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]);
+  return null;
+}
+
+/* ======================= ЧТЕНИЕ ФАЙЛА ======================= */
+$('#fileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  state.fileName = file.name.replace(/\.(xlsx|xls)$/i, '') + '_checked.xlsx';
+  state.fileHandle = null;
+
+  try {
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data, { type: 'array', cellDates: true, cellStyles: true });
+    state.workbook = wb;
+
+    const sheetName = wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true });
+
+    state.rows = [];
+    let prevTime = null;
+
+    for (let i = 1; i < aoa.length; i++) {
+      const row = aoa[i] || [];
+      const dataCols = row.slice(0, 7);
+      const rawA = dataCols[0];
+      const rawC = dataCols[2];
+
+      const timeA = parseTime(rawA);
+      const valueC = Number(String(rawC).replace(',', '.'));
+
+      if (timeA === null && rawA === '' && rawC === '') continue;
+
+      let diff = null;
+      let match = false;
+
+      if (prevTime !== null && timeA !== null) {
+        diff = Math.round((timeA.getTime() - prevTime.getTime()) / 1000);
+        match = Math.abs(diff - valueC) < 0.5;
+      }
+
+      state.rows.push({
+        rowIndex: i + 1,
+        data: dataCols,
+        timeA,
+        valueC: isNaN(valueC) ? rawC : valueC,
+        diff,
+        match,
+        isFirst: prevTime === null,
+      });
+
+      if (timeA !== null) prevTime = timeA;
+    }
+
+    const headerRow = aoa[0] || [];
+    const headers = [];
+    for (let c = 0; c < 7; c++) {
+      headers.push(headerRow[c] || String.fromCharCode(65 + c));
+    }
+    state._headers = headers;
+    renderTable(headers);
+    
+    applyStylesToWorkbook();
+    $('#btnSave').disabled = false;
+
+    const total = state.rows.filter(r => !r.isFirst).length;
+    const bad = state.rows.filter(r => !r.isFirst && !r.match).length;
+    setStatus(`Прочитано строк: ${state.rows.length}. Сравнено пар: ${total}. Расхождений: ${bad}.`, bad > 0);
+  } catch (err) {
+    console.error(err);
+    setStatus('Ошибка: ' + err.message, true);
+  }
+});
+
+/* ======================= ФИЛЬТРЫ ======================= */
+$('#filterStatus').addEventListener('change', (e) => {
+  state.filterStatus = e.target.value;
+  renderTable();
+});
+
+$('#searchA').addEventListener('input', (e) => {
+  state.searchA = e.target.value.toLowerCase();
+  renderTable();
+});
+
+$('#searchC').addEventListener('input', (e) => {
+  state.searchC = e.target.value.toLowerCase();
+  renderTable();
+});
+
+$('#btnResetFilters').addEventListener('click', () => {
+  state.filterStatus = 'all';
+  state.searchA = '';
+  state.searchC = '';
+  $('#filterStatus').value = 'all';
+  $('#searchA').value = '';
+  $('#searchC').value = '';
+  renderTable();
+});
+
+/* ======================= ТАБЛИЦА ======================= */
+function renderTable(headers) {
+  if (!headers) headers = state._headers;
+
+  const thead = $('#tableHeader');
+  thead.innerHTML = '';
+  headers.forEach(h => {
+    const th = document.createElement('th');
+    th.textContent = h;
+    thead.appendChild(th);
+  });
+  const thCheck = document.createElement('th');
+  thCheck.textContent = 'Проверка (H)';
+  thCheck.style.color = '#2563eb';
+  thead.appendChild(thCheck);
+
+  const tbody = $('#resultTable tbody');
+  tbody.innerHTML = '';
+
+  // --- ФИЛЬТРАЦИЯ ---
+  let filtered = state.rows;
+
+  if (state.filterStatus === 'ok') {
+    filtered = filtered.filter(r => !r.isFirst && r.match);
+  } else if (state.filterStatus === 'bad') {
+    filtered = filtered.filter(r => !r.isFirst && !r.match);
+  }
+
+  if (state.searchA) {
+    filtered = filtered.filter(r => {
+      const timeStr = r.timeA ? formatDate(r.timeA) : String(r.data[0] || '');
+      return timeStr.toLowerCase().includes(state.searchA);
+    });
+  }
+
+  if (state.searchC) {
+    filtered = filtered.filter(r => {
+      return String(r.data[2] || '').toLowerCase().includes(state.searchC);
+    });
+  }
+  // --- КОНЕЦ ФИЛЬТРАЦИИ ---
+
+  filtered.forEach(r => {
+    const tr = document.createElement('tr');
+    if (r.isFirst) tr.className = '';
+    else tr.className = r.match ? 'match' : 'mismatch';
+
+    r.data.forEach(val => {
+      const td = document.createElement('td');
+      if (val instanceof Date) {
+        td.textContent = formatDate(val);
+      } else {
+        td.textContent = val === '' || val === undefined ? '' : val;
+      }
+      tr.appendChild(td);
+    });
+
+    const tdCheck = document.createElement('td');
+    tdCheck.style.fontWeight = '600';
+    tdCheck.style.color = r.isFirst ? '#666' : (r.match ? '#15803d' : '#b91c1c');
+    tdCheck.textContent = r.isFirst ? 'База' : (r.match ? 'OK' : 'ОШИБКА');
+    tr.appendChild(tdCheck);
+
+    tbody.appendChild(tr);
+  });
+
+  const total = state.rows.filter(r => !r.isFirst).length;
+  const ok = state.rows.filter(r => !r.isFirst && r.match).length;
+  const bad = total - ok;
+  $('#summary').innerHTML = `
+    <span>Всего строк: <b>${state.rows.length}</b></span>
+    <span class="ok">Совпадает: <b>${ok}</b></span>
+    <span class="bad">Расхождений: <b>${bad}</b></span>
+    ${filtered.length !== state.rows.length ? `<span style="color:#2563eb;">Показано: <b>${filtered.length}</b> (фильтр)</span>` : ''}
+  `;
+}
+
+function formatDate(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+/* ======================= СТИЛИ ДЛЯ EXCEL ======================= */
+function applyStylesToWorkbook() {
+  if (!state.workbook) return;
+  const sheetName = state.workbook.SheetNames[0];
+  const ws = state.workbook.Sheets[sheetName];
+
+  const headerAddr = XLSX.utils.encode_cell({ r: 0, c: 7 });
+  ws[headerAddr] = { t: 's', v: 'Проверка' };
+  ws[headerAddr].s = {
+    fill: { patternType: 'solid', fgColor: { rgb: 'D9E1F2' }, bgColor: { rgb: 'D9E1F2' } },
+    font: { bold: true }
+  };
+
+  const redFill = { patternType: 'solid', fgColor: { rgb: 'FFC7CE' }, bgColor: { rgb: 'FFC7CE' } };
+  const greenFill = { patternType: 'solid', fgColor: { rgb: 'C6EFCE' }, bgColor: { rgb: 'C6EFCE' } };
+
+  state.rows.forEach(r => {
+    if (r.isFirst) return;
+    const rowIdx = r.rowIndex - 1;
+    const fill = r.match ? greenFill : redFill;
+
+    for (let c = 0; c <= 6; c++) {
+      const addr = XLSX.utils.encode_cell({ r: rowIdx, c });
+      if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+      ws[addr].s = { fill: fill };
+    }
+
+    const statusAddr = XLSX.utils.encode_cell({ r: rowIdx, c: 7 });
+    ws[statusAddr] = {
+      t: 's',
+      v: r.match ? 'OK' : 'ОШИБКА',
+      s: { 
+        fill: fill,
+        font: { bold: true, color: { rgb: r.match ? '006100' : '9C0006' } },
+        alignment: { horizontal: 'center', vertical: 'center' }
+      }
+    };
+  });
+
+  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
+  const maxRow = Math.max(range.e.r, state.rows.length);
+  const maxCol = Math.max(range.e.c, 7);
+  range.e.r = maxRow;
+  range.e.c = maxCol;
+  ws['!ref'] = XLSX.utils.encode_range(range);
+
+  if (!ws['!cols']) ws['!cols'] = [];
+  ws['!cols'][7] = { wch: 14 };
+}
+
+/* ======================= СОХРАНЕНИЕ ======================= */
+$('#btnSave').addEventListener('click', async () => {
+  if (!state.workbook) return;
+
+  applyStylesToWorkbook();
+
+  const wbout = XLSX.write(state.workbook, { 
+    bookType: 'xlsx', 
+    type: 'array', 
+    cellStyles: true,
+    bookSST: true
+  });
+
+  if (window.showSaveFilePicker) {
+    try {
+      if (!state.fileHandle) {
+        state.fileHandle = await window.showSaveFilePicker({
+          suggestedName: state.fileName,
+          types: [{
+            description: 'Excel Files',
+            accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+          }]
+        });
+      }
+      const writable = await state.fileHandle.createWritable();
+      await writable.write(wbout);
+      await writable.close();
+      setStatus('✅ Файл перезаписан. Столбец H — метки OK / ОШИБКА.');
+      return;
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        setStatus('Сохранение отменено.', true);
+        return;
+      }
+      console.warn(err);
+    }
+  }
+
+  const blob = new Blob([wbout], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = state.fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  setStatus(`Скачано: ${state.fileName}. Столбец H — метки OK / ОШИБКА.`);
+});
+</script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Вот полный финальный код. В нём:
 
 1. Стили применяются максимально надёжно (с cellStyles: true при чтении и записи, с полным набором свойств fill, с пересчётом !ref и !cols).
