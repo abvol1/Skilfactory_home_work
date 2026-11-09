@@ -1,3 +1,395 @@
+
+Отличная задача! Понял суть:
+
+1. В колонке A — дата и время (например, 2026-11-05 15:01:44).
+2. В колонке C — число (например, 7, 9).
+3. Нужно: для каждой строки (начиная с 3-й) взять дату/время этой строки, вычесть дату/время предыдущей строки, получить разницу в секундах.
+4. Сравнить полученную разницу со значением в колонке C этой строки.
+5. Если не совпадает — закрасить строку (или обе ячейки A и C) красным.
+6. Если совпадает — оставить как есть (или закрасить зеленым).
+
+Ниже — готовый HTML-инструмент, полностью аналогичный по духу вашим предыдущим: локальный, без сервера, работает через SheetJS.
+
+---
+
+Как пользоваться
+
+1. Сохраните код в файл checker.html (рядом положите xlsx.full.min.js).
+2. Откройте в браузере.
+3. Загрузите ваш .xlsx.
+4. Программа автоматически:
+   · Прочитает строки (начиная с 2-й, как шапка останется в 1-й, а данные со 2-й).
+   · Сравнит каждую строку с предыдущей.
+   · В таблице подсветит красным строки, где разница во времени ≠ значение в колонке C, и зелёным — где совпадает.
+5. Кнопка «💾 Сохранить Excel» — скачает тот же файл, но с закрашенными строками.
+
+---
+
+Готовый код
+
+```html
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Проверка расхождений по времени</title>
+<script src="xlsx.full.min.js"></script>
+<style>
+  :root { --border:#d0d5dd; --accent:#2563eb; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, Segoe UI, Arial, sans-serif; margin:0; padding:20px; background:#f5f6f8; color:#222; }
+  h1 { font-size:20px; margin:0 0 12px; }
+  .panel { background:#fff; border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:14px; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+  button { padding:8px 14px; border:1px solid var(--border); background:#fff; border-radius:8px; cursor:pointer; font-size:14px; }
+  button:hover { border-color:var(--accent); color:var(--accent); }
+  button.primary { background:#2563eb; color:#fff; border-color:#2563eb; }
+  button:disabled { opacity:.5; cursor:default; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { border:1px solid var(--border); padding:6px 8px; text-align:left; }
+  th { background:#f0f2f5; }
+  tr.match { background:#d9f2d9; }
+  tr.mismatch { background:#fde2e1; }
+  .status { font-size:13px; color:#166534; }
+  .hint { color:#666; font-size:13px; }
+  .summary { display:flex; gap:24px; margin-top:8px; font-size:14px; }
+  .summary span b { font-size:16px; }
+  .ok { color:#15803d; }
+  .bad { color:#b91c1c; }
+</style>
+</head>
+<body>
+
+<h1>Проверка расхождений: время (столбец A) vs значение (столбец C)</h1>
+
+<div class="panel">
+  <div class="row">
+    <input type="file" id="fileInput" accept=".xlsx,.xls">
+    <button id="btnSave" class="primary" disabled>💾 Сохранить Excel</button>
+    <span id="status" class="status"></span>
+  </div>
+  <p class="hint">
+    Программа читает столбец A (дата/время) и столбец C (секунды). Для каждой строки, начиная с 3-й,
+    вычисляет разницу между текущей и предыдущей датой/временем в секундах, сравнивает со значением в C.
+    Если не совпадает — строка подсвечивается красным.
+  </p>
+</div>
+
+<div class="panel">
+  <div class="summary" id="summary"></div>
+</div>
+
+<div class="panel">
+  <div style="overflow-x:auto;">
+    <table id="resultTable">
+      <thead>
+        <tr>
+          <th>Строка</th>
+          <th>A (время)</th>
+          <th>C (заявлено)</th>
+          <th>Разница (сек)</th>
+          <th>Статус</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const state = {
+  workbook: null,
+  fileName: 'checked.xlsx',
+  fileHandle: null,
+  rows: [], // { rowIndex, timeA, valueC, diff, match }
+};
+
+const $ = sel => document.querySelector(sel);
+
+function setStatus(msg, warn) {
+  const el = $('#status');
+  el.textContent = msg;
+  el.style.color = warn ? '#b91c1c' : '#166534';
+  setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 6000);
+}
+
+// Парсер даты/времени. Поддерживает несколько форматов:
+// - ISO: 2026-11-05 15:01:44 / 2026-11-05T15:01:44
+// - Excel-серийный номер (если ячейка хранится как число)
+function parseTime(value) {
+  if (value === null || value === undefined || value === '') return null;
+
+  // Если это число — возможно, Excel serial date
+  if (typeof value === 'number') {
+    // Excel хранит дату как число дней от 1900-01-01
+    // 25569 — смещение для корректной работы (1970-01-01)
+    const ms = (value - 25569) * 86400 * 1000;
+    const d = new Date(ms);
+    if (!isNaN(d.getTime())) return d;
+    return null;
+  }
+
+  // Строка
+  const s = String(value).trim();
+
+  // Попытка 1: заменить пробел на T (ISO-формат)
+  let d = new Date(s.replace(' ', 'T'));
+  if (!isNaN(d.getTime())) return d;
+
+  // Попытка 2: стандартный парсер
+  d = new Date(s);
+  if (!isNaN(d.getTime())) return d;
+
+  // Попытка 3: разобрать вручную YYYY-MM-DD HH:MM:SS
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+  if (m) {
+    return new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]);
+  }
+
+  return null;
+}
+
+/* ======================= ЧТЕНИЕ ФАЙЛА ======================= */
+$('#fileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  state.fileName = file.name.replace(/\.(xlsx|xls)$/i, '') + '_checked.xlsx';
+  state.fileHandle = null;
+
+  try {
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data, { type: 'array', cellDates: true });
+    state.workbook = wb;
+
+    // Берем первый лист
+    const sheetName = wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true });
+
+    state.rows = [];
+
+    // Данные начинаются со 2-й строки (индекс 1). Строка 1 — шапка.
+    // Идем со 2-й строки (idx=1). Предыдущее время — из строки idx-1.
+    let prevTime = null;
+
+    // Найдём корректное время в первой строке (idx=1, если она есть)
+    for (let i = 1; i < aoa.length; i++) {
+      const row = aoa[i] || [];
+      const rawA = row[0]; // столбец A
+      const rawC = row[2]; // столбец C
+
+      const timeA = parseTime(rawA);
+      const valueC = Number(String(rawC).replace(',', '.'));
+
+      if (timeA === null && rawA === '' && rawC === '') continue; // пустая строка
+
+      let diff = null;
+      let match = false;
+
+      if (prevTime !== null && timeA !== null) {
+        diff = Math.round((timeA.getTime() - prevTime.getTime()) / 1000);
+        match = Math.abs(diff - valueC) < 0.5; // допускаем дробные/округления
+      }
+
+      state.rows.push({
+        rowIndex: i + 1, // номер строки в Excel (1-based)
+        timeA,
+        timeStr: timeA ? formatDate(timeA) : String(rawA),
+        valueC: isNaN(valueC) ? rawC : valueC,
+        diff,
+        match,
+        isFirst: prevTime === null,
+      });
+
+      if (timeA !== null) prevTime = timeA;
+    }
+
+    renderTable();
+    applyStylesToWorkbook();
+    $('#btnSave').disabled = false;
+
+    const total = state.rows.filter(r => !r.isFirst).length;
+    const bad = state.rows.filter(r => !r.isFirst && !r.match).length;
+    setStatus(`Прочитано строк: ${state.rows.length}. Сравнено пар: ${total}. Расхождений: ${bad}.`, bad > 0);
+  } catch (err) {
+    console.error(err);
+    setStatus('Ошибка: ' + err.message, true);
+  }
+});
+
+function formatDate(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+/* ======================= ОТРИСОВКА ТАБЛИЦЫ ======================= */
+function renderTable() {
+  const tbody = $('#resultTable tbody');
+  tbody.innerHTML = '';
+
+  state.rows.forEach(r => {
+    const tr = document.createElement('tr');
+    if (r.isFirst) tr.className = '';
+    else tr.className = r.match ? 'match' : 'mismatch';
+
+    tr.innerHTML = `
+      <td>${r.rowIndex}</td>
+      <td>${escapeHtml(r.timeStr)}</td>
+      <td>${escapeHtml(String(r.valueC))}</td>
+      <td>${r.diff === null ? '—' : r.diff}</td>
+      <td>${r.isFirst ? 'Первая строка (база)' : (r.match ? '✅ Совпадает' : '❌ Расхождение')}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  const total = state.rows.filter(r => !r.isFirst).length;
+  const ok = state.rows.filter(r => !r.isFirst && r.match).length;
+  const bad = total - ok;
+  $('#summary').innerHTML = `
+    <span>Всего строк: <b>${state.rows.length}</b></span>
+    <span class="ok">Совпадает: <b>${ok}</b></span>
+    <span class="bad">Расхождений: <b>${bad}</b></span>
+  `;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ======================= ПОДСВЕТКА В EXCEL ======================= */
+function applyStylesToWorkbook() {
+  if (!state.workbook) return;
+  const sheetName = state.workbook.SheetNames[0];
+  const ws = state.workbook.Sheets[sheetName];
+
+  // Цвета (Excel формат RGB, но без #; для красного фона: FFE5E5; для зелёного: D9F2D9)
+  const redFill = { patternType: 'solid', fgColor: { rgb: 'FDE2E1' } };
+  const greenFill = { patternType: 'solid', fgColor: { rgb: 'D9F2D9' } };
+
+  state.rows.forEach(r => {
+    if (r.isFirst) return; // Первую строку не красим — она база
+
+    const rowIdx = r.rowIndex - 1; // 0-based
+    const fill = r.match ? greenFill : redFill;
+
+    // Закрашиваем ячейки A, B, C (можно расширить, если нужно больше колонок)
+    for (const c of [0, 1, 2]) {
+      const addr = XLSX.utils.encode_cell({ r: rowIdx, c });
+      if (!ws[addr]) {
+        ws[addr] = { t: 's', v: '' };
+      }
+      ws[addr].s = { fill: fill };
+    }
+  });
+
+  // Расширяем диапазон, если нужно (на случай, если последние строки не входят в !ref)
+  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
+  const maxRow = Math.max(range.e.r, state.rows.length);
+  range.e.r = maxRow;
+  ws['!ref'] = XLSX.utils.encode_range(range);
+}
+
+/* ======================= СОХРАНЕНИЕ ======================= */
+$('#btnSave').addEventListener('click', async () => {
+  if (!state.workbook) return;
+
+  // Стили уже применены (applyStylesToWorkbook), но применим ещё раз на всякий случай
+  applyStylesToWorkbook();
+
+  const wbout = XLSX.write(state.workbook, { bookType: 'xlsx', type: 'array', cellStyles: true });
+
+  // File System Access API (Chrome/Edge) — перезапись
+  if (window.showSaveFilePicker) {
+    try {
+      if (!state.fileHandle) {
+        state.fileHandle = await window.showSaveFilePicker({
+          suggestedName: state.fileName,
+          types: [{
+            description: 'Excel Files',
+            accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+          }]
+        });
+      }
+      const writable = await state.fileHandle.createWritable();
+      await writable.write(wbout);
+      await writable.close();
+      setStatus('✅ Файл перезаписан.');
+      return;
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        setStatus('Сохранение отменено.', true);
+        return;
+      }
+      console.warn(err);
+    }
+  }
+
+  // Fallback — скачивание
+  const blob = new Blob([wbout], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = state.fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  setStatus(`Скачано: ${state.fileName}`);
+});
+</script>
+</body>
+</html>
+```
+
+---
+
+Что умеет
+
+· Читает первый лист .xlsx. Первая строка — считается шапкой.
+· Столбец A — дата/время (в формате 2026-11-05 15:01:44 или как Excel-дата).
+· Столбец C — число (секунды).
+· Для каждой строки (начиная со 2-й) вычисляет разницу во времени с предыдущей строкой в секундах и сравнивает с C.
+· В интерфейсе показывает таблицу с результатами:
+  · Номер строки
+  · Время из A
+  · Значение из C
+  · Вычисленная разница в секундах
+  · ✅ / ❌ статус
+· Строки закрашивает красным (расхождение) или зелёным (совпадает) — и в браузере, и в Excel (при сохранении).
+· Кнопка «💾 Сохранить Excel» — перезаписывает файл (или скачивает копию).
+
+---
+
+Что стоит проверить
+
+1. Формат дат в вашем файле: если дата хранится как текст, парсер справится. Если как число — тоже.
+2. Точность сравнения: у нас допускается погрешность ±0.5 секунды (на случай дробных/округлений). Если нужна строгая проверка (diff === valueC), замените Math.abs(diff - valueC) < 0.5 на diff === valueC.
+3. Количество колонок для покраски: сейчас красим только A, B, C. Если в файле больше колонок, и их тоже нужно красить — измените цикл for (const c of [0, 1, 2]) на for (let c = 0; c <= range.e.c; c++).
+4. Первая строка — не красится, потому что разницы ещё нет (нет предыдущей).
+
+---
+
+Если нужно доработать — например:
+
+· добавить проверку всех листов книги, а не только первого;
+· показывать дату и время в читаемом виде рядом с колонкой A;
+· добавить кнопку «Экспорт отчёта» с перечнем только расхождений;
+· подсвечивать не строку целиком, а только ячейки A и C.
+
+— напишите, добавлю в код.
+
+
+
+
+
+
+
+
+
+
+
+
+
 <!DOCTYPE html>
 <html>
 <head>
