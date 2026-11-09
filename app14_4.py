@@ -1,4 +1,278 @@
 
+Понял задачу. Давайте разберём её формально, чтобы плагин работал именно так, как вы ожидаете.
+
+---
+
+📋 Формализация задачи
+
+Дано:
+
+· Столбец A — дата-время в формате YYYY-MM-DD HH:MM:SS (начиная со строки 2).
+· Столбец C — некоторое числовое значение (количество секунд).
+· Для каждой строки i (начиная с 3-й):
+  · diff = A[i] - A[i-1] (разница в секундах между текущей и предыдущей строкой).
+  · Сравниваем diff со значением C[i] (значение в столбце C текущей строки).
+  · Если diff !== C[i] → закрашиваем строку (например, красным).
+
+Пример:
+
+Строка A C diff Совпадает?
+2 2026-11-05 15:01:44 7 — —
+3 2026-11-05 15:01:53 9 9 ✅ да
+4 2026-11-05 15:02:01 6 8 ❌ нет → закрасить
+
+---
+
+⚠️ Важное уточнение
+
+В вашем примере: 2026-11-05 15:01:53 минус 2026-11-05 15:01:44 = 9 секунд, а в C стоит 9 — совпадает. ✅
+
+Но что если разница отрицательная или в C стоит не число? Плагин должен:
+
+· Пропускать пустые строки.
+· Если C[i] не число — считать расхождением (закрашивать).
+· Если формат даты неверный — тоже считать расхождением.
+
+---
+
+🧩 Плагин (полный код)
+
+📄 config.json
+
+```json
+{
+    "baseUrl": "",
+    "guid": "asc.{A1B2C3D4-1111-2222-3333-444455556666}",
+    "name": "Проверка разницы времени",
+    "variations": [
+        {
+            "description": "Сравнивает разницу времени в столбце A со значением в столбце C и закрашивает строки с расхождениями",
+            "EditorsSupport": ["cell"],
+            "icons": [],
+            "isVisual": true,
+            "isViewer": false,
+            "url": "index.html"
+        }
+    ]
+}
+```
+
+---
+
+🖥️ index.html (весь код внутри)
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Проверка разницы времени</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 450px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        h2 { margin-top: 0; color: #333; font-size: 18px; }
+        p { color: #666; font-size: 13px; line-height: 1.5; }
+        button { background: #2b7b8c; color: white; border: none; padding: 10px 24px; font-size: 16px; border-radius: 4px; cursor: pointer; width: 100%; margin-top: 10px; }
+        button:hover { background: #1f5f6e; }
+        #status { margin-top: 15px; padding: 10px; background: #f0f0f0; border-radius: 4px; font-size: 13px; display: none; white-space: pre-wrap; }
+        .ok { color: #2e7d32; }
+        .err { color: #c62828; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>⏱ Проверка разницы времени</h2>
+    <p>Сравнивает разницу между строками в столбце <strong>A</strong> со значением в столбце <strong>C</strong>. Строки с расхождением закрашиваются красным.</p>
+    <button id="runBtn">▶ Выполнить проверку</button>
+    <div id="status"></div>
+</div>
+
+<script>
+    // ===== Код макроса (выполняется внутри редактора, где Api доступен) =====
+    var macroCode = `
+(function() {
+    var sheet = Api.GetActiveSheet();
+    var maxRows = 5000;
+    var lastRow = 1;
+
+    // ---- 1. Определяем последнюю строку по столбцу A ----
+    for (var i = 2; i <= maxRows; i++) {
+        var v = sheet.GetRange("A" + i).GetValue();
+        if (v !== undefined && v !== null && v !== "") {
+            lastRow = i;
+        } else {
+            var empty = 0;
+            for (var j = i; j <= i + 4 && j <= maxRows; j++) {
+                if (!sheet.GetRange("A" + j).GetValue()) empty++;
+            }
+            if (empty >= 5) break;
+        }
+    }
+
+    if (lastRow < 3) {
+        sheet.GetRange("Z1").SetValue("Недостаточно данных (нужно минимум 3 строки)");
+        window.Asc.plugin.executeCommand("close", JSON.stringify({error: "Мало данных"}));
+        return;
+    }
+
+    // ---- 2. Функция парсинга даты формата YYYY-MM-DD HH:MM:SS ----
+    function parseDate(str) {
+        if (!str) return null;
+        var s = str.toString().trim();
+        // Поддерживаем форматы: YYYY-MM-DD HH:MM:SS или YYYY-MM-DDTHH:MM:SS
+        var m = s.match(/^(\\d{4})-(\\d{2})-(\\d{2})[ T](\\d{2}):(\\d{2}):(\\d{2})/);
+        if (!m) return null;
+        return new Date(
+            parseInt(m[1]), parseInt(m[2])-1, parseInt(m[3]),
+            parseInt(m[4]), parseInt(m[5]), parseInt(m[6])
+        );
+    }
+
+    var mismatches = 0;
+    var totalChecked = 0;
+
+    // ---- 3. Проходим по строкам, начиная с 3-й ----
+    for (var r = 3; r <= lastRow; r++) {
+        var prevVal = sheet.GetRange("A" + (r-1)).GetValue();
+        var currVal = sheet.GetRange("A" + r).GetValue();
+        var cVal = sheet.GetRange("C" + r).GetValue();
+
+        var prevDate = parseDate(prevVal);
+        var currDate = parseDate(currVal);
+
+        // Если даты не парсятся — пропускаем или считаем расхождением
+        if (!prevDate || !currDate) {
+            continue;
+        }
+
+        var diffSec = Math.round((currDate - prevDate) / 1000);
+        var expected = parseFloat(cVal);
+
+        totalChecked++;
+
+        var isMismatch = false;
+        if (isNaN(expected)) {
+            isMismatch = true; // в C не число
+        } else if (diffSec !== expected) {
+            isMismatch = true;
+        }
+
+        if (isMismatch) {
+            mismatches++;
+            // Закрашиваем всю строку (столбцы A..T)
+            for (var c = 1; c <= 20; c++) {
+                var colLetter = String.fromCharCode(64 + c);
+                var cell = sheet.GetRange(colLetter + r);
+                cell.SetFillColor(Api.CreateColorFromRGB(255, 200, 200)); // светло-красный
+            }
+        }
+    }
+
+    // ---- 4. Итог ----
+    sheet.GetRange("Z1").SetValue("Проверено строк: " + totalChecked + ", расхождений: " + mismatches);
+    window.Asc.plugin.executeCommand("close", JSON.stringify({
+        total: totalChecked,
+        mismatches: mismatches
+    }));
+})();
+    `;
+
+    // ===== Обработчик кнопки =====
+    document.getElementById('runBtn').addEventListener('click', function() {
+        var btn = this;
+        var status = document.getElementById('status');
+        btn.disabled = true;
+        btn.textContent = 'Выполняется...';
+        status.style.display = 'block';
+        status.textContent = 'Выполняется...';
+        status.className = '';
+
+        window.Asc.plugin.executeCommand("macro", macroCode);
+
+        window.Asc.plugin.onClose = function(result) {
+            try {
+                var data = JSON.parse(result);
+                if (data.error) {
+                    status.textContent = '⚠️ ' + data.error;
+                    status.className = 'err';
+                } else {
+                    status.textContent = '✅ Проверено строк: ' + data.total + '\n❌ Расхождений: ' + data.mismatches;
+                    status.className = data.mismatches > 0 ? 'err' : 'ok';
+                }
+            } catch(e) {
+                status.textContent = 'Готово (результат: ' + result + ')';
+            }
+            btn.disabled = false;
+            btn.textContent = '▶ Выполнить проверку';
+        };
+    });
+</script>
+</body>
+</html>
+```
+
+---
+
+🎨 Как работает закрашивание
+
+· Цвет: светло-красный RGB(255, 200, 200).
+· Метод: cell.SetFillColor(Api.CreateColorFromRGB(255, 200, 200)).
+· Закрашиваются столбцы A–T (20 столбцов). Если нужно больше — увеличьте 20 в цикле for (var c = 1; c <= 20; c++).
+
+---
+
+⚙️ Настройка
+
+Что нужно Как изменить
+Другой цвет Измените 255, 200, 200 на нужный RGB.
+Красить только ячейку A Уберите цикл for (var c...) и красьте только sheet.GetRange("A" + r).
+Красить только ячейку C Аналогично — красьте sheet.GetRange("C" + r).
+Больше столбцов Увеличьте 20 в цикле закрашивания.
+Другой формат даты Отредактируйте регулярное выражение в parseDate.
+
+---
+
+📌 Важные нюансы
+
+1. Формат даты — плагин ожидает YYYY-MM-DD HH:MM:SS (с пробелом или T между датой и временем). Если у вас другой формат — сообщите, адаптирую регулярное выражение.
+2. Первая проверяемая строка — строка 3 (сравнивается со строкой 2). Строка 2 не проверяется, так как у неё нет предыдущей.
+3. Если в C не число — строка считается расхождением и закрашивается.
+4. Если дата не парсится — строка пропускается (можно изменить на «закрашивать» — скажите, если нужно).
+
+---
+
+🚀 Установка
+
+1. Создайте папку TimeCheckPlugin.
+2. Положите туда config.json и index.html.
+3. Заархивируйте содержимое → переименуйте в .plugin.
+4. В Р7-Офис: Плагины → Настройки → Добавить плагин.
+5. Перезапустите Р7.
+
+После нажатия кнопки:
+
+· На листе в Z1 появится итог: «Проверено строк: X, расхождений: Y».
+· Строки с расхождением будут закрашены светло-красным.
+· В окне плагина отобразится результат.
+
+---
+
+Если формат даты у вас отличается (например, 05.11.2026 15:01:44 или 2026/11/05 15:01:44) — напишите, я поправлю регулярное выражение. Также уточните, нужно ли красить всю строку или только конкретные ячейки (A и C).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Отличная идея! Кнопка «📄 Характеристика» позволит сформировать красивый документ по конкретному сотруднику — с ФИО, должностью, оценками, квадратом, портретом, рисками и решением. Это удобно для печати или отправки руководителю.
 
 Вот точечные изменения (4 шага):
